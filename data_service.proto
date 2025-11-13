@@ -1,0 +1,61 @@
+
+syntax = "proto3";
+
+/* DataService: a unified interface for all data operations */
+service DataService {
+    rpc ApplyQuery (QueryRequest) returns (QueryResponse);
+    rpc GetSamples (SamplesRequest) returns (SamplesResponse);
+}
+
+message QueryRequest {
+    string query = 1; // The query string to be applied
+    bool accumulate = 2; // Whether to accumulate with existing query
+
+    bool is_natural_language = 3; // Whether the query is in natural language
+}
+
+message QueryResponse {
+    bool success = 1;
+    string message = 2;
+
+    int32 number_of_all_samples = 3;
+    int32 number_of_samples_in_the_loop = 4; // both eval and train
+    int32 number_of_discarded_samples = 5; // both eval and train
+}
+
+/*
+    Request to get data records along with specified statistics. This is meant
+    for fast and efficient data retrieval.
+*/
+message SamplesRequest {
+    int32 start_index = 1;
+    int32 records_cnt = 2;
+
+    bool include_transformed_data = 3; // Whether to include model ready data
+    bool include_raw_data = 4; // Whether to include raw data
+
+    repeated string stats_to_retrieve = 5; // if empty return all stats
+
+    // string query_to_run_before = 6; // Query to run before fetching data
+}
+
+// Represents a single data statistic, such as target, latest_prediction,
+// latest_loss, encounters, discarded and any extra fields.
+message DataStat {
+  string name = 1;
+  string type = 2;
+  repeated int32 shape = 3;
+  repeated float value = 4;
+  string value_string = 5;
+}
+
+message DataRecord {
+  int32 sample_id = 1;
+  repeated DataStat data_stats = 2;
+}
+
+message SamplesResponse {
+  bool success = 1;
+  string message = 2;
+  repeated DataRecord data_records = 3;
+}
