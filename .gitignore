@@ -17,3 +17,5 @@ Thumbs.db
 
 # dependencies
 node_modules/
+
+*pb2*.py
