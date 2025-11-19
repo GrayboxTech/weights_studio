@@ -25,5 +25,13 @@ This application serves as the primary user interface for exploring data, order,
 
 Install the project dependencies.
 
-```bash
-npm install
+```
+# this is the translation protocol node between gRPC and http-gRPC
+./run_envoy.sh
+
+python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. data_service.proto
+python data_service.py
+
+npm run generate-proto
+npm run dev
+```
