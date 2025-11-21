@@ -384,8 +384,8 @@ html, body {
 }
 
 .cell.discarded {
-  opacity: 0.4;
-  filter: grayscale(80%);
+  opacity: 0.5;
+  filter: grayscale(90%);
 }
 
 .cell.discarded::before {
