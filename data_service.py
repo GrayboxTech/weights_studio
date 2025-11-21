@@ -1,7 +1,9 @@
+import argparse
 import grpc
 import io
+import importlib
 import logging
-
+import sys
 import torch
 import traceback
 
@@ -13,10 +15,10 @@ import pandas as pd
 from concurrent import futures
 from torchvision import transforms
 from PIL import Image
+from pathlib import Path
 
 from agent import DataManipulationAgent
 
-from cad_models_exp import get_exp
 
 # Configure logging
 logging.basicConfig(
@@ -78,7 +80,11 @@ class DataServiceServicer(pb2_grpc.DataServiceServicer):
 
             # Count samples by status
             total_count = len(self._all_datasets_df)
-            discarded_count = len(self._all_datasets_df[self._all_datasets_df.get('sample_discarded', False) == True]) if 'sample_discarded' in self._all_datasets_df.columns else 0
+            discarded_count = len(self._all_datasets_df[
+                self._all_datasets_df['deny_listed']])
+            
+            # print(self._all_datasets_df[
+            #     self._all_datasets_df['deny_listed']])
             in_loop_count = total_count - discarded_count
 
             return pb2.QueryResponse(
@@ -142,6 +148,9 @@ class DataServiceServicer(pb2_grpc.DataServiceServicer):
             return None
 
         value = row[stat_name]
+        
+        # if stat_name == 'tags':
+        #     print("Processing tags for sample_id ", row, " value : ", value)
         # Determine type and shape
         if isinstance(value, (int, float)):
             return pb2.DataStat(
@@ -155,7 +164,7 @@ class DataServiceServicer(pb2_grpc.DataServiceServicer):
                 name=stat_name,
                 type='string',
                 shape=[1],
-                str_value=[value]
+                value_string=value
             )
         if isinstance(value, (list, np.ndarray)):
             flat_value = np.array(value).flatten()
@@ -277,7 +286,7 @@ class DataServiceServicer(pb2_grpc.DataServiceServicer):
             # Build the data records list in parallel
             data_records = []
             tasks = [(row, request, df_slice.columns) for _, row in df_slice.iterrows()]
-            
+
             with futures.ThreadPoolExecutor() as executor:
                 results = executor.map(self._process_sample_row, tasks)
                 data_records = [res for res in results if res is not None]
@@ -297,12 +306,87 @@ class DataServiceServicer(pb2_grpc.DataServiceServicer):
                 data_records=[]
             )
 
+    def EditSample(self, request, context):
+        _LOGGER.info("EditSample called with request: %s", request)
+
+        if request.stat_name != "tags" and request.stat_name != "deny_listed":
+            return pb2.EditsResponse(success=False, message="Only 'tags' stat editing is supported.")
+
+        if request.type == pb2.SampleEditType.ACCUMULATE:
+            _LOGGER.info("Accumulate Tagging not supported")
+            return pb2.EditsResponse(success=False, message="Tagged samples.")
+
+        for sid, origin in zip(request.samples_ids, request.sample_origins):
+            # print(f"Tagging sample_id={sid} from origin={origin} with tag={request.string_value}")
+            dataset = self.experiment.train_loader.dataset
+            if origin == 'eval':
+                dataset = self.experiment.eval_loader.dataset
+
+            if request.stat_name == "tags":
+                dataset.set(sid, "tags", request.string_value)
+            elif request.stat_name == "deny_listed":
+                dataset.set(sid, "deny_listed", request.bool_value)
+            # print(dataset.get(sid, "tags"))
+
+        # self._all_datasets_df = self._generate_all_datasets_df()
+        for sid, origin in zip(request.samples_ids, request.sample_origins):
+            self._all_datasets_df.loc[
+                (self._all_datasets_df['sample_id'] == sid) &
+                (self._all_datasets_df['origin'] == origin),
+                request.stat_name
+            ] = request.string_value if request.stat_name == "tags" else request.bool_value
+
+        print("Dataframe after tagging:\n", self._all_datasets_df.head(16))
+
+        return pb2.EditsResponse(success=True, message="Tagged the samples")
+
+
+def import_callable(spec: str):
+    if ":" not in spec:
+        raise SystemExit(
+            "Invalid --experiment. Expected 'package.module:function'")
+    module, func = spec.split(":", 1)
+    mod = importlib.import_module(module)
+    fn = getattr(mod, func, None)
+    if not callable(fn):
+        raise SystemExit(f"'{module}:{func}' not found or not callable")
+    return fn
+
+
+def define_arg_parser():
+    if str(Path.cwd()) not in sys.path:
+        sys.path.insert(0, str(Path.cwd()))
+
+    parser = argparse.ArgumentParser(description="Trainer worker")
+    parser.add_argument(
+        "--experiment",
+        required=True,
+        help="Experiment factory in 'package.module:function' form, "
+        "e.g. fashion_mnist_exp_under_2k:get_exp",
+    )
+    return parser
+
 
 def serve():
-    from cad_models_exp import get_exp
+    parser = define_arg_parser()
+    args, _ = parser.parse_known_args()
 
-    servicer = DataServiceServicer(experiment=get_exp())
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=6))
+    get_exp = import_callable(args.experiment)
+    experiment = get_exp()
+
+    import threading
+    training_thread = threading.Thread(
+        target=experiment.train_n_steps_with_eval_full,
+        args=(10000,)
+    )
+    training_thread.start()
+
+    print(
+        f"[data_service] Loaded experiment from "
+        f"{args.experiment}: {experiment}")
+
+    servicer = DataServiceServicer(experiment=experiment)
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
 
     pb2_grpc.add_DataServiceServicer_to_server(servicer, server)
 
@@ -310,9 +394,12 @@ def serve():
     server.start()
     server.wait_for_termination()
 
+    training_thread.join()
+
 
 if __name__ == "__main__":
-    _LOGGER.info("Starting DataService server on port %s", _DEFAULT_DATA_SERVICE_PORT)
+    _LOGGER.info(
+        "Starting DataService server on port %s", _DEFAULT_DATA_SERVICE_PORT)
     try:
         serve()
     except Exception as e:
