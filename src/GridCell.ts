@@ -4,8 +4,8 @@ import { DisplayPreferences } from "./DataDisplayOptionsPanel";
 
 
 const PLACEHOLDER_IMAGE_SRC = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
-const EVAL_BORDER_COLOR = '#FF6B6B'; // Red for eval
-const TRAIN_BORDER_COLOR = '#4ECDC4'; // Teal for train
+const EVAL_BORDER_COLOR = '#16bb07db'; // Red for eval
+const TRAIN_BORDER_COLOR = '#c57a09ff'; // Teal for train
 
 function bytesToBase64(bytes: Uint8Array): string {
     let binary = '';
@@ -21,7 +21,6 @@ export class GridCell {
     private label: HTMLSpanElement;
     private record: DataRecord | null = null;
     private displayPreferences: DisplayPreferences | null = null;
-    private isSelected = false;
 
     constructor(width: number, height: number) {
         this.element = document.createElement('div');
@@ -40,7 +39,8 @@ export class GridCell {
         this.element.appendChild(this.img);
         this.element.appendChild(this.label);
 
-        this.element.addEventListener('click', () => this.toggleSelection());
+        // Store reference for selection.ts to use
+        (this.element as any).__gridCell = this;
     }
 
     getElement(): HTMLElement {
@@ -56,6 +56,15 @@ export class GridCell {
         this.displayPreferences = displayPreferences;
         this.updateLabel();
         this.updateBorderColor();
+        
+        // Check if the record is discarded
+        const isDiscardedStat = record.dataStats.find(stat => stat.name === 'deny_listed');
+        if (isDiscardedStat?.value[0] === 1) {
+            this.element.classList.add('discarded');
+        } else {
+            this.element.classList.remove('discarded');
+        }
+        
         const rawData = record.dataStats.find(stat => stat.name === 'raw_data');
         if (!rawData || !rawData.value || rawData.value.length === 0)
             return;
@@ -96,7 +105,12 @@ export class GridCell {
             if (!this.displayPreferences[stat.name])
                 continue;
 
-            const formatted = this.formatFieldValue(stat.value);
+            let formatted = ""
+            if (stat.name === "tags") {
+                formatted = this.formatFieldValue(stat.valueString); 
+            } else {
+                formatted = this.formatFieldValue(stat.value);
+            }
             parts.push(formatted);
             
         }
@@ -131,20 +145,6 @@ export class GridCell {
         this.img.src = src || PLACEHOLDER_IMAGE_SRC;
     }
 
-    public toggleSelection(): void {
-        this.isSelected = !this.isSelected;
-        this.element.classList.toggle('selected', this.isSelected);
-    }
-
-    public unselect(): void {
-        this.isSelected = false;
-        this.element.classList.remove('selected');
-    }
-
-    public getIsSelected(): boolean {
-        return this.isSelected;
-    }
-
     public clear(): void {
         this.record = null;
         this.displayPreferences = null;
@@ -152,12 +152,16 @@ export class GridCell {
         this.img.alt = '';
         this.label.textContent = '';
         this.element.style.border = ''; // Reset border
-        this.unselect();
+        this.element.classList.remove('discarded');
     }
 
     public updateDisplay(displayPreferences: DisplayPreferences): void {
         this.displayPreferences = displayPreferences;
         this.updateLabel();
         this.updateBorderColor();
+    }
+
+    public getRecord(): DataRecord | null {
+        return this.record;
     }
 }

@@ -140,6 +140,98 @@ export interface SamplesResponse {
      */
     dataRecords: DataRecord[];
 }
+/**
+ * @generated from protobuf message StatsRequest
+ */
+export interface StatsRequest {
+    /**
+     * Runs statistics on the resulting set of samples after running the predicate
+     *
+     * @generated from protobuf field: optional string predicate = 1
+     */
+    predicate?: string;
+}
+/**
+ * @generated from protobuf message StatName2Aggregation
+ */
+export interface StatName2Aggregation {
+    /**
+     * @generated from protobuf field: string name = 1
+     */
+    name: string;
+    /**
+     * @generated from protobuf field: float value = 2
+     */
+    value: number;
+}
+/**
+ * @generated from protobuf message StatsResponse
+ */
+export interface StatsResponse {
+    /**
+     * @generated from protobuf field: repeated StatName2Aggregation statistics = 1
+     */
+    statistics: StatName2Aggregation[];
+}
+/**
+ * @generated from protobuf message EditsRequest
+ */
+export interface EditsRequest {
+    /**
+     * @generated from protobuf field: string stat_name = 1
+     */
+    statName: string;
+    /**
+     * @generated from protobuf field: float float_value = 2
+     */
+    floatValue: number;
+    /**
+     * @generated from protobuf field: string string_value = 3
+     */
+    stringValue: string;
+    /**
+     * @generated from protobuf field: bool bool_value = 7
+     */
+    boolValue: boolean;
+    /**
+     * @generated from protobuf field: SampleEditType type = 4
+     */
+    type: SampleEditType;
+    /**
+     * @generated from protobuf field: repeated int32 samples_ids = 5
+     */
+    samplesIds: number[];
+    /**
+     * @generated from protobuf field: repeated string sample_origins = 6
+     */
+    sampleOrigins: string[];
+}
+/**
+ * @generated from protobuf message EditsResponse
+ */
+export interface EditsResponse {
+    /**
+     * @generated from protobuf field: bool success = 1
+     */
+    success: boolean;
+    /**
+     * @generated from protobuf field: string message = 2
+     */
+    message: string;
+}
+/**
+ * @generated from protobuf enum SampleEditType
+ */
+export enum SampleEditType {
+    /**
+     * @generated from protobuf enum value: OVERRIDE = 0;
+     */
+    OVERRIDE = 0,
+    /**
+     * @generated from protobuf enum value: ACCUMULATE = 1;
+     */
+    ACCUMULATE = 1
+}
 // @generated message type with reflection information, may provide speed optimized methods
 class QueryRequest$Type extends MessageType<QueryRequest> {
     constructor() {
@@ -574,10 +666,318 @@ class SamplesResponse$Type extends MessageType<SamplesResponse> {
  * @generated MessageType for protobuf message SamplesResponse
  */
 export const SamplesResponse = new SamplesResponse$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class StatsRequest$Type extends MessageType<StatsRequest> {
+    constructor() {
+        super("StatsRequest", [
+            { no: 1, name: "predicate", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ }
+        ]);
+    }
+    create(value?: PartialMessage<StatsRequest>): StatsRequest {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        if (value !== undefined)
+            reflectionMergePartial<StatsRequest>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: StatsRequest): StatsRequest {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* optional string predicate */ 1:
+                    message.predicate = reader.string();
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: StatsRequest, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* optional string predicate = 1; */
+        if (message.predicate !== undefined)
+            writer.tag(1, WireType.LengthDelimited).string(message.predicate);
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+/**
+ * @generated MessageType for protobuf message StatsRequest
+ */
+export const StatsRequest = new StatsRequest$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class StatName2Aggregation$Type extends MessageType<StatName2Aggregation> {
+    constructor() {
+        super("StatName2Aggregation", [
+            { no: 1, name: "name", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
+            { no: 2, name: "value", kind: "scalar", T: 2 /*ScalarType.FLOAT*/ }
+        ]);
+    }
+    create(value?: PartialMessage<StatName2Aggregation>): StatName2Aggregation {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        message.name = "";
+        message.value = 0;
+        if (value !== undefined)
+            reflectionMergePartial<StatName2Aggregation>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: StatName2Aggregation): StatName2Aggregation {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* string name */ 1:
+                    message.name = reader.string();
+                    break;
+                case /* float value */ 2:
+                    message.value = reader.float();
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: StatName2Aggregation, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* string name = 1; */
+        if (message.name !== "")
+            writer.tag(1, WireType.LengthDelimited).string(message.name);
+        /* float value = 2; */
+        if (message.value !== 0)
+            writer.tag(2, WireType.Bit32).float(message.value);
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+/**
+ * @generated MessageType for protobuf message StatName2Aggregation
+ */
+export const StatName2Aggregation = new StatName2Aggregation$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class StatsResponse$Type extends MessageType<StatsResponse> {
+    constructor() {
+        super("StatsResponse", [
+            { no: 1, name: "statistics", kind: "message", repeat: 2 /*RepeatType.UNPACKED*/, T: () => StatName2Aggregation }
+        ]);
+    }
+    create(value?: PartialMessage<StatsResponse>): StatsResponse {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        message.statistics = [];
+        if (value !== undefined)
+            reflectionMergePartial<StatsResponse>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: StatsResponse): StatsResponse {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* repeated StatName2Aggregation statistics */ 1:
+                    message.statistics.push(StatName2Aggregation.internalBinaryRead(reader, reader.uint32(), options));
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: StatsResponse, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* repeated StatName2Aggregation statistics = 1; */
+        for (let i = 0; i < message.statistics.length; i++)
+            StatName2Aggregation.internalBinaryWrite(message.statistics[i], writer.tag(1, WireType.LengthDelimited).fork(), options).join();
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+/**
+ * @generated MessageType for protobuf message StatsResponse
+ */
+export const StatsResponse = new StatsResponse$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class EditsRequest$Type extends MessageType<EditsRequest> {
+    constructor() {
+        super("EditsRequest", [
+            { no: 1, name: "stat_name", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
+            { no: 2, name: "float_value", kind: "scalar", T: 2 /*ScalarType.FLOAT*/ },
+            { no: 3, name: "string_value", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
+            { no: 7, name: "bool_value", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
+            { no: 4, name: "type", kind: "enum", T: () => ["SampleEditType", SampleEditType] },
+            { no: 5, name: "samples_ids", kind: "scalar", repeat: 1 /*RepeatType.PACKED*/, T: 5 /*ScalarType.INT32*/ },
+            { no: 6, name: "sample_origins", kind: "scalar", repeat: 2 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ }
+        ]);
+    }
+    create(value?: PartialMessage<EditsRequest>): EditsRequest {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        message.statName = "";
+        message.floatValue = 0;
+        message.stringValue = "";
+        message.boolValue = false;
+        message.type = 0;
+        message.samplesIds = [];
+        message.sampleOrigins = [];
+        if (value !== undefined)
+            reflectionMergePartial<EditsRequest>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: EditsRequest): EditsRequest {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* string stat_name */ 1:
+                    message.statName = reader.string();
+                    break;
+                case /* float float_value */ 2:
+                    message.floatValue = reader.float();
+                    break;
+                case /* string string_value */ 3:
+                    message.stringValue = reader.string();
+                    break;
+                case /* bool bool_value */ 7:
+                    message.boolValue = reader.bool();
+                    break;
+                case /* SampleEditType type */ 4:
+                    message.type = reader.int32();
+                    break;
+                case /* repeated int32 samples_ids */ 5:
+                    if (wireType === WireType.LengthDelimited)
+                        for (let e = reader.int32() + reader.pos; reader.pos < e;)
+                            message.samplesIds.push(reader.int32());
+                    else
+                        message.samplesIds.push(reader.int32());
+                    break;
+                case /* repeated string sample_origins */ 6:
+                    message.sampleOrigins.push(reader.string());
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: EditsRequest, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* string stat_name = 1; */
+        if (message.statName !== "")
+            writer.tag(1, WireType.LengthDelimited).string(message.statName);
+        /* float float_value = 2; */
+        if (message.floatValue !== 0)
+            writer.tag(2, WireType.Bit32).float(message.floatValue);
+        /* string string_value = 3; */
+        if (message.stringValue !== "")
+            writer.tag(3, WireType.LengthDelimited).string(message.stringValue);
+        /* SampleEditType type = 4; */
+        if (message.type !== 0)
+            writer.tag(4, WireType.Varint).int32(message.type);
+        /* repeated int32 samples_ids = 5; */
+        if (message.samplesIds.length) {
+            writer.tag(5, WireType.LengthDelimited).fork();
+            for (let i = 0; i < message.samplesIds.length; i++)
+                writer.int32(message.samplesIds[i]);
+            writer.join();
+        }
+        /* repeated string sample_origins = 6; */
+        for (let i = 0; i < message.sampleOrigins.length; i++)
+            writer.tag(6, WireType.LengthDelimited).string(message.sampleOrigins[i]);
+        /* bool bool_value = 7; */
+        if (message.boolValue !== false)
+            writer.tag(7, WireType.Varint).bool(message.boolValue);
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+/**
+ * @generated MessageType for protobuf message EditsRequest
+ */
+export const EditsRequest = new EditsRequest$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class EditsResponse$Type extends MessageType<EditsResponse> {
+    constructor() {
+        super("EditsResponse", [
+            { no: 1, name: "success", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
+            { no: 2, name: "message", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
+        ]);
+    }
+    create(value?: PartialMessage<EditsResponse>): EditsResponse {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        message.success = false;
+        message.message = "";
+        if (value !== undefined)
+            reflectionMergePartial<EditsResponse>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: EditsResponse): EditsResponse {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* bool success */ 1:
+                    message.success = reader.bool();
+                    break;
+                case /* string message */ 2:
+                    message.message = reader.string();
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: EditsResponse, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* bool success = 1; */
+        if (message.success !== false)
+            writer.tag(1, WireType.Varint).bool(message.success);
+        /* string message = 2; */
+        if (message.message !== "")
+            writer.tag(2, WireType.LengthDelimited).string(message.message);
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+/**
+ * @generated MessageType for protobuf message EditsResponse
+ */
+export const EditsResponse = new EditsResponse$Type();
 /**
  * @generated ServiceType for protobuf service DataService
  */
 export const DataService = new ServiceType("DataService", [
     { name: "ApplyQuery", options: {}, I: QueryRequest, O: QueryResponse },
-    { name: "GetSamples", options: {}, I: SamplesRequest, O: SamplesResponse }
+    { name: "GetSamples", options: {}, I: SamplesRequest, O: SamplesResponse },
+    { name: "Statistics", options: {}, I: StatsRequest, O: StatsResponse },
+    { name: "EditSample", options: {}, I: EditsRequest, O: EditsResponse }
 ]);

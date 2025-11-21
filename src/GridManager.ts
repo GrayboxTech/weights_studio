@@ -3,6 +3,7 @@ import { GridCell } from "./GridCell";
 import { DataRecord } from "./data_service";
 import { DataDisplayOptionsPanel } from "./DataDisplayOptionsPanel";
 import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteractionsPanel";
+import { SelectionManager } from "./SelectionManager";
 
 const GRID_GAP = 4;
 const CONTROLS_HEIGHT = 100;
@@ -13,6 +14,7 @@ export class GridManager {
     private traversalPanel: DataTraversalAndInteractionsPanel;
     private displayOptionsPanel: DataDisplayOptionsPanel;
     private cells: GridCell[] = [];
+    private selectionManager: SelectionManager | null = null;
 
     constructor(
             cellsContainer: HTMLElement,
@@ -81,5 +83,13 @@ export class GridManager {
 
     public clearAllCells() {
         this.cells.forEach(cell => cell.clear());
+    }
+
+    public setSelectionManager(selectionManager: SelectionManager): void {
+        this.selectionManager = selectionManager;
+    }
+
+    public getSelectionManager(): SelectionManager | null {
+        return this.selectionManager;
     }
 }

@@ -33,7 +33,10 @@ export class DataDisplayOptionsPanel {
     }
 
     populateOptions(dataRecords: DataRecord[]): void {
-        if (!dataRecords || dataRecords.length === 0) return;
+        if (!dataRecords || dataRecords.length === 0) {
+            console.warn('[DataDisplayOptionsPanel] No data records provided');
+            return;
+        }
 
         const firstRecord = dataRecords[0];
         const availableFields = new Set<string>();
@@ -43,12 +46,20 @@ export class DataDisplayOptionsPanel {
 
         // Add all dataStats fields (use exact names, no camelCase conversion)
         if (firstRecord.dataStats) {
+            console.log('[DataDisplayOptionsPanel] First record dataStats:', firstRecord.dataStats);
+            console.log('[DataDisplayOptionsPanel] Number of stats:', firstRecord.dataStats.length);
+            
             firstRecord.dataStats.forEach(stat => {
+                console.log(`[DataDisplayOptionsPanel] Processing stat: ${stat.name}, type: ${typeof stat.name}`);
                 if (stat.name !== 'raw_data') {
                     availableFields.add(stat.name);
                 }
             });
+        } else {
+            console.warn('[DataDisplayOptionsPanel] No dataStats found in first record');
         }
+
+        console.log('[DataDisplayOptionsPanel] Available fields after processing:', Array.from(availableFields));
 
         // Clear existing checkboxes
         this.element.innerHTML = '';
@@ -82,6 +93,8 @@ export class DataDisplayOptionsPanel {
                 this.updateCallback?.();
             });
         });
+
+        console.log('[DataDisplayOptionsPanel] Created checkboxes for:', Array.from(this.checkboxes.keys()));
 
         // Trigger initial update
         this.updateCallback?.();

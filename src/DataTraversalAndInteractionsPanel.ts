@@ -13,6 +13,7 @@ export class DataTraversalAndInteractionsPanel {
     private startIndexTooltip: HTMLElement | null = null;
 
     private maxSampleId: number = 60000;
+    private totalSamples: number = 60000;
     private currentGridCount: number = 0;
     
     private onControlsChangeCallback: (() => void) | null = null;
@@ -212,5 +213,22 @@ export class DataTraversalAndInteractionsPanel {
             return parseInt(this.zoomLevel.value, 10);
         }
         return 1;
+    }
+
+    public updateSampleCounts(availableSamples: number, totalSamples: number): void {
+        this.maxSampleId = availableSamples;
+        this.totalSamples = totalSamples;
+        
+        if (this.sampleSlider) {
+            this.sampleSlider.max = availableSamples.toString();
+        }
+        
+        if (this.sliderMaxLabel) {
+            this.sliderMaxLabel.innerHTML = `${availableSamples}<br><small style="font-size: 0.8em; color: #888;">(${totalSamples})</small>`;
+        }
+        
+        if (this.startIndexSlider) {
+            this.startIndexSlider.max = availableSamples.toString();
+        }
     }
 }

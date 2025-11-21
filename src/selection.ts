@@ -1,8 +1,15 @@
 
+import { GridCell } from './GridCell';
+
 const grid = document.getElementById('cells-grid') as HTMLElement;
 const contextMenu = document.getElementById('context-menu') as HTMLElement;
 
 let selectedCells: Set<HTMLElement> = new Set();
+
+// Helper function to get GridCell from DOM element
+function getGridCell(element: HTMLElement): GridCell | null {
+    return (element as any).__gridCell || null;
+}
 
 // For drag selection
 let isDragging = false;
@@ -166,13 +173,27 @@ grid.addEventListener('contextmenu', (e) => {
     const menuX = e.pageX;
     const menuY = e.pageY;
 
-    if (cell && selectedCells.has(cell)) {
-        showContextMenu(menuX, menuY);
-    } else if (cell) {
-        clearSelection();
-        addCellToSelection(cell);
-        showContextMenu(menuX, menuY);
+    if (cell) {
+        if (e.ctrlKey || e.metaKey) {
+            // Ctrl+right-click: toggle the cell in selection and show menu
+            toggleCellSelection(cell);
+            if (selectedCells.size > 0) {
+                showContextMenu(menuX, menuY);
+            } else {
+                hideContextMenu();
+            }
+        } else if (selectedCells.has(cell)) {
+            // Right-click on already selected cell: keep selection, show menu
+            showContextMenu(menuX, menuY);
+        } else {
+            // Right-click on unselected cell: clear others, select this one, show menu
+            clearSelection();
+            addCellToSelection(cell);
+            showContextMenu(menuX, menuY);
+        }
     } else {
+        // Right-click on empty space: clear selection and hide menu
+        clearSelection();
         hideContextMenu();
     }
 });
@@ -202,21 +223,29 @@ document.addEventListener('click', (e) => {
 contextMenu.addEventListener('click', (e) => {
     const action = (e.target as HTMLElement).dataset.action;
     if (action) {
-        console.log(`Action: ${action}, selected cells:`, Array.from(selectedCells).map(c => c.id));
+        console.log(
+            `Action: ${action}, selected cells:`,
+            Array.from(selectedCells)
+                .map(c => getGridCell(c)?.getRecord()?.sampleId)
+                .filter(id => id !== undefined)
+        );
         // Implement actions here
         switch (action) {
             case 'add-tag':
-                // const tag = prompt('Enter tag:');
+                const tag = prompt('Enter tag:');
                 // if (tag) { ... }
+                console.log('Tag to add:', tag);
+
+                dataclient
+
                 break;
             case 'discard':
-                selectedCells.forEach(cell => cell.classList.add('discarded'));
-                break;
-            case 'group':
-                // Logic for grouping
-                break;
-            case 'keep-one':
-                // Logic for keeping one
+                selectedCells.forEach(cell => {
+                    const gridCell = getGridCell(cell);
+                    if (gridCell) {
+                        cell.classList.add('discarded');
+                    }
+                });
                 break;
         }
         hideContextMenu();
