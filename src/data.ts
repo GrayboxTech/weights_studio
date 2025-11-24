@@ -1,8 +1,8 @@
 
 import { GrpcWebFetchTransport } from "@protobuf-ts/grpcweb-transport";
 import { RpcError } from "@protobuf-ts/runtime-rpc";
-import { DataServiceClient } from "./data_service.client";
-import { EditsRequest, EditsResponse, QueryRequest, QueryResponse, SampleEditType, SamplesRequest, SamplesResponse} from "./data_service";
+import { ExperimentServiceClient } from "./experiment_service.client";
+import { DataEditsRequest, DataEditsResponse, DataQueryRequest, DataQueryResponse, SampleEditType, DataSamplesRequest, DataSamplesResponse } from "./experiment_service";
 import { DataDisplayOptionsPanel } from "./DataDisplayOptionsPanel";
 import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteractionsPanel";
 import { GridManager } from "./GridManager";
@@ -10,9 +10,9 @@ import { GridManager } from "./GridManager";
 const SERVER_URL = "http://localhost:8080";
 
 const transport = new GrpcWebFetchTransport(
-    {baseUrl: SERVER_URL, format: "text",});
+    { baseUrl: SERVER_URL, format: "text", });
 
-const dataClient = new DataServiceClient(transport);
+const dataClient = new ExperimentServiceClient(transport);
 const traversalPanel = new DataTraversalAndInteractionsPanel();
 
 let cellsContainer: HTMLElement | null;
@@ -27,13 +27,13 @@ function getSplitColors(): SplitColors {
     const trainColor = (document.getElementById('train-color') as HTMLInputElement)?.value;
     const evalColor = (document.getElementById('eval-color') as HTMLInputElement)?.value;
 
-    console.log ()
+    console.log()
     return { train: trainColor, eval: evalColor };
 }
 
-async function fetchSamples(request: SamplesRequest): Promise<SamplesResponse> {
+async function fetchSamples(request: DataSamplesRequest): Promise<DataSamplesResponse> {
     try {
-        const response = await dataClient.getSamples(request).response;
+        const response = await dataClient.getDataSamples(request).response;
         return response;
     } catch (error) {
         if (error instanceof RpcError) {
@@ -81,14 +81,14 @@ async function fetchAndDisplaySamples() {
             }
 
             const currentBatchSize = Math.min(batchSize, count - i);
-            const request: SamplesRequest = {
+            const request: DataSamplesRequest = {
                 startIndex: start + i,
                 recordsCnt: currentBatchSize,
                 includeRawData: true,
                 includeTransformedData: false,
                 statsToRetrieve: []
             };
-            
+
             const response = await fetchSamples(request);
 
             if (requestId !== currentFetchRequestId) {
@@ -145,7 +145,7 @@ async function updateLayout() {
     gridManager.updateGridLayout();
     const gridDims = gridManager.calculateGridDimensions();
     console.log(`[updateLayout] Grid dimensions: ${JSON.stringify(gridDims)}`);
-    
+
     gridManager.clearAllCells();
     const cellsAfterClear = gridManager.getCells().length;
     console.log(`[updateLayout] Cells after clear: ${cellsAfterClear}`);
@@ -157,7 +157,7 @@ async function updateLayout() {
             cell.setDisplayPreferences(preferences);
         }
     }
-    
+
     traversalPanel.updateSliderStep(gridDims.gridCount);
     traversalPanel.updateSliderTooltip();
     await fetchAndDisplaySamples();
@@ -182,8 +182,8 @@ async function updateDisplayOnly() {
 
 async function handleQuerySubmit(query: string): Promise<void> {
     try {
-        const request: QueryRequest = { query, accumulate: false, isNaturalLanguage: true };
-        const response: QueryResponse = await dataClient.applyQuery(request).response;
+        const request: DataQueryRequest = { query, accumulate: false, isNaturalLanguage: true };
+        const response: DataQueryResponse = await dataClient.applyDataQuery(request).response;
         const sampleCount = response.numberOfAllSamples;
 
         let currentStartIndex = traversalPanel.getStartIndex();
@@ -212,7 +212,7 @@ async function handleQuerySubmit(query: string): Promise<void> {
 
 export async function initializeUIElements() {
     cellsContainer = document.getElementById('cells-grid') as HTMLElement;
-    
+
     if (!cellsContainer) {
         console.error('cells-container not found');
         return;
@@ -234,10 +234,10 @@ export async function initializeUIElements() {
     if (detailsOptionsRow) {
         displayOptionsPanel = new DataDisplayOptionsPanel(detailsOptionsRow);
         displayOptionsPanel.initialize();
-        
+
         const optionsToggle = document.getElementById('options-toggle');
         const optionsPanel = document.getElementById('options-panel');
-        
+
         if (optionsToggle && optionsPanel) {
             optionsToggle.addEventListener('click', () => {
                 const isVisible = optionsPanel.style.display !== 'none';
@@ -246,11 +246,11 @@ export async function initializeUIElements() {
                 optionsToggle.classList.toggle('expanded', !isVisible);
             });
         }
-        
+
         // Setup listeners for cell size and zoom - these need full layout update
         const cellSizeSlider = document.getElementById('cell-size') as HTMLInputElement;
         const zoomSlider = document.getElementById('zoom-level') as HTMLInputElement;
-        
+
         if (cellSizeSlider) {
             cellSizeSlider.addEventListener('input', () => {
                 const cellSizeValue = document.getElementById('cell-size-value');
@@ -260,7 +260,7 @@ export async function initializeUIElements() {
                 updateLayout();
             });
         }
-        
+
         if (zoomSlider) {
             zoomSlider.addEventListener('input', () => {
                 const zoomValue = document.getElementById('zoom-value');
@@ -270,7 +270,7 @@ export async function initializeUIElements() {
                 updateLayout();
             });
         }
-        
+
         // Listen for color changes
         const trainColorInput = document.getElementById('train-color');
         const evalColorInput = document.getElementById('eval-color');
@@ -280,7 +280,7 @@ export async function initializeUIElements() {
         if (evalColorInput) {
             evalColorInput.addEventListener('input', updateDisplayOnly);
         }
-        
+
         // Checkbox changes only need display update, not layout recalculation
         displayOptionsPanel.onUpdate(updateDisplayOnly);
     }
@@ -293,12 +293,12 @@ export async function initializeUIElements() {
     traversalPanel.onUpdate(() => {
         debouncedFetchAndDisplay();
     });
-    
+
     window.addEventListener('resize', updateLayout);
 
     try {
-        const request: QueryRequest = { query: "", accumulate: false, isNaturalLanguage: false };
-        const response: QueryResponse = await dataClient.applyQuery(request).response;        
+        const request: DataQueryRequest = { query: "", accumulate: false, isNaturalLanguage: false };
+        const response: DataQueryResponse = await dataClient.applyDataQuery(request).response;
         const sampleCount = response.numberOfAllSamples;
         // traversalPanel.setMaxSampleId(sampleCount > 0 ? sampleCount - 1 : 0);
         traversalPanel.updateSampleCounts(
@@ -308,7 +308,7 @@ export async function initializeUIElements() {
 
         // Fetch first sample to populate display options
         if (sampleCount > 0 && displayOptionsPanel) {
-            const sampleRequest: SamplesRequest = {
+            const sampleRequest: DataSamplesRequest = {
                 startIndex: 0,
                 recordsCnt: 1,
                 includeRawData: true,
@@ -435,7 +435,7 @@ document.addEventListener('mousemove', (e) => {
 document.addEventListener('mouseup', (e) => {
     if (!isDragging) return;
     isDragging = false;
-    
+
     // Store the mouse up position for context menu
     lastMouseUpX = e.clientX;
     lastMouseUpY = e.clientY;
@@ -583,17 +583,17 @@ contextMenu.addEventListener('click', (e) => {
                 const tag = prompt('Enter tag:');
                 console.log('Tag to add:', tag);
 
-                const request: EditsRequest = {
+                const request: DataEditsRequest = {
                     statName: "tags",
                     floatValue: 0,
                     stringValue: String(tag),
                     boolValue: false,
-                    type: SampleEditType.OVERRIDE,
+                    type: SampleEditType.EDIT_OVERRIDE,
                     samplesIds: sample_ids,
                     sampleOrigins: origins
                 }
                 // console.log("request: ", request)
-                const response = dataClient.editSample(request);
+                const response = dataClient.editDataSample(request);
                 console.log(response.response)
                 break;
             case 'discard':
@@ -604,17 +604,17 @@ contextMenu.addEventListener('click', (e) => {
                     }
                 });
 
-                const drequest: EditsRequest = {
+                const drequest: DataEditsRequest = {
                     statName: "deny_listed",
                     floatValue: 0,
                     stringValue: '',
                     boolValue: true,
-                    type: SampleEditType.OVERRIDE,
+                    type: SampleEditType.EDIT_OVERRIDE,
                     samplesIds: sample_ids,
                     sampleOrigins: origins
                 }
                 // console.log("request: ", request)
-                const dresponse = dataClient.editSample(drequest);
+                const dresponse = dataClient.editDataSample(drequest);
                 console.log(dresponse.response)
                 break;
         }
@@ -622,7 +622,7 @@ contextMenu.addEventListener('click', (e) => {
         hideContextMenu();
         clearSelection();
 
-        setTimeout(() =>handleQuerySubmit(''), 300);
+        setTimeout(() => handleQuerySubmit(''), 300);
         debouncedFetchAndDisplay();
     }
 });
