@@ -553,7 +553,7 @@ document.addEventListener('click', (e) => {
     }
 });
 
-contextMenu.addEventListener('click', (e) => {
+contextMenu.addEventListener('click', async (e) => {
     const action = (e.target as HTMLElement).dataset.action;
     if (action) {
         console.log(
@@ -592,9 +592,18 @@ contextMenu.addEventListener('click', (e) => {
                     samplesIds: sample_ids,
                     sampleOrigins: origins
                 }
-                // console.log("request: ", request)
-                const response = dataClient.editDataSample(request);
-                console.log(response.response)
+                console.log("Sending tag request: ", request)
+                try {
+                    const response = await dataClient.editDataSample(request).response;
+                    console.log("Tag response:", response);
+                    if (!response.success) {
+                        console.error("Failed to add tag:", response.message);
+                        alert(`Failed to add tag: ${response.message}`);
+                    }
+                } catch (error) {
+                    console.error("Error adding tag:", error);
+                    alert(`Error adding tag: ${error}`);
+                }
                 break;
             case 'discard':
                 selectedCells.forEach(cell => {
@@ -613,16 +622,23 @@ contextMenu.addEventListener('click', (e) => {
                     samplesIds: sample_ids,
                     sampleOrigins: origins
                 }
-                // console.log("request: ", request)
-                const dresponse = dataClient.editDataSample(drequest);
-                console.log(dresponse.response)
+                console.log("Sending discard request: ", drequest)
+                try {
+                    const dresponse = await dataClient.editDataSample(drequest).response;
+                    console.log("Discard response:", dresponse);
+                    if (!dresponse.success) {
+                        console.error("Failed to discard:", dresponse.message);
+                    }
+                } catch (error) {
+                    console.error("Error discarding:", error);
+                }
                 break;
         }
 
         hideContextMenu();
         clearSelection();
 
-        setTimeout(() => handleQuerySubmit(''), 300);
+        // Refresh the display to show updated tags/discarded status
         debouncedFetchAndDisplay();
     }
 });

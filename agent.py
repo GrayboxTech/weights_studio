@@ -1,4 +1,3 @@
-
 import inspect
 import json
 import logging
@@ -181,6 +180,31 @@ Instruction: {instruction}
 RESPOND WITH ONLY JSON:
 """
 
+# COMPACT PROMPT
+_COMPACT_DATA_SERVICE_AGENT_PROMPT = """You convert short natural language instructions
+about a pandas DataFrame into JSON.
+
+DATAFRAME SCHEMA (column: dtype):
+{schema_display}
+
+Return ONLY a JSON object of the form:
+{{"function": "df.method_name", "params": {{...}}}}
+
+Allowed methods: df.drop, df.sort_values, df.query, df.filter, df.head, df.tail, df.sample.
+Use ONLY these methods and ONLY the columns listed above.
+Use JSON booleans true/false and null.
+
+Examples:
+Instruction: "sort by loss ascending"
+{{"function": "df.sort_values", "params": {{"by": ["loss"], "ascending": true}}}}
+
+Instruction: "remove rows where loss > 1.0"
+{{"function": "df.drop", "params": {{"index": "df[df['loss'] > 1.0].index"}}}}
+
+Instruction: {instruction}
+JSON:
+"""
+
 
 class DataAgentError(Exception):
     """Custom exception for Data Manipulation Agent errors."""
@@ -193,10 +217,12 @@ class DataManipulationAgent:
         self.df = df
         self.method_docs = build_method_docs()
         _LOGGER.info("Agent initialized with method documentation:\n%s", self.method_docs)
+
+        # *** only columns + dtypes, no sample data ***
         self.df_schema = {
             'columns': df.columns.tolist(),
-            'dtypes': {str(k): str(v) for k, v in df.dtypes.to_dict().items()},
-            'sample': df.head(2).to_dict()
+            'dtypes': {str(k): str(v) for k, v in df.dtypes.to_dict().items()}
+            # 'sample': df.head(2).to_dict()
         }
         _LOGGER.info("Agent initialized with schema: columns=%s", self.df_schema['columns'])
         self._check_ollama_health()
@@ -208,8 +234,11 @@ class DataManipulationAgent:
             if response.status_code == 200:
                 models = response.json().get('models', [])
                 _LOGGER.info("Ollama is running with models: %s", [m.get('name') for m in models])
-                if not any('llama2' in m.get('name', '') for m in models):
-                    _LOGGER.warning("llama2 model not found in Ollama. Available models: %s", [m.get('name') for m in models])
+                if not any('llama3.2:1b' == m.get('name', '') for m in models):
+                    _LOGGER.warning(
+                        "llama3.2:1b model not found in Ollama. Available models: %s",
+                        [m.get('name') for m in models]
+                    )
             else:
                 _LOGGER.error("Ollama health check failed with status: %s", response.status_code)
         except requests.RequestException as e:
@@ -218,16 +247,28 @@ class DataManipulationAgent:
 
     def _call_agent(self, prompt: str) -> dict:
         """Call Ollama API and parse JSON response."""
+        print("Agent sees columns:", self.df_schema['columns'])
         try:
+            # DEBUG: Print model info
+            print(f"DEBUG: Calling Ollama with model: llama3.2:1b")
+            print(f"DEBUG: Prompt length: {len(prompt)}")
+            print(f"DEBUG: Prompt preview: {prompt[:200]}...")
+            
             response = requests.post(
-                'http://localhost:11434/api/generate',
+                'http://localhost:11434/api/generate?source=data-agent',
                 json={
-                    'model': 'llama2',
+                    'model': 'llama3.2:1b',
                     'prompt': prompt,
-                    'stream': False
+                    'format': 'json',
+                    'stream': False,
+                    'options': {
+                        'num_predict': 32,
+                    },
+
                 },
-                timeout=60
+                timeout=600
             )
+            print("AGENT /api/generate RESPONSE:", response.status_code, repr(response.text[:400]))
             _LOGGER.debug("Ollama response status: %s", response.status_code)
         except requests.ConnectionError as e:
             _LOGGER.error("Failed to connect to Ollama: %s", e)
@@ -258,21 +299,43 @@ class DataManipulationAgent:
                 # Try to extract JSON from the response if it contains extra text
                 _LOGGER.debug("Failed to parse as JSON, attempting to extract JSON from response")
                 try:
-                    json_start = result.find('{')
-                    json_end = result.rfind('}') + 1
-                    if json_start != -1 and json_end > json_start:
-                        json_str = result[json_start:json_end]
-                        parsed_result = json.loads(json_str)
-                        _LOGGER.info("Extracted JSON from response: %s", parsed_result)
-                        return self._clean_operation(parsed_result)
+                    # Remove markdown code blocks
+                    cleaned = result.replace('```json', '').replace('```', '')
+                    
+                    # Find the first valid JSON object
+                    json_start = cleaned.find('{')
+                    if json_start != -1:
+                        # Try to find matching closing brace
+                        brace_count = 0
+                        for i in range(json_start, len(cleaned)):
+                            if cleaned[i] == '{':
+                                brace_count += 1
+                            elif cleaned[i] == '}':
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    json_str = cleaned[json_start:i+1]
+                                    parsed_result = json.loads(json_str)
+                                    _LOGGER.info("Extracted JSON from response: %s", parsed_result)
+                                    return self._clean_operation(parsed_result)
                 except json.JSONDecodeError:
                     pass
-                
+
                 _LOGGER.error("Failed to parse Ollama response as JSON: %s. Raw response: %s", e, result)
                 raise DataAgentError(f"Ollama response is not valid JSON: {result}") from e
         else:
-            _LOGGER.error("Ollama request failed with status: %s, response: %s", response.status_code, response.text)
-            raise DataAgentError(f"Ollama request failed: {response.status_code}")
+            # Try to decode JSON error, otherwise fall back to raw text
+            try:
+                err_body = response.json()
+            except ValueError:
+                err_body = response.text
+
+            _LOGGER.error(
+                "Ollama request failed: status=%s, body=%r",
+                response.status_code, err_body
+            )
+            raise DataAgentError(
+                f"Ollama request failed: status={response.status_code}, body={err_body!r}"
+            )
 
     def _clean_operation(self, operation: dict) -> dict:
         """Clean up and validate the operation returned by LLM."""
@@ -310,13 +373,22 @@ class DataManipulationAgent:
     def get_prompt(self, instruction: str) -> str:
         """Generate prompt with current dataframe schema and instruction."""
         _LOGGER.debug("Generating prompt for instruction: %s", instruction)
-        return _IMPROVED_DATA_SERVICE_AGENT_PROMPT.format(
+        
+        # *** NEW: include both column names and dtypes in a compact schema string ***
+        schema_lines = [
+            f"{col} ({self.df_schema['dtypes'].get(col, 'unknown')})"
+            for col in self.df_schema['columns']
+        ]
+        schema_display = ", ".join(schema_lines)
+
+        prompt = _COMPACT_DATA_SERVICE_AGENT_PROMPT.format(
             instruction=instruction,
-            columns=self.df_schema['columns'],
-            dtypes=self.df_schema['dtypes'],
-            sample=self.df_schema['sample'],
-            method_docs=self.method_docs
+            schema_display=schema_display,
         )
+        _LOGGER.info("Prompt length (chars): %d", len(prompt))
+        _LOGGER.info("Num columns: %d", len(self.df_schema['columns']))
+        
+        return prompt
 
     def query(self, instruction: str) -> dict:
         """Send instruction to agent and get structured response."""
@@ -335,9 +407,14 @@ class DataManipulationAgent:
 
         for param_key in operation['params'].keys():
             if param_key not in valid_params:
-                _LOGGER.error("Invalid parameter '%s' for method '%s'. Valid params: %s", 
-                            param_key, function_name, list(valid_params.keys()))
-                raise ValueError(f"Invalid parameter '{param_key}' for df.{function_name}(). Valid parameters: {list(valid_params.keys())}")
+                _LOGGER.error(
+                    "Invalid parameter '%s' for method '%s'. Valid params: %s",
+                    param_key, function_name, list(valid_params.keys())
+                )
+                raise ValueError(
+                    f"Invalid parameter '{param_key}' for df.{function_name}(). "
+                    f"Valid parameters: {list(valid_params.keys())}"
+                )
 
         _LOGGER.info("Agent converted query to operation: %s", operation)
         return operation
@@ -347,7 +424,7 @@ class DataManipulationAgent:
         function_name = operation['function'].replace('df.', '')
         params = operation['params']
         _LOGGER.info("Applying operation: %s with params: %s", function_name, params)
-        
+
         # Evaluate string expressions in params
         for key, value in params.items():
             if isinstance(value, str) and 'df[' in value:
@@ -357,7 +434,7 @@ class DataManipulationAgent:
                     if value.count('[') != value.count(']') or value.count('(') != value.count(')'):
                         _LOGGER.error("Unbalanced brackets in expression: %s", value)
                         raise ValueError(f"Malformed expression with unbalanced brackets: {value}")
-                    
+
                     evaluated = eval(value, {'df': df})
                     _LOGGER.debug("Evaluated to type %s", type(evaluated))
                     params[key] = evaluated

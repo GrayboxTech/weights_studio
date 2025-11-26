@@ -89,28 +89,58 @@ export class GridCell {
                 // If shape is [28, 28], length is 784.
                 // If shape is [1, 28, 28], length is 784.
 
-                for (let i = 0; i < width * height; i++) {
-                    // Map pixel value (usually 0-1 or 0-255) to 0-255
-                    // MNIST from torchvision is often 0-255 (byte) or 0-1 (float)
-                    // Let's assume 0-255 for safety, or check max value?
-                    // Actually, trainer_services sends numpy array.
-                    // If it was float 0-1, we might need to scale.
-                    // But let's assume it's viewable as is for now.
+                // Determine if it's a grayscale or RGB image
+                let isGrayscale = true;
+                let channelCount = 1;
+                if (imageStat.shape.length === 3) {
+                    // Shape is [C, H, W] or [H, W, C]
+                    // Assume [C, H, W] for now, common in PyTorch
+                    // If C is 3 or 4, it's color
+                    if (imageStat.shape[0] === 3 || imageStat.shape[0] === 4) {
+                        channelCount = imageStat.shape[0];
+                        isGrayscale = false;
+                    } else if (imageStat.shape[2] === 3 || imageStat.shape[2] === 4) {
+                        // Assume [H, W, C] for TensorFlow/Keras
+                        channelCount = imageStat.shape[2];
+                        isGrayscale = false;
+                        // Need to reorder pixel data if it's [H, W, C] and we process as [C, H, W]
+                        // For simplicity, let's assume [C, H, W] or [H, W] for now.
+                        // If the image looks wrong, this is the place to check.
+                    }
+                }
 
-                    let val = pixelData[i];
-                    // Heuristic: if max value is small (<1.1), scale by 255
-                    // But here we process pixel by pixel. 
-                    // Let's just assume 0-255 if it's > 1, else scale?
-                    // Simple approach: just cast to int for now.
+                // Find max value to determine scaling
+                let maxValue = 0;
+                for (let i = 0; i < pixelData.length; i++) {
+                    if (pixelData[i] > maxValue) {
+                        maxValue = pixelData[i];
+                    }
+                }
 
-                    // Wait, if it's float 0-1, we need to multiply by 255.
-                    // But we don't know the range easily without scanning.
-                    // Let's try to render as is (assuming 0-255) first.
+                const scaleFactor = maxValue > 1.0 ? 1 : 255; // Scale if values are 0-1 floats
 
-                    data[i * 4] = val;     // R
-                    data[i * 4 + 1] = val; // G
-                    data[i * 4 + 2] = val; // B
-                    data[i * 4 + 3] = 255; // A
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const i = (y * width + x);
+                        const dataIdx = i * 4;
+
+                        if (isGrayscale) {
+                            let val = pixelData[i] * scaleFactor;
+                            data[dataIdx] = val;     // R
+                            data[dataIdx + 1] = val; // G
+                            data[dataIdx + 2] = val; // B
+                            data[dataIdx + 3] = 255; // A
+                        } else {
+                            // Assuming [C, H, W] format for color images
+                            // R = pixelData[0 * H * W + i]
+                            // G = pixelData[1 * H * W + i]
+                            // B = pixelData[2 * H * W + i]
+                            data[dataIdx] = pixelData[0 * width * height + i] * scaleFactor;     // R
+                            data[dataIdx + 1] = pixelData[1 * width * height + i] * scaleFactor; // G
+                            data[dataIdx + 2] = pixelData[2 * width * height + i] * scaleFactor; // B
+                            data[dataIdx + 3] = (channelCount === 4) ? (pixelData[3 * width * height + i] * scaleFactor) : 255; // A
+                        }
+                    }
                 }
 
                 ctx.putImageData(imageData, 0, 0);
