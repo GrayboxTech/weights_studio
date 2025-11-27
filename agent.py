@@ -3,13 +3,63 @@ import json
 import logging
 import pandas as pd
 import requests
-
+import difflib
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 _LOGGER = logging.getLogger(__name__)
+
+ALLOWED_METHODS = {"drop", "sort_values", "query", "head", "tail", "sample"}
+
+FUNCTION_SYNONYMS = {
+    # show / list rows
+    "list": "head",
+    "show": "head",
+    "display": "head",
+    "preview": "head",
+    "view": "head",
+    "print": "head",
+    "head": "head",
+    "first": "head",
+    "top": "head",
+    "top_rows": "head",
+
+    # last rows
+    "tail": "tail",
+    "last": "tail",
+    "bottom": "tail",
+    "bottom_rows": "tail",
+
+    # sorting
+    "sort": "sort_values",
+    "sortby": "sort_values",
+    "order": "sort_values",
+    "orderby": "sort_values",
+    "order_by": "sort_values",
+    "rank": "sort_values",
+
+    # filtering / keeping (mapped to query)
+    "filter": "query",
+    "where": "query",
+    "select": "query",
+    "keep": "query",
+    "only": "query",
+
+    # dropping / deleting rows
+    "drop_rows": "drop",
+    "remove": "drop",
+    "delete": "drop",
+    "exclude": "drop",
+    "drop": "drop",
+
+    # randomness
+    "random": "sample",
+    "sample_rows": "sample",
+    "shuffle": "sample",
+    "sample": "sample",
+}
 
 
 def get_method_signature(method_name: str) -> dict:
@@ -181,27 +231,33 @@ RESPOND WITH ONLY JSON:
 """
 
 # COMPACT PROMPT
-_COMPACT_DATA_SERVICE_AGENT_PROMPT = """You convert short natural language instructions
-about a pandas DataFrame into JSON.
+_COMPACT_DATA_SERVICE_AGENT_PROMPT = """You are a smart data assistant.
+Convert the User Instruction into a JSON operation for this pandas DataFrame.
 
-DATAFRAME SCHEMA (column: dtype):
+SCHEMA:
 {schema_display}
 
-Return ONLY a JSON object of the form:
-{{"function": "df.method_name", "params": {{...}}}}
+ALLOWED METHODS: df.drop, df.sort_values, df.query, df.head, df.tail, df.sample.
 
-Allowed methods: df.drop, df.sort_values, df.query, df.filter, df.head, df.tail, df.sample.
-Use ONLY these methods and ONLY the columns listed above.
-Use JSON booleans true/false and null.
+RULES:
+1. Return ONLY a SINGLE JSON object (not a list).
+2. For filtering/keeping rows (e.g. "label is 5", "loss > 0.5"), MUST use "df.query".
+3. Map words like "loss" to "prediction_loss".
+4. You MUST ONLY use one of the ALLOWED METHODS. Do NOT invent new methods like df.list, df.show, df.display.
+   If the user asks to "list", "show" or "display" rows, use df.head.
 
-Examples:
-Instruction: "sort by loss ascending"
-{{"function": "df.sort_values", "params": {{"by": ["loss"], "ascending": true}}}}
+EXAMPLES:
 
-Instruction: "remove rows where loss > 1.0"
-{{"function": "df.drop", "params": {{"index": "df[df['loss'] > 1.0].index"}}}}
+Instruction: "sort by loss"
+JSON: {{"function": "df.sort_values", "params": {{"by": ["prediction_loss"], "ascending": true}}}}
 
-Instruction: {instruction}
+Instruction: "keep only label 4"
+JSON: {{"function": "df.query", "params": {{"expr": "label == 4"}}}}
+
+Instruction: "remove rows where loss > 1"
+JSON: {{"function": "df.drop", "params": {{"index": "df[df['prediction_loss'] > 1.0].index"}}}}
+
+Instruction: "{instruction}"
 JSON:
 """
 
@@ -245,6 +301,86 @@ class DataManipulationAgent:
             _LOGGER.error("Ollama is not accessible at http://localhost:11434: %s", e)
             raise DataAgentError("Ollama service is not running. Please start Ollama first.") from e
 
+    def _is_safe_expression(self, expr: str) -> bool:
+        """
+        Very small safety net for expressions we eval.
+        Only allow df[...] style expressions, block obviously dangerous tokens.
+        """
+        forbidden = ['__', 'import', 'eval', 'exec', 'os.', 'sys.', 'subprocess', 'open(']
+        if any(tok in expr for tok in forbidden):
+            return False
+        if 'df[' not in expr:
+            return False
+        return True
+
+    def _sanitize_params(self, function_name: str, params: dict, df: pd.DataFrame) -> dict:
+        """Sanitize parameter values for basic robustness."""
+        p = dict(params)
+
+        if function_name in ('head', 'tail'):
+            n = p.get('n')
+            if n is not None:
+                try:
+                    n = int(n)
+                except (TypeError, ValueError):
+                    _LOGGER.warning("Invalid n '%s' for %s; defaulting to 5", n, function_name)
+                    n = 5
+                n = max(0, min(n, len(df)))
+                p['n'] = n
+
+        elif function_name == 'sample':
+            if 'frac' in p:
+                try:
+                    frac = float(p['frac'])
+                    if not (0 < frac <= 1):
+                        _LOGGER.warning("Invalid frac '%s' for sample; removing it", p['frac'])
+                        p.pop('frac', None)
+                    else:
+                        p['frac'] = frac
+                except (TypeError, ValueError):
+                    _LOGGER.warning("Non-numeric frac '%s' for sample; removing it", p['frac'])
+                    p.pop('frac', None)
+            if 'n' in p:
+                try:
+                    n = int(p['n'])
+                    if n <= 0 or n > len(df):
+                        _LOGGER.warning("Invalid n '%s' for sample; removing it", p['n'])
+                        p.pop('n', None)
+                    else:
+                        p['n'] = n
+                except (TypeError, ValueError):
+                    _LOGGER.warning("Non-numeric n '%s' for sample; removing it", p['n'])
+                    p.pop('n', None)
+
+        elif function_name == 'sort_values':
+            by = p.get('by', [])
+            if isinstance(by, str):
+                by = [by]
+
+            resolved_by = []
+            for col in by:
+                if col in df.columns:
+                    resolved_by.append(col)
+                else:
+                    close = difflib.get_close_matches(col, df.columns, n=1, cutoff=0.6)
+                    if close:
+                        _LOGGER.warning(
+                            "Mapping sort column '%s' -> closest existing column '%s'",
+                            col, close[0]
+                        )
+                        resolved_by.append(close[0])
+
+            if not resolved_by:
+                _LOGGER.warning("No valid sort columns in 'by'; sort_values will be skipped.")
+                p['by'] = []
+            else:
+                p['by'] = resolved_by
+
+            asc = p.get('ascending', True)
+            p['ascending'] = bool(asc)
+
+        return p
+
     def _call_agent(self, prompt: str) -> dict:
         """Call Ollama API and parse JSON response."""
         print("Agent sees columns:", self.df_schema['columns'])
@@ -262,7 +398,7 @@ class DataManipulationAgent:
                     'format': 'json',
                     'stream': False,
                     'options': {
-                        'num_predict': 32,
+                        'num_predict': 512,
                     },
 
                 },
@@ -294,6 +430,16 @@ class DataManipulationAgent:
             try:
                 parsed_result = json.loads(result)
                 _LOGGER.info("Ollama returned operation: %s", parsed_result)
+
+                # Handle the case where the LLM (incorrectly) returns {"functions": [ ... ]}
+                functions = parsed_result.get("functions")
+                if isinstance(functions, list) and functions:
+                    _LOGGER.warning(
+                        "LLM returned a list of functions; using the last one: %s",
+                        functions[-1]
+                    )
+                    parsed_result = functions[-1]
+
                 return self._clean_operation(parsed_result)
             except json.JSONDecodeError as e:
                 # Try to extract JSON from the response if it contains extra text
@@ -316,12 +462,30 @@ class DataManipulationAgent:
                                     json_str = cleaned[json_start:i+1]
                                     parsed_result = json.loads(json_str)
                                     _LOGGER.info("Extracted JSON from response: %s", parsed_result)
+
+                                    functions = parsed_result.get("functions")
+                                    if isinstance(functions, list) and functions:
+                                        _LOGGER.warning(
+                                            "LLM returned a list of functions; using the last one: %s",
+                                            functions[-1]
+                                        )
+                                        parsed_result = functions[-1]
+
                                     return self._clean_operation(parsed_result)
                 except json.JSONDecodeError:
                     pass
 
-                _LOGGER.error("Failed to parse Ollama response as JSON: %s. Raw response: %s", e, result)
-                raise DataAgentError(f"Ollama response is not valid JSON: {result}") from e
+                # At this point, the response is fundamentally broken.
+                # Instead of raising and crashing the caller, treat this as a no-op.
+                _LOGGER.error(
+                    "Failed to parse Ollama response as JSON after cleanup: %s. Raw response (truncated): %s",
+                    e,
+                    result[:1000],  # avoid logging megabytes
+                )
+                return {
+                    "function": None,
+                    "params": {}
+                }
         else:
             # Try to decode JSON error, otherwise fall back to raw text
             try:
@@ -339,36 +503,66 @@ class DataManipulationAgent:
 
     def _clean_operation(self, operation: dict) -> dict:
         """Clean up and validate the operation returned by LLM."""
-        function_name = operation.get('function', '').replace('df.', '')
-        params = operation.get('params', {})
+        # Handle variations in keys (LLM sometimes uses 'operation'/'parameters' instead of 'function'/'params')
+        function_name = operation.get('function') or operation.get('operation') or ''
+        function_name = function_name.replace('df.', '').strip()
+        
+        params = operation.get('params') or operation.get('parameters') or {}
 
-        # Remove invalid fields based on function type
-        if function_name == 'sort_values':
-            # sort_values should only have 'by' and 'ascending'
+        # Normalize function name via synonyms
+        if function_name in FUNCTION_SYNONYMS:
+            mapped = FUNCTION_SYNONYMS[function_name]
+            _LOGGER.warning("Mapping function synonym '%s' -> '%s'", function_name, mapped)
+            function_name = mapped
+
+        # Remove invalid fields based on function type and enforce method choices
+        if function_name == 'sort_values' or function_name == 'sort_by':
+            function_name = 'sort_values'
             valid_keys = {'by', 'ascending'}
             params = {k: v for k, v in params.items() if k in valid_keys}
         elif function_name == 'drop':
-            # drop should only have 'index'
             valid_keys = {'index'}
             params = {k: v for k, v in params.items() if k in valid_keys}
         elif function_name == 'query':
-            # query should only have 'expr'
             valid_keys = {'expr'}
             params = {k: v for k, v in params.items() if k in valid_keys}
         elif function_name in ['head', 'tail']:
-            # head/tail should only have 'n'
             valid_keys = {'n'}
             params = {k: v for k, v in params.items() if k in valid_keys}
         elif function_name == 'sample':
-            # sample can have 'n' or 'frac'
             valid_keys = {'n', 'frac'}
             params = {k: v for k, v in params.items() if k in valid_keys}
 
+        # Map completely unknown function names to closest allowed, or mark as no-op
+        if function_name and function_name not in ALLOWED_METHODS:
+            close = difflib.get_close_matches(function_name, ALLOWED_METHODS, n=1, cutoff=0.6)
+            if close:
+                _LOGGER.warning(
+                    "Unknown function '%s', mapping to closest allowed '%s'",
+                    function_name, close[0]
+                )
+                function_name = close[0]
+            else:
+                _LOGGER.warning(
+                    "Unknown function '%s' and no close match found. "
+                    "Will skip applying this operation.", function_name
+                )
+                return {
+                    'function': None,
+                    'params': {}
+                }
+
         _LOGGER.debug("Cleaned operation params: %s", params)
-        return {
-            'function': f"df.{function_name}",
-            'params': params
-        }
+        if function_name:
+            return {
+                'function': f"df.{function_name}",
+                'params': params
+            }
+        else:
+            return {
+                'function': None,
+                'params': {}
+            }
 
     def get_prompt(self, instruction: str) -> str:
         """Generate prompt with current dataframe schema and instruction."""
@@ -401,6 +595,15 @@ class DataManipulationAgent:
 
         _LOGGER.info("Agent raw response: %s", operation)
 
+        # If cleaning decided to skip (function=None), just return it
+        if not operation.get('function'):
+            _LOGGER.warning(
+                "Agent returned no valid function for instruction '%s'. "
+                "Operation will be treated as a no-op.",
+                instruction,
+            )
+            return operation
+
         # Validate parameters against actual method signature
         function_name = operation['function'].replace('df.', '')
         valid_params = get_method_signature(function_name)
@@ -421,13 +624,32 @@ class DataManipulationAgent:
 
     def apply_operation(self, df: pd.DataFrame, operation: dict) -> pd.DataFrame:
         """Apply the parsed operation to a dataframe."""
+        # handle no-op operations gracefully
+        if not operation.get('function'):
+            _LOGGER.warning("No function specified in operation; skipping apply_operation.")
+            return df
+
         function_name = operation['function'].replace('df.', '')
         params = operation['params']
         _LOGGER.info("Applying operation: %s with params: %s", function_name, params)
 
+        # last line of defense – only run allowed methods
+        if function_name not in ALLOWED_METHODS:
+            _LOGGER.warning("Function '%s' not in allowed methods; skipping operation.", function_name)
+            return df
+
+        # sanitize parameters by method type
+        params = self._sanitize_params(function_name, params, df)
+
         # Evaluate string expressions in params
         for key, value in params.items():
             if isinstance(value, str) and 'df[' in value:
+                if not self._is_safe_expression(value):
+                    _LOGGER.error(
+                        "Unsafe expression for param '%s': %s; skipping operation.",
+                        key, value
+                    )
+                    return df
                 _LOGGER.debug("Evaluating expression for param '%s': %s", key, value)
                 try:
                     # Validate brackets are balanced before eval
@@ -445,6 +667,12 @@ class DataManipulationAgent:
                 evaluated_list = []
                 for item in value:
                     if isinstance(item, str) and 'df[' in item:
+                        if not self._is_safe_expression(item):
+                            _LOGGER.error(
+                                "Unsafe expression in list for param '%s': %s; skipping operation.",
+                                key, item
+                            )
+                            return df
                         _LOGGER.debug("Evaluating list item: %s", item)
                         try:
                             if item.count('[') != item.count(']') or item.count('(') != item.count(')'):
@@ -476,5 +704,8 @@ class DataManipulationAgent:
                 _LOGGER.warning("Operation returned non-DataFrame result: %s", type(result))
                 return df
         else:
-            _LOGGER.error("DataFrame has no method '%s'", function_name)
-            raise AttributeError(f"DataFrame has no method '{function_name}'")
+            _LOGGER.warning(
+                "DataFrame has no method '%s'. Operation will be skipped.",
+                function_name
+            )
+            return df
