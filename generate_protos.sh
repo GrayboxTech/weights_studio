@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-# Change to the repo root (parent of weights_studio/)
+# Change to the repo root
 cd "$(dirname "$0")/.."
 
-# 1. Generate protobuf files (Python + gRPC)
 echo "Generating protobuf files..."
 
 # Determine which python to use
@@ -17,27 +16,40 @@ else
     echo "Warning: If this is not the correct environment, generation may fail."
 fi
 
+PROTO_ROOT="weightslab/weightslab"
+PROTO_FILE="$PROTO_ROOT/proto/experiment_service.proto"
+
+# 1) Generate Python + gRPC stubs
 $PYTHON_CMD -m grpc_tools.protoc \
-    -I./weightslab/weightslab/proto \
-    --python_out=./weightslab \
-    --grpc_python_out=./weightslab \
-    ./weightslab/weightslab/proto/experiment_service.proto
+    -I"$PROTO_ROOT" \
+    --python_out="$PROTO_ROOT" \
+    --grpc_python_out="$PROTO_ROOT" \
+    "$PROTO_FILE"
 
 echo "✓ Python protobuf files generated successfully"
 
-# 2. Generate TypeScript protobuf files (Frontend)
+# 1b) Patch imports in generated gRPC file
+GRPC_FILE="$PROTO_ROOT/proto/experiment_service_pb2_grpc.py"
+
+if [ -f "$GRPC_FILE" ]; then
+    # macOS sed: need '' after -i
+    sed -i '' 's/^from proto import experiment_service_pb2 as /from . import experiment_service_pb2 as /' "$GRPC_FILE"
+    echo "✓ Patched imports in $GRPC_FILE"
+else
+    echo " $GRPC_FILE not found – did protoc run correctly?"
+fi
+
+# 2) Generate TypeScript protobuf files (Frontend)
 echo "Generating TypeScript protobuf files..."
 
 if command -v npm &> /dev/null; then
-    # Go to weights_studio directory
     cd weights_studio
-    
-    # Ensure dependencies are installed (needed for the protoc plugin)
+
     if [ ! -d "node_modules" ]; then
         echo "Installing frontend dependencies..."
         npm install
     fi
-    
+
     npm run generate-proto
     echo "✓ TypeScript protobuf files generated successfully"
 else
