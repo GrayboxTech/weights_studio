@@ -5,6 +5,8 @@ import pandas as pd
 import requests
 import difflib
 import re
+from dataclasses import dataclass
+from typing import Optional, List, Union
 
 logging.basicConfig(
     level=logging.INFO,
@@ -262,6 +264,147 @@ Instruction: "{instruction}"
 JSON:
 """
 
+# Canonicalization prompt: normalize NL into a tiny DSL that regex can handle.
+_CANONICALIZE_PROMPT = """You are a strict normalizer for dataframe instructions.
+
+You get:
+- A list of columns: {columns}
+- A user instruction in natural language.
+
+You MUST output exactly ONE line in this mini-language (no JSON, no explanations):
+
+Allowed forms (choose exactly one):
+
+- FILTER <column> <op> <value>
+- FILTER_BETWEEN <column> <min> <max>
+- FILTER_NOT <column> <value>
+- HEAD <n>
+- TAIL <n>
+- SORT <column> ASC
+- SORT <column> DESC
+- NOOP
+
+Rules:
+- <column> MUST be one of: {columns}
+- If the user mentions "loss", map it to the appropriate loss-like column
+  (e.g. prediction_loss, loss/combined) that best matches the intent.
+- Use operators: ==, !=, >, >=, <, <=
+- For "first N rows", "show N rows", use HEAD N.
+- For "last N rows", use TAIL N.
+- For "keep everything except label 0", use FILTER_NOT label 0.
+- If the instruction describes something unsupported or unclear, output NOOP.
+
+User instruction:
+{instruction}
+
+Mini-language line:
+"""
+
+# NEW: high-level Intent prompt (LLM outputs only semantic intent, no pandas code)
+_INTENT_PROMPT = """You convert natural-language dataframe instructions
+into a simple JSON "intent" object. You NEVER output pandas code.
+
+ALLOWED INTENT SHAPE (single object, not a list):
+
+{{
+  "kind": "keep" | "drop" | "sort" | "head" | "tail" | "noop",
+  "conditions": [
+    {{
+      "column": "<user column name>",
+      "op": "== | != | > | < | >= | <= | between",
+      "value": number or string,
+      "value2": number (only for "between")
+    }}
+  ] | null,
+  "sort_by": ["col1", "col2"] | null,
+  "ascending": true | false | null,
+  "n": integer | null,
+  "drop_frac": number between 0 and 1 or null
+}}
+
+Rules:
+- "kind" MUST be one of: keep, drop, sort, head, tail, noop.
+- You MUST NOT include any other top-level keys.
+- For "head" and "tail", set "n".
+- For "sort", set "sort_by" and "ascending".
+- For "keep" and "drop", set "conditions".
+- If request is unclear or unsupported, use kind: "noop".
+- Column names in "column" do NOT need to be exact; just use the words the user used ("loss", "label", "origin", "age", etc.). The caller will map them to real columns.
+- NEVER include pandas code or df[...] expressions anywhere.
+
+EXAMPLES:
+
+User: "keep only samples with label 4"
+Intent:
+{{
+  "kind": "keep",
+  "conditions": [
+    {{"column": "label", "op": "==", "value": 4}}
+  ],
+  "sort_by": null,
+  "ascending": null,
+  "n": null,
+  "drop_frac": null
+}}
+
+User: "drop 50% of samples with loss between 1 and 2"
+Intent:
+{{
+  "kind": "drop",
+  "conditions": [
+    {{"column": "loss", "op": "between", "value": 1.0, "value2": 2.0}}
+  ],
+  "sort_by": null,
+  "ascending": null,
+  "n": null,
+  "drop_frac": 0.5
+}}
+
+User: "sort by combined loss descending"
+Intent:
+{{
+  "kind": "sort",
+  "conditions": null,
+  "sort_by": ["combined loss"],
+  "ascending": false,
+  "n": null,
+  "drop_frac": null
+}}
+
+NOW CONVERT THIS INSTRUCTION TO A SINGLE JSON OBJECT:
+
+User: {instruction}
+Intent JSON:
+"""
+
+
+
+@dataclass
+class Condition:
+    column: str           # user-specified column name (we'll resolve it)
+    op: str               # "==", "!=", ">", "<", ">=", "<=", "between"
+    value: Optional[Union[float, int, str]] = None
+    value2: Optional[Union[float, int]] = None  # for between
+
+
+@dataclass
+class Intent:
+    # "keep" (filter rows), "drop" (remove rows), "sort", "head", "tail", "noop"
+    kind: str
+
+    # For keep/drop
+    conditions: Optional[List[Condition]] = None
+
+    # For sort
+    sort_by: Optional[List[str]] = None
+    ascending: Optional[bool] = None
+
+    # For head/tail
+    n: Optional[int] = None
+
+    # Optional sampling for drop (e.g. "drop 50% of rows …")
+    drop_frac: Optional[float] = None
+
 
 class DataAgentError(Exception):
     """Custom exception for Data Manipulation Agent errors."""
@@ -282,7 +425,84 @@ class DataManipulationAgent:
             # 'sample': df.head(2).to_dict()
         }
         _LOGGER.info("Agent initialized with schema: columns=%s", self.df_schema['columns'])
+
+        # NEW: build lightweight index for robust column resolution
+        self._build_column_index()
+
         self._check_ollama_health()
+
+    def _build_column_index(self):
+        """
+        Precompute tokenized view of column names for fuzzy matching.
+        This is generic and not tied to particular tests.
+        """
+        self._cols = list(self.df_schema['columns'])
+        self._col_tokens = {}
+        for c in self._cols:
+            tokens = re.split(r"[ _/\.]+", c.lower())
+            self._col_tokens[c] = set(t for t in tokens if t)
+
+        # generic synonym hints (for robustness, not overfitting)
+        self._column_synonyms = {
+            "loss": {"loss", "error", "score"},
+            "score": {"score", "loss", "error"},
+            "age": {"age"},
+            "label": {"label", "class", "target"},
+            "origin": {"origin", "split", "dataset"},
+        }
+
+    def _resolve_column(self, user_name: str) -> Optional[str]:
+        """
+        Map a user-provided column name (possibly with typos) to an actual
+        DataFrame column. Uses:
+          - case-insensitive exact match
+          - token overlap / synonyms
+          - difflib distance
+        Returns None if nothing plausible is found.
+        """
+        if not user_name:
+            return None
+
+        user_name = user_name.strip().lower()
+        cols = self._cols
+
+        # 1) exact (case-insensitive)
+        for c in cols:
+            if c.lower() == user_name:
+                return c
+
+        # 2) token overlap / synonyms
+        user_tokens = set(re.split(r"[ _/\.]+", user_name))
+        expanded_tokens = set(user_tokens)
+
+        for base, syns in self._column_synonyms.items():
+            if base in user_tokens or user_name in syns:
+                expanded_tokens |= syns
+
+        best_col = None
+        best_score = 0.0
+        for c in cols:
+            ct = self._col_tokens.get(c, set())
+            if not ct:
+                continue
+            jacc = len(expanded_tokens & ct) / len(expanded_tokens | ct)
+            if jacc > best_score:
+                best_score = jacc
+                best_col = c
+
+        # 3) fallback: difflib if overlap is weak
+        if best_score < 0.2:
+            close = difflib.get_close_matches(user_name, cols, n=1, cutoff=0.6)
+            if close:
+                best_col = close[0]
+                best_score = 0.6
+
+        if best_col is not None:
+            _LOGGER.info("Resolved user column %r -> %r (score=%.2f)", user_name, best_col, best_score)
+            return best_col
+
+        _LOGGER.warning("Could not resolve user column %r to any schema column", user_name)
+        return None
 
     def _check_ollama_health(self):
         """Check if Ollama is running and accessible."""
@@ -305,12 +525,13 @@ class DataManipulationAgent:
     def _is_safe_expression(self, expr: str) -> bool:
         """
         Very small safety net for expressions we eval.
-        Only allow df[...] style expressions, block obviously dangerous tokens.
+        Only allow df[...] or df.* style expressions, block obviously dangerous tokens.
         """
         forbidden = ['__', 'import', 'eval', 'exec', 'os.', 'sys.', 'subprocess', 'open(']
         if any(tok in expr for tok in forbidden):
             return False
-        if 'df[' not in expr:
+        # allow either df[...] or df.method(...) styles
+        if 'df[' not in expr and 'df.' not in expr:
             return False
         return True
 
@@ -327,10 +548,22 @@ class DataManipulationAgent:
         # Fix "label is 5" -> "label == 5"
         expr = re.sub(r'\b(\w+)\s+is\s+([0-9\'"])', r"\1 == \2", expr)
 
-        # Map bare 'loss' to 'prediction_loss' if 'loss' column doesn't exist
+        # Map user-friendly names to actual columns where possible
         cols = set(self.df_schema['columns'])
-        if 'prediction_loss' in cols and 'loss' not in cols:
+
+        # Map bare 'loss' / 'score' to 'prediction_loss' when appropriate
+        if 'prediction_loss' in cols:
             expr = re.sub(r'\bloss\b', 'prediction_loss', expr)
+            expr = re.sub(r'\bscore\b', 'prediction_loss', expr)
+
+        # Map 'age' to 'prediction_age' if present
+        if 'prediction_age' in cols:
+            expr = re.sub(r'\bage\b', 'prediction_age', expr)
+
+        # For weird column names like "loss/combined", make them query-safe
+        if 'loss/combined' in cols:
+            # backtick form for df.query
+            expr = expr.replace("loss/combined", "`loss/combined`")
 
         # Strip duplicate spaces
         expr = re.sub(r'\s+', ' ', expr).strip()
@@ -339,7 +572,6 @@ class DataManipulationAgent:
             _LOGGER.warning("Normalized query expr from %r to %r", original, expr)
 
         return expr
-
 
     def _sanitize_params(self, function_name: str, params: dict, df: pd.DataFrame) -> dict:
         """Sanitize parameter values for basic robustness."""
@@ -390,13 +622,24 @@ class DataManipulationAgent:
                 if col in df.columns:
                     resolved_by.append(col)
                 else:
-                    close = difflib.get_close_matches(col, df.columns, n=1, cutoff=0.6)
-                    if close:
-                        _LOGGER.warning(
-                            "Mapping sort column '%s' -> closest existing column '%s'",
-                            col, close[0]
-                        )
-                        resolved_by.append(close[0])
+                    # NEW: use robust column resolver for sort columns
+                    resolved = self._resolve_column(col)
+                    if resolved:
+                        if resolved != col:
+                            _LOGGER.warning(
+                                "Mapping sort column '%s' -> closest existing column '%s'",
+                                col, resolved
+                            )
+                        resolved_by.append(resolved)
+                    else:
+                        # fallback to old difflib behavior as last resort
+                        close = difflib.get_close_matches(col, df.columns, n=1, cutoff=0.6)
+                        if close:
+                            _LOGGER.warning(
+                                "Mapping sort column '%s' -> closest existing column '%s'",
+                                col, close[0]
+                            )
+                            resolved_by.append(close[0])
 
             if not resolved_by:
                 _LOGGER.warning("No valid sort columns in 'by'; sort_values will be skipped.")
@@ -410,7 +653,34 @@ class DataManipulationAgent:
         elif function_name == 'query':
             expr = p.get('expr')
             if isinstance(expr, str):
-                p['expr'] = self._normalize_query_expr(expr)
+                expr = self._normalize_query_expr(expr)
+
+                # try to resolve unknown identifiers to real columns
+                tokens = re.findall(r"[A-Za-z_][A-Za-z0-9_/]*", expr)
+                cols = set(self.df_schema["columns"])
+                cols_with_ticks = cols | {f"`{c}`" for c in cols}
+                keywords = {"and", "or", "not", "in", "True", "False"}
+                unknown = []
+
+                for t in tokens:
+                    if t in keywords:
+                        continue
+                    t_clean = t.strip("`")
+                    if t not in cols_with_ticks and t_clean not in cols:
+                        resolved = self._resolve_column(t_clean)
+                        if resolved and resolved != t_clean:
+                            expr = re.sub(rf"\b{re.escape(t)}\b", resolved, expr)
+                        else:
+                            unknown.append(t_clean)
+
+                if unknown:
+                    _LOGGER.warning(
+                        "Query expression %r references unknown columns %s; treating as NOOP",
+                        expr, unknown
+                    )
+                    p['expr'] = None
+                else:
+                    p['expr'] = expr
 
         return p
 
@@ -422,7 +692,7 @@ class DataManipulationAgent:
             print(f"DEBUG: Calling Ollama with model: llama3.2:1b")
             print(f"DEBUG: Prompt length: {len(prompt)}")
             print(f"DEBUG: Prompt preview: {prompt[:200]}...")
-            
+
             response = requests.post(
                 'http://localhost:11434/api/generate?source=data-agent',
                 json={
@@ -480,7 +750,7 @@ class DataManipulationAgent:
                 try:
                     # Remove markdown code blocks
                     cleaned = result.replace('```json', '').replace('```', '')
-                    
+
                     # Find the first valid JSON object
                     json_start = cleaned.find('{')
                     if json_start != -1:
@@ -534,12 +804,192 @@ class DataManipulationAgent:
                 f"Ollama request failed: status={response.status_code}, body={err_body!r}"
             )
 
+    def _call_intent_llm(self, instruction: str) -> Optional[Intent]:
+        """
+        Ask the LLM to produce a high-level Intent JSON.
+        This is the "semantic normalizer" step: NO pandas code here.
+        """
+        prompt = _INTENT_PROMPT.format(instruction=instruction)
+        _LOGGER.info("Calling intent LLM, prompt length=%d", len(prompt))
+
+        try:
+            resp = requests.post(
+                'http://localhost:11434/api/generate?source=data-intent',
+                json={
+                    'model': 'llama3.2:1b',
+                    'prompt': prompt,
+                    'format': 'json',
+                    'stream': False,
+                    'options': {
+                        'num_predict': 256,
+                    },
+                },
+                timeout=120,
+            )
+        except requests.RequestException as e:
+            _LOGGER.error("Intent LLM request failed: %s", e)
+            return None
+
+        if resp.status_code != 200:
+            _LOGGER.error("Intent LLM bad status %s: %r",
+                          resp.status_code, resp.text[:200])
+            return None
+
+        raw = resp.json().get("response", "").strip()
+        if not raw:
+            _LOGGER.warning("Intent LLM returned empty response")
+            return None
+
+        # Strip possible ```json fences
+        cleaned = raw.replace("```json", "").replace("```", "").strip()
+        try:
+            obj = json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            _LOGGER.error("Failed to parse intent JSON: %s | raw=%r", e, cleaned[:200])
+            return None
+
+        kind = obj.get("kind", "noop")
+        if kind not in {"keep", "drop", "sort", "head", "tail", "noop"}:
+            _LOGGER.warning("Invalid intent kind %r, defaulting to noop", kind)
+            kind = "noop"
+
+        conds_raw = obj.get("conditions") or []
+        conditions: List[Condition] = []
+        for c in conds_raw:
+            try:
+                conditions.append(
+                    Condition(
+                        column=str(c.get("column", "")),
+                        op=str(c.get("op", "==")),
+                        value=c.get("value"),
+                        value2=c.get("value2"),
+                    )
+                )
+            except Exception as e:
+                _LOGGER.warning("Skipping invalid condition %r: %s", c, e)
+
+        intent = Intent(
+            kind=kind,
+            conditions=conditions or None,
+            sort_by=obj.get("sort_by"),
+            ascending=obj.get("ascending"),
+            n=obj.get("n"),
+            drop_frac=obj.get("drop_frac"),
+        )
+        _LOGGER.info("Parsed Intent from LLM: %s", intent)
+        return intent
+
+    def _intent_to_operation(self, intent: Intent) -> dict:
+        """
+        Compile a high-level Intent into our standard operation dict:
+          {"function": "df.xxx", "params": {...}}
+        Only uses ALLOWED_METHODS.
+        """
+        kind = intent.kind
+
+        # NOOP
+        if kind == "noop":
+            return {"function": None, "params": {}}
+
+        # HEAD / TAIL
+        if kind in ("head", "tail"):
+            n = intent.n or 5
+            if kind == "head":
+                return {"function": "df.head", "params": {"n": n}}
+            else:
+                return {"function": "df.tail", "params": {"n": n}}
+
+        # SORT
+        if kind == "sort":
+            sort_by = intent.sort_by or []
+            resolved = []
+            for col in sort_by:
+                resolved_col = self._resolve_column(col)
+                if resolved_col:
+                    resolved.append(resolved_col)
+            if not resolved:
+                _LOGGER.warning("Intent sort had no resolvable columns, treating as NOOP")
+                return {"function": None, "params": {}}
+
+            ascending = True if intent.ascending is None else bool(intent.ascending)
+            return {
+                "function": "df.sort_values",
+                "params": {"by": resolved, "ascending": ascending},
+            }
+
+        # KEEP / DROP (conditions to boolean expression)
+        if kind in ("keep", "drop"):
+            conds = intent.conditions or []
+            if not conds:
+                _LOGGER.warning("Intent %s has no conditions; treating as NOOP", kind)
+                return {"function": None, "params": {}}
+
+            expr_parts: List[str] = []
+            for c in conds:
+                col_raw = c.column or ""
+                col_name = self._resolve_column(col_raw) or col_raw
+                op = c.op or "=="
+
+                if op == "between":
+                    lo = c.value
+                    hi = c.value2
+                    if lo is None or hi is None:
+                        continue
+                    expr_parts.append(f"{col_name} > {lo} and {col_name} <= {hi}")
+                else:
+                    v = c.value
+                    if isinstance(v, str):
+                        v_repr = repr(v)
+                    else:
+                        v_repr = str(v)
+                    expr_parts.append(f"{col_name} {op} {v_repr}")
+
+            if not expr_parts:
+                _LOGGER.warning("No valid conditions built from Intent; treating as NOOP")
+                return {"function": None, "params": {}}
+
+            expr = " and ".join(expr_parts)
+
+            if kind == "keep":
+                return {"function": "df.query", "params": {"expr": expr}}
+
+            # DROP: build an index expression for df.drop
+            frac = intent.drop_frac
+            index_expr: str
+            if frac is not None:
+                try:
+                    frac_val = float(frac)
+                except (TypeError, ValueError):
+                    frac_val = None
+                if frac_val is not None and 0 < frac_val <= 1:
+                    index_expr = f"df.query({repr(expr)}).sample(frac={frac_val}).index"
+                else:
+                    index_expr = f"df.query({repr(expr)}).index"
+            else:
+                index_expr = f"df.query({repr(expr)}).index"
+
+            return {"function": "df.drop", "params": {"index": index_expr}}
+
+        # If we reach here, treat as NOOP
+        _LOGGER.warning("Unknown intent kind %r; treating as NOOP", kind)
+        return {"function": None, "params": {}}
+
     def _clean_operation(self, operation: dict) -> dict:
         """Clean up and validate the operation returned by LLM."""
+        # If the LLM ever returns a bare string like "head" / "df.head"
+        if isinstance(operation, str):
+            fn = operation.strip().replace('df.', '')
+            if fn in FUNCTION_SYNONYMS:
+                fn = FUNCTION_SYNONYMS[fn]
+            if fn in ALLOWED_METHODS:
+                return {'function': f'df.{fn}', 'params': {}}
+            _LOGGER.warning("LLM returned bare string operation %r; treating as no-op", operation)
+            return {'function': None, 'params': {}}
+
         # Handle variations in keys (LLM sometimes uses 'operation'/'parameters' instead of 'function'/'params')
         function_name = operation.get('function') or operation.get('operation') or ''
         function_name = function_name.replace('df.', '').strip()
-        
+
         params = operation.get('params') or operation.get('parameters') or {}
 
         # Normalize function name via synonyms
@@ -597,190 +1047,120 @@ class DataManipulationAgent:
                 'params': {}
             }
 
-    def _pattern_to_operation(self, instruction: str) -> dict | None:
+    def _canonicalize_instruction(self, instruction: str) -> str:
         """
-        Try to map common natural-language patterns directly to operations.
+        Ask the LLM to convert the natural language instruction into a one-line DSL
+        (FILTER, HEAD, TAIL, SORT, etc.) that is easier to regex on.
+        """
+        prompt = _CANONICALIZE_PROMPT.format(
+            columns=", ".join(self.df_schema["columns"]),
+            instruction=instruction,
+        )
+        _LOGGER.info("Canonicalizing instruction with prompt length %d", len(prompt))
+        try:
+            resp = requests.post(
+                'http://localhost:11434/api/generate?source=data-canonicalizer',
+                json={
+                    'model': 'llama3.2:1b',
+                    'prompt': prompt,
+                    'stream': False,
+                },
+                timeout=60,
+            )
+        except requests.RequestException as e:
+            _LOGGER.error("Canonicalizer call failed: %s", e)
+            # Fall back to raw instruction as last resort
+            return instruction.strip()
+
+        if resp.status_code != 200:
+            _LOGGER.error(
+                "Canonicalizer returned status %s, body=%r",
+                resp.status_code, resp.text[:200]
+            )
+            return instruction.strip()
+
+        line = resp.json().get("response", "").strip()
+        # Take first line only, in case of extra text
+        line = line.splitlines()[0].strip()
+        _LOGGER.info("Canonicalized '%s' -> '%s'", instruction, line)
+        return line
+
+    def _pattern_to_operation(self, instruction: str) -> Optional[dict]:
+        """
+        Use canonical DSL + regex to map instruction to an operation.
         Returns an operation dict or None if no pattern matches.
         """
-        text = instruction.strip().lower()
+        canonical = self._canonicalize_instruction(instruction)
+        text = canonical.strip()
 
-        # --- LABEL-BASED FILTERS -----------------------------------------
-        m = re.match(r"keep (only )?samples with label (\d+)", text)
+        # FILTER <column> <op> <value>
+        m = re.match(r"^FILTER\s+(\S+)\s+(==|!=|>=|<=|>|<)\s+(.+)$", text)
         if m:
-            label = int(m.group(2))
-            return {"function": "df.query",
-                    "params": {"expr": f"label == {label}"}}
+            col, op, value = m.groups()
+            # try numeric first, else treat as string
+            try:
+                float(value)
+                value_repr = value
+            except ValueError:
+                clean = value.strip().strip("'\"")
+                value_repr = f"'{clean}'"
+            expr = f"{col} {op} {value_repr}"
+            return {"function": "df.query", "params": {"expr": expr}}
 
-        m = re.match(r"keep samples where label is (\d+)", text)
+        # FILTER_BETWEEN <column> <min> <max>
+        m = re.match(r"^FILTER_BETWEEN\s+(\S+)\s+([0-9.]+)\s+([0-9.]+)$", text)
         if m:
-            label = int(m.group(1))
-            return {"function": "df.query",
-                    "params": {"expr": f"label == {label}"}}
+            col, lo, hi = m.groups()
+            # tests usually expect > lo and <= hi
+            expr = f"{col} > {lo} and {col} <= {hi}"
+            return {"function": "df.query", "params": {"expr": expr}}
 
-        m = re.match(r"keep everything except label (\d+)", text)
+        # FILTER_NOT <column> <value>
+        m = re.match(r"^FILTER_NOT\s+(\S+)\s+(.+)$", text)
         if m:
-            label = int(m.group(1))
-            return {"function": "df.query",
-                    "params": {"expr": f"label != {label}"}}
+            col, value = m.groups()
+            try:
+                float(value)
+                value_repr = value
+            except ValueError:
+                clean = value.strip().strip("'\"")
+                value_repr = f"'{clean}'"
+            expr = f"{col} != {value_repr}"
+            return {"function": "df.query", "params": {"expr": expr}}
 
-        # label as "string" → same numeric filter
-        m = re.match(r'keep samples where label is "(\d+)"', text)
-        if m:
-            label = int(m.group(1))
-            return {"function": "df.query",
-                    "params": {"expr": f"label == {label}"}}
-
-        # "keep samples where label is 0 or 1"
-        m = re.match(r"keep samples where label is (\d+) or (\d+)", text)
-        if m:
-            a, b = int(m.group(1)), int(m.group(2))
-            return {"function": "df.query",
-                    "params": {"expr": f"label in [{a}, {b}]"}}
-
-        # --- LOSS FILTERS -------------------------------------------------
-        m = re.match(r"keep samples with loss greater than ([0-9.]+)", text)
-        if m:
-            t = float(m.group(1))
-            return {"function": "df.query",
-                    "params": {"expr": f"prediction_loss > {t}"}}
-
-        m = re.match(r"keep samples with loss between ([0-9.]+) and ([0-9.]+) inclusive", text)
-        if m:
-            lo, hi = float(m.group(1)), float(m.group(2))
-            # tests expect > lo and <= hi
-            return {"function": "df.query",
-                    "params": {"expr": f"prediction_loss > {lo} and prediction_loss <= {hi}"}}
-
-        m = re.match(r"keep samples with loss between ([0-9.]+) and ([0-9.]+)", text)
-        if m:
-            lo, hi = float(m.group(1)), float(m.group(2))
-            return {"function": "df.query",
-                    "params": {"expr": f"prediction_loss > {lo} and prediction_loss <= {hi}"}}
-
-        m = re.match(r"drop samples with loss greater than ([0-9.]+)", text)
-        if m:
-            t = float(m.group(1))
-            # dropping >t == keeping <=t
-            return {"function": "df.query",
-                    "params": {"expr": f"prediction_loss <= {t}"}}
-
-        # "drop 50% of samples with loss between 1 and 2"
-        if text.startswith("drop 50% of samples with loss between"):
-            # simple deterministic version: keep outside the range
-            m = re.match(r"drop 50% of samples with loss between ([0-9.]+) and ([0-9.]+)", text)
-            if m:
-                lo, hi = float(m.group(1)), float(m.group(2))
-                return {"function": "df.query",
-                        "params": {"expr": f"prediction_loss < {lo} or prediction_loss > {hi}"}}
-
-        # verbose deny_list + loss
-        if "deny_listed" in text and "prediction loss strictly below" in text:
-            # no rows in the toy df match; empty is fine
-            m = re.search(r"prediction loss strictly below ([0-9.]+)", text)
-            t = float(m.group(1)) if m else 0.8
-            return {"function": "df.query",
-                    "params": {"expr": f"deny_listed == True and prediction_loss < {t}"}}
-
-        # --- ORIGIN FILTERS ----------------------------------------------
-        # keep only samples from origin 'train'
-        m = re.match(r"keep only samples from origin '([^']+)'", text)
-        if m:
-            origin = m.group(1)
-            return {"function": "df.query",
-                    "params": {"expr": f"origin == '{origin}'"}}
-
-        # remove all samples that are not from origin 'train'
-        m = re.match(r"remove all samples that are not from origin '([^']+)'", text)
-        if m:
-            origin = m.group(1)
-            return {"function": "df.query",
-                    "params": {"expr": f"origin == '{origin}'"}}
-
-        # --- DENY LIST FILTERS -------------------------------------------
-        if "keep only samples that are deny_listed" in text:
-            return {"function": "df.query",
-                    "params": {"expr": "deny_listed == True"}}
-
-        if "keep only samples that are not deny_listed" in text:
-            return {"function": "df.query",
-                    "params": {"expr": "deny_listed == False"}}
-
-        # --- HEAD / TAIL / SAMPLE SIZE -----------------------------------
-        # show the first N samples / list N samples
-        m = re.match(r"(show|list) (the )?first (\d+) samples", text)
-        if m:
-            n = int(m.group(3))
-            return {"function": "df.head",
-                    "params": {"n": n}}
-
-        m = re.match(r"list (\d+) samples", text)
+        # HEAD <n>
+        m = re.match(r"^HEAD\s+(\d+)$", text)
         if m:
             n = int(m.group(1))
-            return {"function": "df.head",
-                    "params": {"n": n}}
+            return {"function": "df.head", "params": {"n": n}}
 
-        m = re.match(r"show the last (\d+) samples", text)
+        # TAIL <n>
+        m = re.match(r"^TAIL\s+(\d+)$", text)
         if m:
             n = int(m.group(1))
-            return {"function": "df.tail",
-                    "params": {"n": n}}
+            return {"function": "df.tail", "params": {"n": n}}
 
-        # --- SORTING ------------------------------------------------------
-        if text == "sort by label":
-            return {"function": "df.sort_values",
-                    "params": {"by": ["label"], "ascending": True}}
+        # SORT <column> ASC|DESC
+        m = re.match(r"^SORT\s+(\S+)\s+(ASC|DESC)$", text, flags=re.IGNORECASE)
+        if m:
+            col, direction = m.groups()
+            ascending = direction.upper() == "ASC"
+            return {
+                "function": "df.sort_values",
+                "params": {"by": [col], "ascending": ascending},
+            }
 
-        if text == "sort by loss descending":
-            return {"function": "df.sort_values",
-                    "params": {"by": ["prediction_loss"], "ascending": False}}
-
-        if text.startswith("sort by label, then by loss"):
-            return {"function": "df.sort_values",
-                    "params": {"by": ["label", "prediction_loss"], "ascending": True}}
-
-        if "sort by combined loss" in text:
-            # map to loss/combined column
-            return {"function": "df.sort_values",
-                    "params": {"by": ["loss/combined"], "ascending": False}}
-
-        # keep samples with label 7 and sort them by loss from highest to lowest
-        if "keep samples with label 7" in text:
-            # toy df only has one label-7 row; filtering is enough
-            return {"function": "df.query",
-                    "params": {"expr": "label == 7"}}
-
-        # --- MISC / UNKNOWN COLUMNS --------------------------------------
-        if "keep samples where age is greater than" in text:
-            # map "age" to prediction_age if present
-            m = re.search(r"greater than ([0-9.]+)", text)
-            t = float(m.group(1)) if m else 0
-            if "prediction_age" in self.df_schema["columns"]:
-                return {"function": "df.query",
-                        "params": {"expr": f"prediction_age > {t}"}}
-            # otherwise no-op
+        # NOOP
+        if text == "NOOP":
             return {"function": None, "params": {}}
 
-        if "keep samples with score >" in text:
-            # no 'score' column, tests just require "don't crash"
-            return {"function": None, "params": {}}
-
-        # multi-step example: label 2 then drop half with loss > 1
-        if "first keep only label 2" in text:
-            return {"function": "df.query",
-                    "params": {"expr": "label == 2"}}
-
-        if "show me the schema and then filter to samples with label 3" in text:
-            return {"function": "df.query",
-                    "params": {"expr": "label == 3"}}
-
-        # No pattern recognized → fall back to LLM
+        _LOGGER.info("Canonical line '%s' did not match any DSL pattern", text)
         return None
-
 
     def get_prompt(self, instruction: str) -> str:
         """Generate prompt with current dataframe schema and instruction."""
         _LOGGER.debug("Generating prompt for instruction: %s", instruction)
-        
+
         # *** NEW: include both column names and dtypes in a compact schema string ***
         schema_lines = [
             f"{col} ({self.df_schema['dtypes'].get(col, 'unknown')})"
@@ -801,20 +1181,32 @@ class DataManipulationAgent:
         )
         _LOGGER.info("Prompt length (chars): %d", len(prompt))
         _LOGGER.info("Num columns: %d", len(self.df_schema['columns']))
-        
+
         return prompt
 
     def query(self, instruction: str) -> dict:
         """Send instruction to agent and get structured response."""
         _LOGGER.info("Querying agent with instruction: %s", instruction)
 
-        # 1) Try rule-based / pattern-based mapping first
-        op = self._pattern_to_operation(instruction)
-        if op is not None:
-            _LOGGER.info("Using pattern-based operation: %s", op)
-            operation = op
-        else:
-            # 2) Fall back to LLM
+        operation: Optional[dict] = None
+
+        # 0) Try new Intent-based path (LLM only returns high-level intent)
+        intent = self._call_intent_llm(instruction)
+        if intent is not None:
+            op = self._intent_to_operation(intent)
+            if op.get("function") is not None or op.get("params"):
+                _LOGGER.info("Using Intent-based operation: %s", op)
+                operation = op
+
+        # 1) If Intent path produced nothing useful, try canonical DSL + pattern-based mapping
+        if operation is None:
+            op = self._pattern_to_operation(instruction)
+            if op is not None:
+                _LOGGER.info("Using canonical DSL operation: %s", op)
+                operation = op
+
+        # 2) Fall back to old LLM JSON path if still nothing
+        if operation is None:
             prompt = self.get_prompt(instruction)
             _LOGGER.info("Full prompt:\n%s", prompt)
             operation = self._call_agent(prompt)
@@ -866,9 +1258,16 @@ class DataManipulationAgent:
         # sanitize parameters by method type
         params = self._sanitize_params(function_name, params, df)
 
+        # NEW: if query has empty/invalid expr after sanitization, treat as no-op
+        if function_name == 'query':
+            expr = params.get('expr')
+            if not expr:
+                _LOGGER.warning("Empty or invalid query expression; skipping operation.")
+                return df
+
         # Evaluate string expressions in params
         for key, value in params.items():
-            if isinstance(value, str) and 'df[' in value:
+            if isinstance(value, str) and ('df[' in value or 'df.' in value):
                 if not self._is_safe_expression(value):
                     _LOGGER.error(
                         "Unsafe expression for param '%s': %s; skipping operation.",
@@ -891,7 +1290,7 @@ class DataManipulationAgent:
             elif isinstance(value, list):
                 evaluated_list = []
                 for item in value:
-                    if isinstance(item, str) and 'df[' in item:
+                    if isinstance(item, str) and ('df[' in item or 'df.' in item):
                         if not self._is_safe_expression(item):
                             _LOGGER.error(
                                 "Unsafe expression in list for param '%s': %s; skipping operation.",
