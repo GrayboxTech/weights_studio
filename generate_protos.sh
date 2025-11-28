@@ -32,11 +32,17 @@ echo "✓ Python protobuf files generated successfully"
 GRPC_FILE="$PROTO_ROOT/proto/experiment_service_pb2_grpc.py"
 
 if [ -f "$GRPC_FILE" ]; then
-    # macOS sed: need '' after -i
-    sed -i '' 's/^from proto import experiment_service_pb2 as /from . import experiment_service_pb2 as /' "$GRPC_FILE"
+    # Detect OS for sed compatibility
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS: needs '' after -i
+        sed -i '' 's/^from proto import experiment_service_pb2 as /from . import experiment_service_pb2 as /' "$GRPC_FILE"
+    else
+        # Linux/other: no '' needed
+        sed -i 's/^from proto import experiment_service_pb2 as /from . import experiment_service_pb2 as /' "$GRPC_FILE"
+    fi
     echo "✓ Patched imports in $GRPC_FILE"
 else
-    echo " $GRPC_FILE not found – did protoc run correctly?"
+    echo "⚠ $GRPC_FILE not found – did protoc run correctly?"
 fi
 
 # 2) Generate TypeScript protobuf files (Frontend)
