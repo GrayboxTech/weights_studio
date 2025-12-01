@@ -1,8 +1,8 @@
 
 import { GrpcWebFetchTransport } from "@protobuf-ts/grpcweb-transport";
 import { RpcError } from "@protobuf-ts/runtime-rpc";
-import { DataServiceClient } from "./data_service.client";
-import { EditsRequest, EditsResponse, QueryRequest, QueryResponse, SampleEditType, SamplesRequest, SamplesResponse} from "./data_service";
+import { ExperimentServiceClient } from "./experiment_service.client";
+import { DataEditsRequest, DataEditsResponse, DataQueryRequest, DataQueryResponse, SampleEditType, DataSamplesRequest, DataSamplesResponse } from "./experiment_service";
 import { DataDisplayOptionsPanel } from "./DataDisplayOptionsPanel";
 import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteractionsPanel";
 import { GridManager } from "./GridManager";
@@ -10,9 +10,9 @@ import { GridManager } from "./GridManager";
 const SERVER_URL = "http://localhost:8080";
 
 const transport = new GrpcWebFetchTransport(
-    {baseUrl: SERVER_URL, format: "text",});
+    { baseUrl: SERVER_URL, format: "text", });
 
-const dataClient = new DataServiceClient(transport);
+const dataClient = new ExperimentServiceClient(transport);
 const traversalPanel = new DataTraversalAndInteractionsPanel();
 
 let cellsContainer: HTMLElement | null;
@@ -27,13 +27,13 @@ function getSplitColors(): SplitColors {
     const trainColor = (document.getElementById('train-color') as HTMLInputElement)?.value;
     const evalColor = (document.getElementById('eval-color') as HTMLInputElement)?.value;
 
-    console.log ()
+    console.log()
     return { train: trainColor, eval: evalColor };
 }
 
-async function fetchSamples(request: SamplesRequest): Promise<SamplesResponse> {
+async function fetchSamples(request: DataSamplesRequest): Promise<DataSamplesResponse> {
     try {
-        const response = await dataClient.getSamples(request).response;
+        const response = await dataClient.getDataSamples(request).response;
         return response;
     } catch (error) {
         if (error instanceof RpcError) {
@@ -81,14 +81,14 @@ async function fetchAndDisplaySamples() {
             }
 
             const currentBatchSize = Math.min(batchSize, count - i);
-            const request: SamplesRequest = {
+            const request: DataSamplesRequest = {
                 startIndex: start + i,
                 recordsCnt: currentBatchSize,
                 includeRawData: true,
                 includeTransformedData: false,
                 statsToRetrieve: []
             };
-            
+
             const response = await fetchSamples(request);
 
             if (requestId !== currentFetchRequestId) {
@@ -145,7 +145,7 @@ async function updateLayout() {
     gridManager.updateGridLayout();
     const gridDims = gridManager.calculateGridDimensions();
     console.log(`[updateLayout] Grid dimensions: ${JSON.stringify(gridDims)}`);
-    
+
     gridManager.clearAllCells();
     const cellsAfterClear = gridManager.getCells().length;
     console.log(`[updateLayout] Cells after clear: ${cellsAfterClear}`);
@@ -157,7 +157,7 @@ async function updateLayout() {
             cell.setDisplayPreferences(preferences);
         }
     }
-    
+
     traversalPanel.updateSliderStep(gridDims.gridCount);
     traversalPanel.updateSliderTooltip();
     await fetchAndDisplaySamples();
@@ -182,8 +182,8 @@ async function updateDisplayOnly() {
 
 async function handleQuerySubmit(query: string): Promise<void> {
     try {
-        const request: QueryRequest = { query, accumulate: false, isNaturalLanguage: true };
-        const response: QueryResponse = await dataClient.applyQuery(request).response;
+        const request: DataQueryRequest = { query, accumulate: false, isNaturalLanguage: true };
+        const response: DataQueryResponse = await dataClient.applyDataQuery(request).response;
         const sampleCount = response.numberOfAllSamples;
 
         let currentStartIndex = traversalPanel.getStartIndex();
@@ -210,9 +210,51 @@ async function handleQuerySubmit(query: string): Promise<void> {
     }
 }
 
+async function refreshDynamicStatsOnly() {
+    if (!displayOptionsPanel) return;
+
+    const start = traversalPanel.getStartIndex();
+    const count = traversalPanel.getLeftSamples();
+    const batchSize = 32;
+
+    const preferences = displayOptionsPanel.getDisplayPreferences();
+    preferences.splitColors = getSplitColors();
+
+    // Here we DO NOT clear cells, we only update them
+    for (let i = 0; i < count; i += batchSize) {
+        const currentBatchSize = Math.min(batchSize, count - i);
+        const request: DataSamplesRequest = {
+            startIndex: start + i,
+            recordsCnt: currentBatchSize,
+            includeRawData: false,          // <<-- important
+            includeTransformedData: false,
+            // Ask only for dynamic stats, if you want to be explicit
+            // statsToRetrieve: ["sample_last_loss", "sample_encounters", "deny_listed", "tags"]
+            statsToRetrieve: []
+        };
+
+        const response = await fetchSamples(request);
+
+        if (response.success && response.dataRecords.length > 0) {
+            response.dataRecords.forEach((record, index) => {
+                const cell = gridManager.getCellbyIndex(i + index);
+                if (cell) {
+                    // You might want a method like `updateFromRecord` if `populate` resets everything
+                    cell.populate(record, preferences);
+                    // or a more selective `cell.updateStats(record)`
+                }
+            });
+        } else if (!response.success) {
+            console.error("Failed to retrieve samples:", response.message);
+            break;
+        }
+    }
+}
+
+
 export async function initializeUIElements() {
     cellsContainer = document.getElementById('cells-grid') as HTMLElement;
-    
+
     if (!cellsContainer) {
         console.error('cells-container not found');
         return;
@@ -234,10 +276,10 @@ export async function initializeUIElements() {
     if (detailsOptionsRow) {
         displayOptionsPanel = new DataDisplayOptionsPanel(detailsOptionsRow);
         displayOptionsPanel.initialize();
-        
+
         const optionsToggle = document.getElementById('options-toggle');
         const optionsPanel = document.getElementById('options-panel');
-        
+
         if (optionsToggle && optionsPanel) {
             optionsToggle.addEventListener('click', () => {
                 const isVisible = optionsPanel.style.display !== 'none';
@@ -246,11 +288,11 @@ export async function initializeUIElements() {
                 optionsToggle.classList.toggle('expanded', !isVisible);
             });
         }
-        
+
         // Setup listeners for cell size and zoom - these need full layout update
         const cellSizeSlider = document.getElementById('cell-size') as HTMLInputElement;
         const zoomSlider = document.getElementById('zoom-level') as HTMLInputElement;
-        
+
         if (cellSizeSlider) {
             cellSizeSlider.addEventListener('input', () => {
                 const cellSizeValue = document.getElementById('cell-size-value');
@@ -260,7 +302,7 @@ export async function initializeUIElements() {
                 updateLayout();
             });
         }
-        
+
         if (zoomSlider) {
             zoomSlider.addEventListener('input', () => {
                 const zoomValue = document.getElementById('zoom-value');
@@ -270,7 +312,7 @@ export async function initializeUIElements() {
                 updateLayout();
             });
         }
-        
+
         // Listen for color changes
         const trainColorInput = document.getElementById('train-color');
         const evalColorInput = document.getElementById('eval-color');
@@ -280,7 +322,7 @@ export async function initializeUIElements() {
         if (evalColorInput) {
             evalColorInput.addEventListener('input', updateDisplayOnly);
         }
-        
+
         // Checkbox changes only need display update, not layout recalculation
         displayOptionsPanel.onUpdate(updateDisplayOnly);
     }
@@ -293,12 +335,12 @@ export async function initializeUIElements() {
     traversalPanel.onUpdate(() => {
         debouncedFetchAndDisplay();
     });
-    
+
     window.addEventListener('resize', updateLayout);
 
     try {
-        const request: QueryRequest = { query: "", accumulate: false, isNaturalLanguage: false };
-        const response: QueryResponse = await dataClient.applyQuery(request).response;        
+        const request: DataQueryRequest = { query: "", accumulate: false, isNaturalLanguage: false };
+        const response: DataQueryResponse = await dataClient.applyDataQuery(request).response;
         const sampleCount = response.numberOfAllSamples;
         // traversalPanel.setMaxSampleId(sampleCount > 0 ? sampleCount - 1 : 0);
         traversalPanel.updateSampleCounts(
@@ -308,7 +350,7 @@ export async function initializeUIElements() {
 
         // Fetch first sample to populate display options
         if (sampleCount > 0 && displayOptionsPanel) {
-            const sampleRequest: SamplesRequest = {
+            const sampleRequest: DataSamplesRequest = {
                 startIndex: 0,
                 recordsCnt: 1,
                 includeRawData: true,
@@ -328,6 +370,11 @@ export async function initializeUIElements() {
             0, 0
         );
     }
+
+    // Auto-refresh the grid every 2 seconds
+    setInterval(() => {
+        refreshDynamicStatsOnly();
+    }, 10000);
 
     setTimeout(updateLayout, 0);
 }
@@ -435,7 +482,7 @@ document.addEventListener('mousemove', (e) => {
 document.addEventListener('mouseup', (e) => {
     if (!isDragging) return;
     isDragging = false;
-    
+
     // Store the mouse up position for context menu
     lastMouseUpX = e.clientX;
     lastMouseUpY = e.clientY;
@@ -553,7 +600,7 @@ document.addEventListener('click', (e) => {
     }
 });
 
-contextMenu.addEventListener('click', (e) => {
+contextMenu.addEventListener('click', async (e) => {
     const action = (e.target as HTMLElement).dataset.action;
     if (action) {
         console.log(
@@ -583,18 +630,27 @@ contextMenu.addEventListener('click', (e) => {
                 const tag = prompt('Enter tag:');
                 console.log('Tag to add:', tag);
 
-                const request: EditsRequest = {
+                const request: DataEditsRequest = {
                     statName: "tags",
                     floatValue: 0,
                     stringValue: String(tag),
                     boolValue: false,
-                    type: SampleEditType.OVERRIDE,
+                    type: SampleEditType.EDIT_OVERRIDE,
                     samplesIds: sample_ids,
                     sampleOrigins: origins
                 }
-                // console.log("request: ", request)
-                const response = dataClient.editSample(request);
-                console.log(response.response)
+                console.log("Sending tag request: ", request)
+                try {
+                    const response = await dataClient.editDataSample(request).response;
+                    console.log("Tag response:", response);
+                    if (!response.success) {
+                        console.error("Failed to add tag:", response.message);
+                        alert(`Failed to add tag: ${response.message}`);
+                    }
+                } catch (error) {
+                    console.error("Error adding tag:", error);
+                    alert(`Error adding tag: ${error}`);
+                }
                 break;
             case 'discard':
                 selectedCells.forEach(cell => {
@@ -604,25 +660,32 @@ contextMenu.addEventListener('click', (e) => {
                     }
                 });
 
-                const drequest: EditsRequest = {
+                const drequest: DataEditsRequest = {
                     statName: "deny_listed",
                     floatValue: 0,
                     stringValue: '',
                     boolValue: true,
-                    type: SampleEditType.OVERRIDE,
+                    type: SampleEditType.EDIT_OVERRIDE,
                     samplesIds: sample_ids,
                     sampleOrigins: origins
                 }
-                // console.log("request: ", request)
-                const dresponse = dataClient.editSample(drequest);
-                console.log(dresponse.response)
+                console.log("Sending discard request: ", drequest)
+                try {
+                    const dresponse = await dataClient.editDataSample(drequest).response;
+                    console.log("Discard response:", dresponse);
+                    if (!dresponse.success) {
+                        console.error("Failed to discard:", dresponse.message);
+                    }
+                } catch (error) {
+                    console.error("Error discarding:", error);
+                }
                 break;
         }
 
         hideContextMenu();
         clearSelection();
 
-        setTimeout(() =>handleQuerySubmit(''), 300);
+        // Refresh the display to show updated tags/discarded status
         debouncedFetchAndDisplay();
     }
 });

@@ -47,6 +47,7 @@ static_resources:
   - name: grpc_service
     connect_timeout: 0.25s
     type: logical_dns
+    dns_lookup_family: V4_ONLY
     http2_protocol_options: {}
     lb_policy: round_robin
     load_assignment:
@@ -56,5 +57,5 @@ static_resources:
         - endpoint:
             address:
               socket_address:
-                address: 127.0.0.1
+                address: host.docker.internal # FOR LINUX might needs to be changed to 127.0.0.1
                 port_value: 50051

@@ -19,3 +19,8 @@ Thumbs.db
 node_modules/
 
 *pb2*.py
+
+# auto generated
+envoy.tmp.yaml
+
+__pycache__/

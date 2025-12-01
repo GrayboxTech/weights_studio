@@ -12,7 +12,7 @@
   },
   "scripts": {
     "generate-proto": "npm run generate-proto:data",
-    "generate-proto:data": "protoc --ts_out src/ --proto_path ../weightslab_ui --ts_opt=generate_dependencies ../weightslab_ui/data_service.proto",
+    "generate-proto:data": "protoc --ts_out src/ --proto_path ../weightslab/weightslab/proto --ts_opt=generate_dependencies ../weightslab/weightslab/proto/experiment_service.proto",
     "build-client": "tsc src/grpc-client-main.ts --outDir public --target es2020 --module es2020",
     "dev": "vite",
     "build": "vite build",
