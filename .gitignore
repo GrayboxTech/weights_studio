@@ -22,3 +22,5 @@ node_modules/
 
 # auto generated
 envoy.tmp.yaml
+
+__pycache__/

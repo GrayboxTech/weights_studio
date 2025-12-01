@@ -210,6 +210,48 @@ async function handleQuerySubmit(query: string): Promise<void> {
     }
 }
 
+async function refreshDynamicStatsOnly() {
+    if (!displayOptionsPanel) return;
+
+    const start = traversalPanel.getStartIndex();
+    const count = traversalPanel.getLeftSamples();
+    const batchSize = 32;
+
+    const preferences = displayOptionsPanel.getDisplayPreferences();
+    preferences.splitColors = getSplitColors();
+
+    // Here we DO NOT clear cells, we only update them
+    for (let i = 0; i < count; i += batchSize) {
+        const currentBatchSize = Math.min(batchSize, count - i);
+        const request: DataSamplesRequest = {
+            startIndex: start + i,
+            recordsCnt: currentBatchSize,
+            includeRawData: false,          // <<-- important
+            includeTransformedData: false,
+            // Ask only for dynamic stats, if you want to be explicit
+            // statsToRetrieve: ["sample_last_loss", "sample_encounters", "deny_listed", "tags"]
+            statsToRetrieve: []
+        };
+
+        const response = await fetchSamples(request);
+
+        if (response.success && response.dataRecords.length > 0) {
+            response.dataRecords.forEach((record, index) => {
+                const cell = gridManager.getCellbyIndex(i + index);
+                if (cell) {
+                    // You might want a method like `updateFromRecord` if `populate` resets everything
+                    cell.populate(record, preferences);
+                    // or a more selective `cell.updateStats(record)`
+                }
+            });
+        } else if (!response.success) {
+            console.error("Failed to retrieve samples:", response.message);
+            break;
+        }
+    }
+}
+
+
 export async function initializeUIElements() {
     cellsContainer = document.getElementById('cells-grid') as HTMLElement;
 
@@ -328,6 +370,11 @@ export async function initializeUIElements() {
             0, 0
         );
     }
+
+    // Auto-refresh the grid every 2 seconds
+    setInterval(() => {
+        refreshDynamicStatsOnly();
+    }, 10000);
 
     setTimeout(updateLayout, 0);
 }
