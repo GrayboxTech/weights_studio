@@ -30,19 +30,6 @@ export interface NeuronId {
     neuronId: number;
 }
 /**
- * @generated from protobuf message NeuronConnection
- */
-export interface NeuronConnection {
-    /**
-     * @generated from protobuf field: NeuronId from_neuron = 1
-     */
-    fromNeuron?: NeuronId;
-    /**
-     * @generated from protobuf field: NeuronId to_neuron = 2
-     */
-    toNeuron?: NeuronId;
-}
-/**
  * @generated from protobuf message WeightOperation
  */
 export interface WeightOperation {
@@ -59,29 +46,9 @@ export interface WeightOperation {
      */
     neuronIds: NeuronId[];
     /**
-     * @generated from protobuf field: optional NeuronId incoming_neuron_id = 4
-     */
-    incomingNeuronId?: NeuronId;
-    /**
-     * @generated from protobuf field: repeated float override_values = 5
-     */
-    overrideValues: number[];
-    /**
-     * @generated from protobuf field: optional float individual_learning_rate = 6
-     */
-    individualLearningRate?: number;
-    /**
-     * @generated from protobuf field: optional string sorting_statistic_name = 7
-     */
-    sortingStatisticName?: string;
-    /**
      * @generated from protobuf field: int32 neurons_to_add = 9
      */
     neuronsToAdd: number;
-    /**
-     * @generated from protobuf field: repeated NeuronConnection connections_to_zerofy = 10
-     */
-    connectionsToZerofy: NeuronConnection[];
     /**
      * @generated from protobuf field: repeated int32 zerofy_from_incoming_ids = 11
      */
@@ -325,21 +292,13 @@ export interface NeuronStatistics {
      */
     evalTriggerRate?: number;
     /**
-     * @generated from protobuf field: optional float weight_difference = 5
-     */
-    weightDifference?: number;
-    /**
-     * @generated from protobuf field: optional float bias_difference = 6
-     */
-    biasDifference?: number;
-    /**
      * @generated from protobuf field: optional float learning_rate = 7
      */
     learningRate?: number;
     /**
-     * @generated from protobuf field: map<int32, float> incoming_learning_rate = 8
+     * @generated from protobuf field: map<int32, float> incoming_lr = 8
      */
-    incomingLearningRate: {
+    incomingLr: {
         [key: number]: number;
     };
 }
@@ -376,18 +335,6 @@ export interface LayerRepresentation {
      */
     stride?: number;
     /**
-     * @generated from protobuf field: map<int32, float> per_neuron_learning_rates = 8
-     */
-    perNeuronLearningRates: {
-        [key: number]: number;
-    };
-    /**
-     * @generated from protobuf field: map<int32, float> per_incoming_neuron_learning_rates = 9
-     */
-    perIncomingNeuronLearningRates: {
-        [key: number]: number;
-    };
-    /**
      * @generated from protobuf field: repeated NeuronStatistics neurons_statistics = 10
      */
     neuronsStatistics: NeuronStatistics[];
@@ -408,10 +355,6 @@ export interface ActivationRequest {
      * @generated from protobuf field: string origin = 3
      */
     origin: string;
-    /**
-     * @generated from protobuf field: bool pre_activation = 4
-     */
-    preActivation: boolean;
 }
 /**
  * @generated from protobuf message ActivationMap
@@ -513,9 +456,9 @@ export interface RecordMetadata {
      */
     samplePrediction: number[];
     /**
-     * @generated from protobuf field: string sample_last_loss = 4
+     * @generated from protobuf field: float sample_last_loss = 4
      */
-    sampleLastLoss: string;
+    sampleLastLoss: number;
     /**
      * @generated from protobuf field: int32 sample_encounters = 5
      */
@@ -528,10 +471,6 @@ export interface RecordMetadata {
      * @generated from protobuf field: repeated TaskField extra_fields = 7
      */
     extraFields: TaskField[];
-    /**
-     * @generated from protobuf field: bytes mask_preview = 8
-     */
-    maskPreview: Uint8Array;
     /**
      * @generated from protobuf field: bytes prediction_raw = 9
      */
@@ -557,36 +496,6 @@ export interface SampleStatistics {
      * @generated from protobuf field: string task_type = 9
      */
     taskType: string;
-    /**
-     * @generated from protobuf field: map<int32, int32> sample_label = 1
-     */
-    sampleLabel: {
-        [key: number]: number;
-    };
-    /**
-     * @generated from protobuf field: map<int32, int32> sample_prediction = 2
-     */
-    samplePrediction: {
-        [key: number]: number;
-    };
-    /**
-     * @generated from protobuf field: map<int32, float> sample_last_loss = 3
-     */
-    sampleLastLoss: {
-        [key: number]: number;
-    };
-    /**
-     * @generated from protobuf field: map<int32, int32> sample_encounters = 4
-     */
-    sampleEncounters: {
-        [key: number]: number;
-    };
-    /**
-     * @generated from protobuf field: map<int32, bool> sample_discarded = 5
-     */
-    sampleDiscarded: {
-        [key: number]: boolean;
-    };
     /**
      * @generated from protobuf field: repeated RecordMetadata records = 8
      */
@@ -698,37 +607,13 @@ export interface BatchSampleResponse {
     samples: SampleRequestResponse[];
 }
 /**
- * @generated from protobuf message WeigthsRequest
+ * @generated from protobuf message WeightsRequest
  */
-export interface WeigthsRequest {
+export interface WeightsRequest {
     /**
      * @generated from protobuf field: NeuronId neuron_id = 1
      */
     neuronId?: NeuronId;
-    /**
-     * @generated from protobuf field: bool with_bias = 2
-     */
-    withBias: boolean;
-    /**
-     * @generated from protobuf field: bool with_learning_rate = 3
-     */
-    withLearningRate: boolean;
-    /**
-     * @generated from protobuf field: bool with_incoming_learning_rates = 4
-     */
-    withIncomingLearningRates: boolean;
-    /**
-     * @generated from protobuf field: bool include_gradients = 5
-     */
-    includeGradients: boolean;
-    /**
-     * @generated from protobuf field: optional int32 start_neuron_idx = 6
-     */
-    startNeuronIdx?: number;
-    /**
-     * @generated from protobuf field: optional int32 end_neuron_idx = 7
-     */
-    endNeuronIdx?: number;
 }
 /**
  * @generated from protobuf message WeightsResponse
@@ -762,20 +647,6 @@ export interface WeightsResponse {
      * @generated from protobuf field: repeated float weights = 7
      */
     weights: number[];
-    /**
-     * @generated from protobuf field: optional float bias = 8
-     */
-    bias?: number;
-    /**
-     * @generated from protobuf field: optional float learning_rate = 9
-     */
-    learningRate?: number;
-    /**
-     * @generated from protobuf field: map<int32, float> incoming_learning_rates = 10
-     */
-    incomingLearningRates: {
-        [key: number]: number;
-    };
     /**
      * @generated from protobuf field: bool success = 11
      */
@@ -974,34 +845,6 @@ export enum WeightOperationType {
      */
     FREEZE = 2,
     /**
-     * @generated from protobuf enum value: UNFREEZE = 11;
-     */
-    UNFREEZE = 11,
-    /**
-     * @generated from protobuf enum value: FREEZE_BIAS = 3;
-     */
-    FREEZE_BIAS = 3,
-    /**
-     * @generated from protobuf enum value: FREEZE_INCOMING = 4;
-     */
-    FREEZE_INCOMING = 4,
-    /**
-     * @generated from protobuf enum value: OVERRIDE_WEIGHTS = 5;
-     */
-    OVERRIDE_WEIGHTS = 5,
-    /**
-     * @generated from protobuf enum value: OVERIIDE_BIASSES = 8;
-     */
-    OVERIIDE_BIASSES = 8,
-    /**
-     * @generated from protobuf enum value: CHANGE_LEARNING_RATE = 6;
-     */
-    CHANGE_LEARNING_RATE = 6,
-    /**
-     * @generated from protobuf enum value: SORT_BY_STAT = 7;
-     */
-    SORT_BY_STAT = 7,
-    /**
      * @generated from protobuf enum value: REMOVE_NEURONS = 9;
      */
     REMOVE_NEURONS = 9,
@@ -1134,71 +977,13 @@ class NeuronId$Type extends MessageType<NeuronId> {
  */
 export const NeuronId = new NeuronId$Type();
 // @generated message type with reflection information, may provide speed optimized methods
-class NeuronConnection$Type extends MessageType<NeuronConnection> {
-    constructor() {
-        super("NeuronConnection", [
-            { no: 1, name: "from_neuron", kind: "message", T: () => NeuronId },
-            { no: 2, name: "to_neuron", kind: "message", T: () => NeuronId }
-        ]);
-    }
-    create(value?: PartialMessage<NeuronConnection>): NeuronConnection {
-        const message = globalThis.Object.create((this.messagePrototype!));
-        if (value !== undefined)
-            reflectionMergePartial<NeuronConnection>(this, message, value);
-        return message;
-    }
-    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: NeuronConnection): NeuronConnection {
-        let message = target ?? this.create(), end = reader.pos + length;
-        while (reader.pos < end) {
-            let [fieldNo, wireType] = reader.tag();
-            switch (fieldNo) {
-                case /* NeuronId from_neuron */ 1:
-                    message.fromNeuron = NeuronId.internalBinaryRead(reader, reader.uint32(), options, message.fromNeuron);
-                    break;
-                case /* NeuronId to_neuron */ 2:
-                    message.toNeuron = NeuronId.internalBinaryRead(reader, reader.uint32(), options, message.toNeuron);
-                    break;
-                default:
-                    let u = options.readUnknownField;
-                    if (u === "throw")
-                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
-                    let d = reader.skip(wireType);
-                    if (u !== false)
-                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
-            }
-        }
-        return message;
-    }
-    internalBinaryWrite(message: NeuronConnection, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
-        /* NeuronId from_neuron = 1; */
-        if (message.fromNeuron)
-            NeuronId.internalBinaryWrite(message.fromNeuron, writer.tag(1, WireType.LengthDelimited).fork(), options).join();
-        /* NeuronId to_neuron = 2; */
-        if (message.toNeuron)
-            NeuronId.internalBinaryWrite(message.toNeuron, writer.tag(2, WireType.LengthDelimited).fork(), options).join();
-        let u = options.writeUnknownFields;
-        if (u !== false)
-            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
-        return writer;
-    }
-}
-/**
- * @generated MessageType for protobuf message NeuronConnection
- */
-export const NeuronConnection = new NeuronConnection$Type();
-// @generated message type with reflection information, may provide speed optimized methods
 class WeightOperation$Type extends MessageType<WeightOperation> {
     constructor() {
         super("WeightOperation", [
             { no: 1, name: "op_type", kind: "enum", opt: true, T: () => ["WeightOperationType", WeightOperationType] },
             { no: 2, name: "layer_id", kind: "scalar", opt: true, T: 5 /*ScalarType.INT32*/ },
             { no: 3, name: "neuron_ids", kind: "message", repeat: 2 /*RepeatType.UNPACKED*/, T: () => NeuronId },
-            { no: 4, name: "incoming_neuron_id", kind: "message", T: () => NeuronId },
-            { no: 5, name: "override_values", kind: "scalar", repeat: 1 /*RepeatType.PACKED*/, T: 2 /*ScalarType.FLOAT*/ },
-            { no: 6, name: "individual_learning_rate", kind: "scalar", opt: true, T: 2 /*ScalarType.FLOAT*/ },
-            { no: 7, name: "sorting_statistic_name", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ },
             { no: 9, name: "neurons_to_add", kind: "scalar", T: 5 /*ScalarType.INT32*/ },
-            { no: 10, name: "connections_to_zerofy", kind: "message", repeat: 2 /*RepeatType.UNPACKED*/, T: () => NeuronConnection },
             { no: 11, name: "zerofy_from_incoming_ids", kind: "scalar", repeat: 1 /*RepeatType.PACKED*/, T: 5 /*ScalarType.INT32*/ },
             { no: 12, name: "zerofy_to_neuron_ids", kind: "scalar", repeat: 1 /*RepeatType.PACKED*/, T: 5 /*ScalarType.INT32*/ },
             { no: 13, name: "zerofy_predicates", kind: "enum", repeat: 1 /*RepeatType.PACKED*/, T: () => ["ZerofyPredicate", ZerofyPredicate, "ZEROFY_PREDICATE_"] }
@@ -1207,9 +992,7 @@ class WeightOperation$Type extends MessageType<WeightOperation> {
     create(value?: PartialMessage<WeightOperation>): WeightOperation {
         const message = globalThis.Object.create((this.messagePrototype!));
         message.neuronIds = [];
-        message.overrideValues = [];
         message.neuronsToAdd = 0;
-        message.connectionsToZerofy = [];
         message.zerofyFromIncomingIds = [];
         message.zerofyToNeuronIds = [];
         message.zerofyPredicates = [];
@@ -1231,27 +1014,8 @@ class WeightOperation$Type extends MessageType<WeightOperation> {
                 case /* repeated NeuronId neuron_ids */ 3:
                     message.neuronIds.push(NeuronId.internalBinaryRead(reader, reader.uint32(), options));
                     break;
-                case /* optional NeuronId incoming_neuron_id */ 4:
-                    message.incomingNeuronId = NeuronId.internalBinaryRead(reader, reader.uint32(), options, message.incomingNeuronId);
-                    break;
-                case /* repeated float override_values */ 5:
-                    if (wireType === WireType.LengthDelimited)
-                        for (let e = reader.int32() + reader.pos; reader.pos < e;)
-                            message.overrideValues.push(reader.float());
-                    else
-                        message.overrideValues.push(reader.float());
-                    break;
-                case /* optional float individual_learning_rate */ 6:
-                    message.individualLearningRate = reader.float();
-                    break;
-                case /* optional string sorting_statistic_name */ 7:
-                    message.sortingStatisticName = reader.string();
-                    break;
                 case /* int32 neurons_to_add */ 9:
                     message.neuronsToAdd = reader.int32();
-                    break;
-                case /* repeated NeuronConnection connections_to_zerofy */ 10:
-                    message.connectionsToZerofy.push(NeuronConnection.internalBinaryRead(reader, reader.uint32(), options));
                     break;
                 case /* repeated int32 zerofy_from_incoming_ids */ 11:
                     if (wireType === WireType.LengthDelimited)
@@ -1295,28 +1059,9 @@ class WeightOperation$Type extends MessageType<WeightOperation> {
         /* repeated NeuronId neuron_ids = 3; */
         for (let i = 0; i < message.neuronIds.length; i++)
             NeuronId.internalBinaryWrite(message.neuronIds[i], writer.tag(3, WireType.LengthDelimited).fork(), options).join();
-        /* optional NeuronId incoming_neuron_id = 4; */
-        if (message.incomingNeuronId)
-            NeuronId.internalBinaryWrite(message.incomingNeuronId, writer.tag(4, WireType.LengthDelimited).fork(), options).join();
-        /* repeated float override_values = 5; */
-        if (message.overrideValues.length) {
-            writer.tag(5, WireType.LengthDelimited).fork();
-            for (let i = 0; i < message.overrideValues.length; i++)
-                writer.float(message.overrideValues[i]);
-            writer.join();
-        }
-        /* optional float individual_learning_rate = 6; */
-        if (message.individualLearningRate !== undefined)
-            writer.tag(6, WireType.Bit32).float(message.individualLearningRate);
-        /* optional string sorting_statistic_name = 7; */
-        if (message.sortingStatisticName !== undefined)
-            writer.tag(7, WireType.LengthDelimited).string(message.sortingStatisticName);
         /* int32 neurons_to_add = 9; */
         if (message.neuronsToAdd !== 0)
             writer.tag(9, WireType.Varint).int32(message.neuronsToAdd);
-        /* repeated NeuronConnection connections_to_zerofy = 10; */
-        for (let i = 0; i < message.connectionsToZerofy.length; i++)
-            NeuronConnection.internalBinaryWrite(message.connectionsToZerofy[i], writer.tag(10, WireType.LengthDelimited).fork(), options).join();
         /* repeated int32 zerofy_from_incoming_ids = 11; */
         if (message.zerofyFromIncomingIds.length) {
             writer.tag(11, WireType.LengthDelimited).fork();
@@ -2089,15 +1834,13 @@ class NeuronStatistics$Type extends MessageType<NeuronStatistics> {
             { no: 2, name: "neuron_age", kind: "scalar", opt: true, T: 5 /*ScalarType.INT32*/ },
             { no: 3, name: "train_trigger_rate", kind: "scalar", opt: true, T: 2 /*ScalarType.FLOAT*/ },
             { no: 4, name: "eval_trigger_rate", kind: "scalar", opt: true, T: 2 /*ScalarType.FLOAT*/ },
-            { no: 5, name: "weight_difference", kind: "scalar", opt: true, T: 2 /*ScalarType.FLOAT*/ },
-            { no: 6, name: "bias_difference", kind: "scalar", opt: true, T: 2 /*ScalarType.FLOAT*/ },
             { no: 7, name: "learning_rate", kind: "scalar", opt: true, T: 2 /*ScalarType.FLOAT*/ },
-            { no: 8, name: "incoming_learning_rate", kind: "map", K: 5 /*ScalarType.INT32*/, V: { kind: "scalar", T: 2 /*ScalarType.FLOAT*/ } }
+            { no: 8, name: "incoming_lr", kind: "map", K: 5 /*ScalarType.INT32*/, V: { kind: "scalar", T: 2 /*ScalarType.FLOAT*/ } }
         ]);
     }
     create(value?: PartialMessage<NeuronStatistics>): NeuronStatistics {
         const message = globalThis.Object.create((this.messagePrototype!));
-        message.incomingLearningRate = {};
+        message.incomingLr = {};
         if (value !== undefined)
             reflectionMergePartial<NeuronStatistics>(this, message, value);
         return message;
@@ -2119,17 +1862,11 @@ class NeuronStatistics$Type extends MessageType<NeuronStatistics> {
                 case /* optional float eval_trigger_rate */ 4:
                     message.evalTriggerRate = reader.float();
                     break;
-                case /* optional float weight_difference */ 5:
-                    message.weightDifference = reader.float();
-                    break;
-                case /* optional float bias_difference */ 6:
-                    message.biasDifference = reader.float();
-                    break;
                 case /* optional float learning_rate */ 7:
                     message.learningRate = reader.float();
                     break;
-                case /* map<int32, float> incoming_learning_rate */ 8:
-                    this.binaryReadMap8(message.incomingLearningRate, reader, options);
+                case /* map<int32, float> incoming_lr */ 8:
+                    this.binaryReadMap8(message.incomingLr, reader, options);
                     break;
                 default:
                     let u = options.readUnknownField;
@@ -2142,8 +1879,8 @@ class NeuronStatistics$Type extends MessageType<NeuronStatistics> {
         }
         return message;
     }
-    private binaryReadMap8(map: NeuronStatistics["incomingLearningRate"], reader: IBinaryReader, options: BinaryReadOptions): void {
-        let len = reader.uint32(), end = reader.pos + len, key: keyof NeuronStatistics["incomingLearningRate"] | undefined, val: NeuronStatistics["incomingLearningRate"][any] | undefined;
+    private binaryReadMap8(map: NeuronStatistics["incomingLr"], reader: IBinaryReader, options: BinaryReadOptions): void {
+        let len = reader.uint32(), end = reader.pos + len, key: keyof NeuronStatistics["incomingLr"] | undefined, val: NeuronStatistics["incomingLr"][any] | undefined;
         while (reader.pos < end) {
             let [fieldNo, wireType] = reader.tag();
             switch (fieldNo) {
@@ -2153,7 +1890,7 @@ class NeuronStatistics$Type extends MessageType<NeuronStatistics> {
                 case 2:
                     val = reader.float();
                     break;
-                default: throw new globalThis.Error("unknown map entry field for NeuronStatistics.incoming_learning_rate");
+                default: throw new globalThis.Error("unknown map entry field for NeuronStatistics.incoming_lr");
             }
         }
         map[key ?? 0] = val ?? 0;
@@ -2171,18 +1908,12 @@ class NeuronStatistics$Type extends MessageType<NeuronStatistics> {
         /* optional float eval_trigger_rate = 4; */
         if (message.evalTriggerRate !== undefined)
             writer.tag(4, WireType.Bit32).float(message.evalTriggerRate);
-        /* optional float weight_difference = 5; */
-        if (message.weightDifference !== undefined)
-            writer.tag(5, WireType.Bit32).float(message.weightDifference);
-        /* optional float bias_difference = 6; */
-        if (message.biasDifference !== undefined)
-            writer.tag(6, WireType.Bit32).float(message.biasDifference);
         /* optional float learning_rate = 7; */
         if (message.learningRate !== undefined)
             writer.tag(7, WireType.Bit32).float(message.learningRate);
-        /* map<int32, float> incoming_learning_rate = 8; */
-        for (let k of globalThis.Object.keys(message.incomingLearningRate))
-            writer.tag(8, WireType.LengthDelimited).fork().tag(1, WireType.Varint).int32(parseInt(k)).tag(2, WireType.Bit32).float(message.incomingLearningRate[k as any]).join();
+        /* map<int32, float> incoming_lr = 8; */
+        for (let k of globalThis.Object.keys(message.incomingLr))
+            writer.tag(8, WireType.LengthDelimited).fork().tag(1, WireType.Varint).int32(parseInt(k)).tag(2, WireType.Bit32).float(message.incomingLr[k as any]).join();
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -2204,15 +1935,11 @@ class LayerRepresentation$Type extends MessageType<LayerRepresentation> {
             { no: 5, name: "incoming_neurons_count", kind: "scalar", opt: true, T: 5 /*ScalarType.INT32*/ },
             { no: 6, name: "kernel_size", kind: "scalar", opt: true, T: 5 /*ScalarType.INT32*/ },
             { no: 7, name: "stride", kind: "scalar", opt: true, T: 5 /*ScalarType.INT32*/ },
-            { no: 8, name: "per_neuron_learning_rates", kind: "map", K: 5 /*ScalarType.INT32*/, V: { kind: "scalar", T: 2 /*ScalarType.FLOAT*/ } },
-            { no: 9, name: "per_incoming_neuron_learning_rates", kind: "map", K: 5 /*ScalarType.INT32*/, V: { kind: "scalar", T: 2 /*ScalarType.FLOAT*/ } },
             { no: 10, name: "neurons_statistics", kind: "message", repeat: 2 /*RepeatType.UNPACKED*/, T: () => NeuronStatistics }
         ]);
     }
     create(value?: PartialMessage<LayerRepresentation>): LayerRepresentation {
         const message = globalThis.Object.create((this.messagePrototype!));
-        message.perNeuronLearningRates = {};
-        message.perIncomingNeuronLearningRates = {};
         message.neuronsStatistics = [];
         if (value !== undefined)
             reflectionMergePartial<LayerRepresentation>(this, message, value);
@@ -2244,12 +1971,6 @@ class LayerRepresentation$Type extends MessageType<LayerRepresentation> {
                 case /* optional int32 stride */ 7:
                     message.stride = reader.int32();
                     break;
-                case /* map<int32, float> per_neuron_learning_rates */ 8:
-                    this.binaryReadMap8(message.perNeuronLearningRates, reader, options);
-                    break;
-                case /* map<int32, float> per_incoming_neuron_learning_rates */ 9:
-                    this.binaryReadMap9(message.perIncomingNeuronLearningRates, reader, options);
-                    break;
                 case /* repeated NeuronStatistics neurons_statistics */ 10:
                     message.neuronsStatistics.push(NeuronStatistics.internalBinaryRead(reader, reader.uint32(), options));
                     break;
@@ -2263,38 +1984,6 @@ class LayerRepresentation$Type extends MessageType<LayerRepresentation> {
             }
         }
         return message;
-    }
-    private binaryReadMap8(map: LayerRepresentation["perNeuronLearningRates"], reader: IBinaryReader, options: BinaryReadOptions): void {
-        let len = reader.uint32(), end = reader.pos + len, key: keyof LayerRepresentation["perNeuronLearningRates"] | undefined, val: LayerRepresentation["perNeuronLearningRates"][any] | undefined;
-        while (reader.pos < end) {
-            let [fieldNo, wireType] = reader.tag();
-            switch (fieldNo) {
-                case 1:
-                    key = reader.int32();
-                    break;
-                case 2:
-                    val = reader.float();
-                    break;
-                default: throw new globalThis.Error("unknown map entry field for LayerRepresentation.per_neuron_learning_rates");
-            }
-        }
-        map[key ?? 0] = val ?? 0;
-    }
-    private binaryReadMap9(map: LayerRepresentation["perIncomingNeuronLearningRates"], reader: IBinaryReader, options: BinaryReadOptions): void {
-        let len = reader.uint32(), end = reader.pos + len, key: keyof LayerRepresentation["perIncomingNeuronLearningRates"] | undefined, val: LayerRepresentation["perIncomingNeuronLearningRates"][any] | undefined;
-        while (reader.pos < end) {
-            let [fieldNo, wireType] = reader.tag();
-            switch (fieldNo) {
-                case 1:
-                    key = reader.int32();
-                    break;
-                case 2:
-                    val = reader.float();
-                    break;
-                default: throw new globalThis.Error("unknown map entry field for LayerRepresentation.per_incoming_neuron_learning_rates");
-            }
-        }
-        map[key ?? 0] = val ?? 0;
     }
     internalBinaryWrite(message: LayerRepresentation, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
         /* optional int32 layer_id = 1; */
@@ -2318,12 +2007,6 @@ class LayerRepresentation$Type extends MessageType<LayerRepresentation> {
         /* optional int32 stride = 7; */
         if (message.stride !== undefined)
             writer.tag(7, WireType.Varint).int32(message.stride);
-        /* map<int32, float> per_neuron_learning_rates = 8; */
-        for (let k of globalThis.Object.keys(message.perNeuronLearningRates))
-            writer.tag(8, WireType.LengthDelimited).fork().tag(1, WireType.Varint).int32(parseInt(k)).tag(2, WireType.Bit32).float(message.perNeuronLearningRates[k as any]).join();
-        /* map<int32, float> per_incoming_neuron_learning_rates = 9; */
-        for (let k of globalThis.Object.keys(message.perIncomingNeuronLearningRates))
-            writer.tag(9, WireType.LengthDelimited).fork().tag(1, WireType.Varint).int32(parseInt(k)).tag(2, WireType.Bit32).float(message.perIncomingNeuronLearningRates[k as any]).join();
         /* repeated NeuronStatistics neurons_statistics = 10; */
         for (let i = 0; i < message.neuronsStatistics.length; i++)
             NeuronStatistics.internalBinaryWrite(message.neuronsStatistics[i], writer.tag(10, WireType.LengthDelimited).fork(), options).join();
@@ -2343,8 +2026,7 @@ class ActivationRequest$Type extends MessageType<ActivationRequest> {
         super("ActivationRequest", [
             { no: 1, name: "layer_id", kind: "scalar", T: 5 /*ScalarType.INT32*/ },
             { no: 2, name: "sample_id", kind: "scalar", T: 5 /*ScalarType.INT32*/ },
-            { no: 3, name: "origin", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
-            { no: 4, name: "pre_activation", kind: "scalar", T: 8 /*ScalarType.BOOL*/ }
+            { no: 3, name: "origin", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
         ]);
     }
     create(value?: PartialMessage<ActivationRequest>): ActivationRequest {
@@ -2352,7 +2034,6 @@ class ActivationRequest$Type extends MessageType<ActivationRequest> {
         message.layerId = 0;
         message.sampleId = 0;
         message.origin = "";
-        message.preActivation = false;
         if (value !== undefined)
             reflectionMergePartial<ActivationRequest>(this, message, value);
         return message;
@@ -2370,9 +2051,6 @@ class ActivationRequest$Type extends MessageType<ActivationRequest> {
                     break;
                 case /* string origin */ 3:
                     message.origin = reader.string();
-                    break;
-                case /* bool pre_activation */ 4:
-                    message.preActivation = reader.bool();
                     break;
                 default:
                     let u = options.readUnknownField;
@@ -2395,9 +2073,6 @@ class ActivationRequest$Type extends MessageType<ActivationRequest> {
         /* string origin = 3; */
         if (message.origin !== "")
             writer.tag(3, WireType.LengthDelimited).string(message.origin);
-        /* bool pre_activation = 4; */
-        if (message.preActivation !== false)
-            writer.tag(4, WireType.Varint).bool(message.preActivation);
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -2655,11 +2330,10 @@ class RecordMetadata$Type extends MessageType<RecordMetadata> {
             { no: 1, name: "sample_id", kind: "scalar", T: 5 /*ScalarType.INT32*/ },
             { no: 2, name: "sample_label", kind: "scalar", repeat: 1 /*RepeatType.PACKED*/, T: 5 /*ScalarType.INT32*/ },
             { no: 3, name: "sample_prediction", kind: "scalar", repeat: 1 /*RepeatType.PACKED*/, T: 5 /*ScalarType.INT32*/ },
-            { no: 4, name: "sample_last_loss", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
+            { no: 4, name: "sample_last_loss", kind: "scalar", T: 2 /*ScalarType.FLOAT*/ },
             { no: 5, name: "sample_encounters", kind: "scalar", T: 5 /*ScalarType.INT32*/ },
             { no: 6, name: "sample_discarded", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
             { no: 7, name: "extra_fields", kind: "message", repeat: 2 /*RepeatType.UNPACKED*/, T: () => TaskField },
-            { no: 8, name: "mask_preview", kind: "scalar", T: 12 /*ScalarType.BYTES*/ },
             { no: 9, name: "prediction_raw", kind: "scalar", T: 12 /*ScalarType.BYTES*/ },
             { no: 10, name: "task_type", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
         ]);
@@ -2669,11 +2343,10 @@ class RecordMetadata$Type extends MessageType<RecordMetadata> {
         message.sampleId = 0;
         message.sampleLabel = [];
         message.samplePrediction = [];
-        message.sampleLastLoss = "";
+        message.sampleLastLoss = 0;
         message.sampleEncounters = 0;
         message.sampleDiscarded = false;
         message.extraFields = [];
-        message.maskPreview = new Uint8Array(0);
         message.predictionRaw = new Uint8Array(0);
         message.taskType = "";
         if (value !== undefined)
@@ -2702,8 +2375,8 @@ class RecordMetadata$Type extends MessageType<RecordMetadata> {
                     else
                         message.samplePrediction.push(reader.int32());
                     break;
-                case /* string sample_last_loss */ 4:
-                    message.sampleLastLoss = reader.string();
+                case /* float sample_last_loss */ 4:
+                    message.sampleLastLoss = reader.float();
                     break;
                 case /* int32 sample_encounters */ 5:
                     message.sampleEncounters = reader.int32();
@@ -2713,9 +2386,6 @@ class RecordMetadata$Type extends MessageType<RecordMetadata> {
                     break;
                 case /* repeated TaskField extra_fields */ 7:
                     message.extraFields.push(TaskField.internalBinaryRead(reader, reader.uint32(), options));
-                    break;
-                case /* bytes mask_preview */ 8:
-                    message.maskPreview = reader.bytes();
                     break;
                 case /* bytes prediction_raw */ 9:
                     message.predictionRaw = reader.bytes();
@@ -2752,9 +2422,9 @@ class RecordMetadata$Type extends MessageType<RecordMetadata> {
                 writer.int32(message.samplePrediction[i]);
             writer.join();
         }
-        /* string sample_last_loss = 4; */
-        if (message.sampleLastLoss !== "")
-            writer.tag(4, WireType.LengthDelimited).string(message.sampleLastLoss);
+        /* float sample_last_loss = 4; */
+        if (message.sampleLastLoss !== 0)
+            writer.tag(4, WireType.Bit32).float(message.sampleLastLoss);
         /* int32 sample_encounters = 5; */
         if (message.sampleEncounters !== 0)
             writer.tag(5, WireType.Varint).int32(message.sampleEncounters);
@@ -2764,9 +2434,6 @@ class RecordMetadata$Type extends MessageType<RecordMetadata> {
         /* repeated TaskField extra_fields = 7; */
         for (let i = 0; i < message.extraFields.length; i++)
             TaskField.internalBinaryWrite(message.extraFields[i], writer.tag(7, WireType.LengthDelimited).fork(), options).join();
-        /* bytes mask_preview = 8; */
-        if (message.maskPreview.length)
-            writer.tag(8, WireType.LengthDelimited).bytes(message.maskPreview);
         /* bytes prediction_raw = 9; */
         if (message.predictionRaw.length)
             writer.tag(9, WireType.LengthDelimited).bytes(message.predictionRaw);
@@ -2790,22 +2457,12 @@ class SampleStatistics$Type extends MessageType<SampleStatistics> {
             { no: 6, name: "origin", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ },
             { no: 7, name: "sample_count", kind: "scalar", opt: true, T: 5 /*ScalarType.INT32*/ },
             { no: 9, name: "task_type", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
-            { no: 1, name: "sample_label", kind: "map", K: 5 /*ScalarType.INT32*/, V: { kind: "scalar", T: 5 /*ScalarType.INT32*/ } },
-            { no: 2, name: "sample_prediction", kind: "map", K: 5 /*ScalarType.INT32*/, V: { kind: "scalar", T: 5 /*ScalarType.INT32*/ } },
-            { no: 3, name: "sample_last_loss", kind: "map", K: 5 /*ScalarType.INT32*/, V: { kind: "scalar", T: 2 /*ScalarType.FLOAT*/ } },
-            { no: 4, name: "sample_encounters", kind: "map", K: 5 /*ScalarType.INT32*/, V: { kind: "scalar", T: 5 /*ScalarType.INT32*/ } },
-            { no: 5, name: "sample_discarded", kind: "map", K: 5 /*ScalarType.INT32*/, V: { kind: "scalar", T: 8 /*ScalarType.BOOL*/ } },
             { no: 8, name: "records", kind: "message", repeat: 2 /*RepeatType.UNPACKED*/, T: () => RecordMetadata }
         ]);
     }
     create(value?: PartialMessage<SampleStatistics>): SampleStatistics {
         const message = globalThis.Object.create((this.messagePrototype!));
         message.taskType = "";
-        message.sampleLabel = {};
-        message.samplePrediction = {};
-        message.sampleLastLoss = {};
-        message.sampleEncounters = {};
-        message.sampleDiscarded = {};
         message.records = [];
         if (value !== undefined)
             reflectionMergePartial<SampleStatistics>(this, message, value);
@@ -2825,21 +2482,6 @@ class SampleStatistics$Type extends MessageType<SampleStatistics> {
                 case /* string task_type */ 9:
                     message.taskType = reader.string();
                     break;
-                case /* map<int32, int32> sample_label */ 1:
-                    this.binaryReadMap1(message.sampleLabel, reader, options);
-                    break;
-                case /* map<int32, int32> sample_prediction */ 2:
-                    this.binaryReadMap2(message.samplePrediction, reader, options);
-                    break;
-                case /* map<int32, float> sample_last_loss */ 3:
-                    this.binaryReadMap3(message.sampleLastLoss, reader, options);
-                    break;
-                case /* map<int32, int32> sample_encounters */ 4:
-                    this.binaryReadMap4(message.sampleEncounters, reader, options);
-                    break;
-                case /* map<int32, bool> sample_discarded */ 5:
-                    this.binaryReadMap5(message.sampleDiscarded, reader, options);
-                    break;
                 case /* repeated RecordMetadata records */ 8:
                     message.records.push(RecordMetadata.internalBinaryRead(reader, reader.uint32(), options));
                     break;
@@ -2854,102 +2496,7 @@ class SampleStatistics$Type extends MessageType<SampleStatistics> {
         }
         return message;
     }
-    private binaryReadMap1(map: SampleStatistics["sampleLabel"], reader: IBinaryReader, options: BinaryReadOptions): void {
-        let len = reader.uint32(), end = reader.pos + len, key: keyof SampleStatistics["sampleLabel"] | undefined, val: SampleStatistics["sampleLabel"][any] | undefined;
-        while (reader.pos < end) {
-            let [fieldNo, wireType] = reader.tag();
-            switch (fieldNo) {
-                case 1:
-                    key = reader.int32();
-                    break;
-                case 2:
-                    val = reader.int32();
-                    break;
-                default: throw new globalThis.Error("unknown map entry field for SampleStatistics.sample_label");
-            }
-        }
-        map[key ?? 0] = val ?? 0;
-    }
-    private binaryReadMap2(map: SampleStatistics["samplePrediction"], reader: IBinaryReader, options: BinaryReadOptions): void {
-        let len = reader.uint32(), end = reader.pos + len, key: keyof SampleStatistics["samplePrediction"] | undefined, val: SampleStatistics["samplePrediction"][any] | undefined;
-        while (reader.pos < end) {
-            let [fieldNo, wireType] = reader.tag();
-            switch (fieldNo) {
-                case 1:
-                    key = reader.int32();
-                    break;
-                case 2:
-                    val = reader.int32();
-                    break;
-                default: throw new globalThis.Error("unknown map entry field for SampleStatistics.sample_prediction");
-            }
-        }
-        map[key ?? 0] = val ?? 0;
-    }
-    private binaryReadMap3(map: SampleStatistics["sampleLastLoss"], reader: IBinaryReader, options: BinaryReadOptions): void {
-        let len = reader.uint32(), end = reader.pos + len, key: keyof SampleStatistics["sampleLastLoss"] | undefined, val: SampleStatistics["sampleLastLoss"][any] | undefined;
-        while (reader.pos < end) {
-            let [fieldNo, wireType] = reader.tag();
-            switch (fieldNo) {
-                case 1:
-                    key = reader.int32();
-                    break;
-                case 2:
-                    val = reader.float();
-                    break;
-                default: throw new globalThis.Error("unknown map entry field for SampleStatistics.sample_last_loss");
-            }
-        }
-        map[key ?? 0] = val ?? 0;
-    }
-    private binaryReadMap4(map: SampleStatistics["sampleEncounters"], reader: IBinaryReader, options: BinaryReadOptions): void {
-        let len = reader.uint32(), end = reader.pos + len, key: keyof SampleStatistics["sampleEncounters"] | undefined, val: SampleStatistics["sampleEncounters"][any] | undefined;
-        while (reader.pos < end) {
-            let [fieldNo, wireType] = reader.tag();
-            switch (fieldNo) {
-                case 1:
-                    key = reader.int32();
-                    break;
-                case 2:
-                    val = reader.int32();
-                    break;
-                default: throw new globalThis.Error("unknown map entry field for SampleStatistics.sample_encounters");
-            }
-        }
-        map[key ?? 0] = val ?? 0;
-    }
-    private binaryReadMap5(map: SampleStatistics["sampleDiscarded"], reader: IBinaryReader, options: BinaryReadOptions): void {
-        let len = reader.uint32(), end = reader.pos + len, key: keyof SampleStatistics["sampleDiscarded"] | undefined, val: SampleStatistics["sampleDiscarded"][any] | undefined;
-        while (reader.pos < end) {
-            let [fieldNo, wireType] = reader.tag();
-            switch (fieldNo) {
-                case 1:
-                    key = reader.int32();
-                    break;
-                case 2:
-                    val = reader.bool();
-                    break;
-                default: throw new globalThis.Error("unknown map entry field for SampleStatistics.sample_discarded");
-            }
-        }
-        map[key ?? 0] = val ?? false;
-    }
     internalBinaryWrite(message: SampleStatistics, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
-        /* map<int32, int32> sample_label = 1; */
-        for (let k of globalThis.Object.keys(message.sampleLabel))
-            writer.tag(1, WireType.LengthDelimited).fork().tag(1, WireType.Varint).int32(parseInt(k)).tag(2, WireType.Varint).int32(message.sampleLabel[k as any]).join();
-        /* map<int32, int32> sample_prediction = 2; */
-        for (let k of globalThis.Object.keys(message.samplePrediction))
-            writer.tag(2, WireType.LengthDelimited).fork().tag(1, WireType.Varint).int32(parseInt(k)).tag(2, WireType.Varint).int32(message.samplePrediction[k as any]).join();
-        /* map<int32, float> sample_last_loss = 3; */
-        for (let k of globalThis.Object.keys(message.sampleLastLoss))
-            writer.tag(3, WireType.LengthDelimited).fork().tag(1, WireType.Varint).int32(parseInt(k)).tag(2, WireType.Bit32).float(message.sampleLastLoss[k as any]).join();
-        /* map<int32, int32> sample_encounters = 4; */
-        for (let k of globalThis.Object.keys(message.sampleEncounters))
-            writer.tag(4, WireType.LengthDelimited).fork().tag(1, WireType.Varint).int32(parseInt(k)).tag(2, WireType.Varint).int32(message.sampleEncounters[k as any]).join();
-        /* map<int32, bool> sample_discarded = 5; */
-        for (let k of globalThis.Object.keys(message.sampleDiscarded))
-            writer.tag(5, WireType.LengthDelimited).fork().tag(1, WireType.Varint).int32(parseInt(k)).tag(2, WireType.Varint).bool(message.sampleDiscarded[k as any]).join();
         /* optional string origin = 6; */
         if (message.origin !== undefined)
             writer.tag(6, WireType.LengthDelimited).string(message.origin);
@@ -3323,53 +2870,25 @@ class BatchSampleResponse$Type extends MessageType<BatchSampleResponse> {
  */
 export const BatchSampleResponse = new BatchSampleResponse$Type();
 // @generated message type with reflection information, may provide speed optimized methods
-class WeigthsRequest$Type extends MessageType<WeigthsRequest> {
+class WeightsRequest$Type extends MessageType<WeightsRequest> {
     constructor() {
-        super("WeigthsRequest", [
-            { no: 1, name: "neuron_id", kind: "message", T: () => NeuronId },
-            { no: 2, name: "with_bias", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
-            { no: 3, name: "with_learning_rate", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
-            { no: 4, name: "with_incoming_learning_rates", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
-            { no: 5, name: "include_gradients", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
-            { no: 6, name: "start_neuron_idx", kind: "scalar", opt: true, T: 5 /*ScalarType.INT32*/ },
-            { no: 7, name: "end_neuron_idx", kind: "scalar", opt: true, T: 5 /*ScalarType.INT32*/ }
+        super("WeightsRequest", [
+            { no: 1, name: "neuron_id", kind: "message", T: () => NeuronId }
         ]);
     }
-    create(value?: PartialMessage<WeigthsRequest>): WeigthsRequest {
+    create(value?: PartialMessage<WeightsRequest>): WeightsRequest {
         const message = globalThis.Object.create((this.messagePrototype!));
-        message.withBias = false;
-        message.withLearningRate = false;
-        message.withIncomingLearningRates = false;
-        message.includeGradients = false;
         if (value !== undefined)
-            reflectionMergePartial<WeigthsRequest>(this, message, value);
+            reflectionMergePartial<WeightsRequest>(this, message, value);
         return message;
     }
-    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: WeigthsRequest): WeigthsRequest {
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: WeightsRequest): WeightsRequest {
         let message = target ?? this.create(), end = reader.pos + length;
         while (reader.pos < end) {
             let [fieldNo, wireType] = reader.tag();
             switch (fieldNo) {
                 case /* NeuronId neuron_id */ 1:
                     message.neuronId = NeuronId.internalBinaryRead(reader, reader.uint32(), options, message.neuronId);
-                    break;
-                case /* bool with_bias */ 2:
-                    message.withBias = reader.bool();
-                    break;
-                case /* bool with_learning_rate */ 3:
-                    message.withLearningRate = reader.bool();
-                    break;
-                case /* bool with_incoming_learning_rates */ 4:
-                    message.withIncomingLearningRates = reader.bool();
-                    break;
-                case /* bool include_gradients */ 5:
-                    message.includeGradients = reader.bool();
-                    break;
-                case /* optional int32 start_neuron_idx */ 6:
-                    message.startNeuronIdx = reader.int32();
-                    break;
-                case /* optional int32 end_neuron_idx */ 7:
-                    message.endNeuronIdx = reader.int32();
                     break;
                 default:
                     let u = options.readUnknownField;
@@ -3382,28 +2901,10 @@ class WeigthsRequest$Type extends MessageType<WeigthsRequest> {
         }
         return message;
     }
-    internalBinaryWrite(message: WeigthsRequest, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+    internalBinaryWrite(message: WeightsRequest, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
         /* NeuronId neuron_id = 1; */
         if (message.neuronId)
             NeuronId.internalBinaryWrite(message.neuronId, writer.tag(1, WireType.LengthDelimited).fork(), options).join();
-        /* bool with_bias = 2; */
-        if (message.withBias !== false)
-            writer.tag(2, WireType.Varint).bool(message.withBias);
-        /* bool with_learning_rate = 3; */
-        if (message.withLearningRate !== false)
-            writer.tag(3, WireType.Varint).bool(message.withLearningRate);
-        /* bool with_incoming_learning_rates = 4; */
-        if (message.withIncomingLearningRates !== false)
-            writer.tag(4, WireType.Varint).bool(message.withIncomingLearningRates);
-        /* bool include_gradients = 5; */
-        if (message.includeGradients !== false)
-            writer.tag(5, WireType.Varint).bool(message.includeGradients);
-        /* optional int32 start_neuron_idx = 6; */
-        if (message.startNeuronIdx !== undefined)
-            writer.tag(6, WireType.Varint).int32(message.startNeuronIdx);
-        /* optional int32 end_neuron_idx = 7; */
-        if (message.endNeuronIdx !== undefined)
-            writer.tag(7, WireType.Varint).int32(message.endNeuronIdx);
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -3411,9 +2912,9 @@ class WeigthsRequest$Type extends MessageType<WeigthsRequest> {
     }
 }
 /**
- * @generated MessageType for protobuf message WeigthsRequest
+ * @generated MessageType for protobuf message WeightsRequest
  */
-export const WeigthsRequest = new WeigthsRequest$Type();
+export const WeightsRequest = new WeightsRequest$Type();
 // @generated message type with reflection information, may provide speed optimized methods
 class WeightsResponse$Type extends MessageType<WeightsResponse> {
     constructor() {
@@ -3425,9 +2926,6 @@ class WeightsResponse$Type extends MessageType<WeightsResponse> {
             { no: 5, name: "outgoing", kind: "scalar", T: 5 /*ScalarType.INT32*/ },
             { no: 6, name: "kernel_size", kind: "scalar", opt: true, T: 5 /*ScalarType.INT32*/ },
             { no: 7, name: "weights", kind: "scalar", repeat: 1 /*RepeatType.PACKED*/, T: 2 /*ScalarType.FLOAT*/ },
-            { no: 8, name: "bias", kind: "scalar", opt: true, T: 2 /*ScalarType.FLOAT*/ },
-            { no: 9, name: "learning_rate", kind: "scalar", opt: true, T: 2 /*ScalarType.FLOAT*/ },
-            { no: 10, name: "incoming_learning_rates", kind: "map", K: 5 /*ScalarType.INT32*/, V: { kind: "scalar", T: 2 /*ScalarType.FLOAT*/ } },
             { no: 11, name: "success", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
             { no: 12, name: "error_message", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ }
         ]);
@@ -3437,7 +2935,6 @@ class WeightsResponse$Type extends MessageType<WeightsResponse> {
         message.incoming = 0;
         message.outgoing = 0;
         message.weights = [];
-        message.incomingLearningRates = {};
         message.success = false;
         if (value !== undefined)
             reflectionMergePartial<WeightsResponse>(this, message, value);
@@ -3473,15 +2970,6 @@ class WeightsResponse$Type extends MessageType<WeightsResponse> {
                     else
                         message.weights.push(reader.float());
                     break;
-                case /* optional float bias */ 8:
-                    message.bias = reader.float();
-                    break;
-                case /* optional float learning_rate */ 9:
-                    message.learningRate = reader.float();
-                    break;
-                case /* map<int32, float> incoming_learning_rates */ 10:
-                    this.binaryReadMap10(message.incomingLearningRates, reader, options);
-                    break;
                 case /* bool success */ 11:
                     message.success = reader.bool();
                     break;
@@ -3498,22 +2986,6 @@ class WeightsResponse$Type extends MessageType<WeightsResponse> {
             }
         }
         return message;
-    }
-    private binaryReadMap10(map: WeightsResponse["incomingLearningRates"], reader: IBinaryReader, options: BinaryReadOptions): void {
-        let len = reader.uint32(), end = reader.pos + len, key: keyof WeightsResponse["incomingLearningRates"] | undefined, val: WeightsResponse["incomingLearningRates"][any] | undefined;
-        while (reader.pos < end) {
-            let [fieldNo, wireType] = reader.tag();
-            switch (fieldNo) {
-                case 1:
-                    key = reader.int32();
-                    break;
-                case 2:
-                    val = reader.float();
-                    break;
-                default: throw new globalThis.Error("unknown map entry field for WeightsResponse.incoming_learning_rates");
-            }
-        }
-        map[key ?? 0] = val ?? 0;
     }
     internalBinaryWrite(message: WeightsResponse, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
         /* NeuronId neuron_id = 1; */
@@ -3541,15 +3013,6 @@ class WeightsResponse$Type extends MessageType<WeightsResponse> {
                 writer.float(message.weights[i]);
             writer.join();
         }
-        /* optional float bias = 8; */
-        if (message.bias !== undefined)
-            writer.tag(8, WireType.Bit32).float(message.bias);
-        /* optional float learning_rate = 9; */
-        if (message.learningRate !== undefined)
-            writer.tag(9, WireType.Bit32).float(message.learningRate);
-        /* map<int32, float> incoming_learning_rates = 10; */
-        for (let k of globalThis.Object.keys(message.incomingLearningRates))
-            writer.tag(10, WireType.LengthDelimited).fork().tag(1, WireType.Varint).int32(parseInt(k)).tag(2, WireType.Bit32).float(message.incomingLearningRates[k as any]).join();
         /* bool success = 11; */
         if (message.success !== false)
             writer.tag(11, WireType.Varint).bool(message.success);
@@ -4165,9 +3628,8 @@ export const ExperimentService = new ServiceType("ExperimentService", [
     { name: "StreamStatus", serverStreaming: true, options: {}, I: Empty, O: TrainingStatusEx },
     { name: "ExperimentCommand", options: {}, I: TrainerCommand, O: CommandResponse },
     { name: "ManipulateWeights", options: {}, I: WeightsOperationRequest, O: WeightsOperationResponse },
-    { name: "GetWeights", options: {}, I: WeigthsRequest, O: WeightsResponse },
+    { name: "GetWeights", options: {}, I: WeightsRequest, O: WeightsResponse },
     { name: "GetActivations", options: {}, I: ActivationRequest, O: ActivationResponse },
-    { name: "GetSample", options: {}, I: SampleRequest, O: SampleRequestResponse },
     { name: "GetSamples", options: {}, I: BatchSampleRequest, O: BatchSampleResponse },
     { name: "ApplyDataQuery", options: {}, I: DataQueryRequest, O: DataQueryResponse },
     { name: "GetDataSamples", options: {}, I: DataSamplesRequest, O: DataSamplesResponse },

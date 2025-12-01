@@ -12,12 +12,10 @@ import type { DataQueryResponse } from "./experiment_service";
 import type { DataQueryRequest } from "./experiment_service";
 import type { BatchSampleResponse } from "./experiment_service";
 import type { BatchSampleRequest } from "./experiment_service";
-import type { SampleRequestResponse } from "./experiment_service";
-import type { SampleRequest } from "./experiment_service";
 import type { ActivationResponse } from "./experiment_service";
 import type { ActivationRequest } from "./experiment_service";
 import type { WeightsResponse } from "./experiment_service";
-import type { WeigthsRequest } from "./experiment_service";
+import type { WeightsRequest } from "./experiment_service";
 import type { WeightsOperationResponse } from "./experiment_service";
 import type { WeightsOperationRequest } from "./experiment_service";
 import type { CommandResponse } from "./experiment_service";
@@ -33,37 +31,25 @@ import type { RpcOptions } from "@protobuf-ts/runtime-rpc";
  */
 export interface IExperimentServiceClient {
     /**
-     * Metrics
-     *
      * @generated from protobuf rpc: StreamStatus
      */
     streamStatus(input: Empty, options?: RpcOptions): ServerStreamingCall<Empty, TrainingStatusEx>;
     /**
-     * Experiment management
-     *
      * @generated from protobuf rpc: ExperimentCommand
      */
     experimentCommand(input: TrainerCommand, options?: RpcOptions): UnaryCall<TrainerCommand, CommandResponse>;
     /**
-     * Graph Interaction
-     *
      * @generated from protobuf rpc: ManipulateWeights
      */
     manipulateWeights(input: WeightsOperationRequest, options?: RpcOptions): UnaryCall<WeightsOperationRequest, WeightsOperationResponse>;
     /**
      * @generated from protobuf rpc: GetWeights
      */
-    getWeights(input: WeigthsRequest, options?: RpcOptions): UnaryCall<WeigthsRequest, WeightsResponse>;
+    getWeights(input: WeightsRequest, options?: RpcOptions): UnaryCall<WeightsRequest, WeightsResponse>;
     /**
      * @generated from protobuf rpc: GetActivations
      */
     getActivations(input: ActivationRequest, options?: RpcOptions): UnaryCall<ActivationRequest, ActivationResponse>;
-    /**
-     * Data Management
-     *
-     * @generated from protobuf rpc: GetSample
-     */
-    getSample(input: SampleRequest, options?: RpcOptions): UnaryCall<SampleRequest, SampleRequestResponse>;
     /**
      * @generated from protobuf rpc: GetSamples
      */
@@ -93,8 +79,6 @@ export class ExperimentServiceClient implements IExperimentServiceClient, Servic
     constructor(private readonly _transport: RpcTransport) {
     }
     /**
-     * Metrics
-     *
      * @generated from protobuf rpc: StreamStatus
      */
     streamStatus(input: Empty, options?: RpcOptions): ServerStreamingCall<Empty, TrainingStatusEx> {
@@ -102,8 +86,6 @@ export class ExperimentServiceClient implements IExperimentServiceClient, Servic
         return stackIntercept<Empty, TrainingStatusEx>("serverStreaming", this._transport, method, opt, input);
     }
     /**
-     * Experiment management
-     *
      * @generated from protobuf rpc: ExperimentCommand
      */
     experimentCommand(input: TrainerCommand, options?: RpcOptions): UnaryCall<TrainerCommand, CommandResponse> {
@@ -111,8 +93,6 @@ export class ExperimentServiceClient implements IExperimentServiceClient, Servic
         return stackIntercept<TrainerCommand, CommandResponse>("unary", this._transport, method, opt, input);
     }
     /**
-     * Graph Interaction
-     *
      * @generated from protobuf rpc: ManipulateWeights
      */
     manipulateWeights(input: WeightsOperationRequest, options?: RpcOptions): UnaryCall<WeightsOperationRequest, WeightsOperationResponse> {
@@ -122,9 +102,9 @@ export class ExperimentServiceClient implements IExperimentServiceClient, Servic
     /**
      * @generated from protobuf rpc: GetWeights
      */
-    getWeights(input: WeigthsRequest, options?: RpcOptions): UnaryCall<WeigthsRequest, WeightsResponse> {
+    getWeights(input: WeightsRequest, options?: RpcOptions): UnaryCall<WeightsRequest, WeightsResponse> {
         const method = this.methods[3], opt = this._transport.mergeOptions(options);
-        return stackIntercept<WeigthsRequest, WeightsResponse>("unary", this._transport, method, opt, input);
+        return stackIntercept<WeightsRequest, WeightsResponse>("unary", this._transport, method, opt, input);
     }
     /**
      * @generated from protobuf rpc: GetActivations
@@ -134,19 +114,10 @@ export class ExperimentServiceClient implements IExperimentServiceClient, Servic
         return stackIntercept<ActivationRequest, ActivationResponse>("unary", this._transport, method, opt, input);
     }
     /**
-     * Data Management
-     *
-     * @generated from protobuf rpc: GetSample
-     */
-    getSample(input: SampleRequest, options?: RpcOptions): UnaryCall<SampleRequest, SampleRequestResponse> {
-        const method = this.methods[5], opt = this._transport.mergeOptions(options);
-        return stackIntercept<SampleRequest, SampleRequestResponse>("unary", this._transport, method, opt, input);
-    }
-    /**
      * @generated from protobuf rpc: GetSamples
      */
     getSamples(input: BatchSampleRequest, options?: RpcOptions): UnaryCall<BatchSampleRequest, BatchSampleResponse> {
-        const method = this.methods[6], opt = this._transport.mergeOptions(options);
+        const method = this.methods[5], opt = this._transport.mergeOptions(options);
         return stackIntercept<BatchSampleRequest, BatchSampleResponse>("unary", this._transport, method, opt, input);
     }
     /**
@@ -155,21 +126,21 @@ export class ExperimentServiceClient implements IExperimentServiceClient, Servic
      * @generated from protobuf rpc: ApplyDataQuery
      */
     applyDataQuery(input: DataQueryRequest, options?: RpcOptions): UnaryCall<DataQueryRequest, DataQueryResponse> {
-        const method = this.methods[7], opt = this._transport.mergeOptions(options);
+        const method = this.methods[6], opt = this._transport.mergeOptions(options);
         return stackIntercept<DataQueryRequest, DataQueryResponse>("unary", this._transport, method, opt, input);
     }
     /**
      * @generated from protobuf rpc: GetDataSamples
      */
     getDataSamples(input: DataSamplesRequest, options?: RpcOptions): UnaryCall<DataSamplesRequest, DataSamplesResponse> {
-        const method = this.methods[8], opt = this._transport.mergeOptions(options);
+        const method = this.methods[7], opt = this._transport.mergeOptions(options);
         return stackIntercept<DataSamplesRequest, DataSamplesResponse>("unary", this._transport, method, opt, input);
     }
     /**
      * @generated from protobuf rpc: EditDataSample
      */
     editDataSample(input: DataEditsRequest, options?: RpcOptions): UnaryCall<DataEditsRequest, DataEditsResponse> {
-        const method = this.methods[9], opt = this._transport.mergeOptions(options);
+        const method = this.methods[8], opt = this._transport.mergeOptions(options);
         return stackIntercept<DataEditsRequest, DataEditsResponse>("unary", this._transport, method, opt, input);
     }
 }
