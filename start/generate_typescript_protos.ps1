@@ -2,26 +2,18 @@
 
 $ErrorActionPreference = "Stop"
 
-# Change to the repo root
-$REPO_ROOT = Split-Path -Parent $PSScriptRoot
-Set-Location $REPO_ROOT
-
 # Generate TypeScript protobuf files (Frontend)
 Write-Host "Generating TypeScript protobuf files..." -ForegroundColor Cyan
 
 # Check if npm is available
 $npmExists = Get-Command npm -ErrorAction SilentlyContinue
 
-if ($npmExists) {
-    # Set-Location weights_studio
+Test-Path ../../weightslab/weightslab/proto/experiment_service.proto
+(Resolve-Path ../../weightslab/weightslab/proto).Path
+(Resolve-Path ..\node_modules\.bin\protoc-gen-ts.cmd).Path
 
-    if (-not (Test-Path "node_modules")) {
-        Write-Host "Installing frontend dependencies..." -ForegroundColor Yellow
-        npm install
-    }
+$PROTO_DIR = (Resolve-Path ../../weightslab/weightslab/proto).Path
+$PLUGIN_TS = (Resolve-Path ..\node_modules\.bin\protoc-gen-ts.cmd).Path
+npx grpc_tools_node_protoc -I "$PROTO_DIR" --js_out=import_style=commonjs,binary:../src --grpc_out=grpc_js:../src --plugin=protoc-gen-ts="$PLUGIN_TS" "$PROTO_DIR\experiment_service.proto"
 
-    npm run generate-proto
-    Write-Host "✓ TypeScript protobuf files generated successfully" -ForegroundColor Green
-} else {
-    Write-Host "Warning: npm not found. Skipping TypeScript proto generation." -ForegroundColor Yellow
-}
+Remove-Item -Recurse -Force "..\src\*.{js,ts}"

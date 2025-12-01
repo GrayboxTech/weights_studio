@@ -4,6 +4,7 @@ node_modules/
 # build output
 dist/
 build/
+public/
 .vite/
 
 # environment variables

@@ -48,14 +48,20 @@ Follow these steps to set up the environment for both `weightslab` (backend) and
    pip install --no-deps -e .
    ```
 
-4. **Generate Protocol Buffers**:
-   Navigate to the `weights_studio` directory and run the generation script. This generates both Python (backend) and TypeScript (frontend) proto files.
+4. **Install protoc**:
    ```bash
-   cd ../weights_studio
-   ./generate_protos.sh
+   choco install protoc -y
+   npm install --save-dev grpc-tools ts-protoc-gen vite
    ```
 
-5. **Install Ollama**:
+5. (**Optional**) - **Generate Protocol Buffers**:
+   Only if *.js files are not generated in ../src. Navigate to the `weights_studio` directory and run the generation script. This generates both Python (backend) and TypeScript (frontend) proto files.
+   ```bash
+   cd ../weights_studio/start
+   ./generate_typescript_protos.sh
+   ```
+
+6. **Install Ollama**:
     Download and install Ollama from https://ollama.com/download. 
     This works for macos and linux. For Windows please use WSL.
 
@@ -69,12 +75,7 @@ Follow these steps to set up the environment for both `weightslab` (backend) and
     ollama pull llama3.2:1b
     ```
 
-6. **Install vite**:
-   Download and install vite package:
-   ```bash
-   npm install --save-dev vite
-   ```
-   
+
 ### Usage
 
 You will need to run the following services simultaneously (e.g., in separate terminal tabs).

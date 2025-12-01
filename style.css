@@ -125,6 +125,35 @@ html, body {
     background-color: #2a2a2a;
 }
 
+/* Pause/Resume control button */
+#toggle-training {
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--primary-text-color);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.45rem 0.9rem;
+  border-radius: 6px;
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+}
+
+#toggle-training.running {
+  /* running => show Pause; emphasize danger to stop */
+  color: #dc3545;
+  border-color: #6b242b;
+}
+
+#toggle-training.paused {
+  /* paused => show Resume; emphasize go/ready */
+  color: #28a745;
+  border-color: #1e6932;
+}
+
+#toggle-training:hover {
+  background-color: #2a2a2a;
+}
+
 .control-group label {
   font-size: 1.0rem;
   color: var(--secondary-text-color);

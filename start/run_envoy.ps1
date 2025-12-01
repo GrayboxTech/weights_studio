@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 
 # 1. Set the appropriate host address for Windows
 $GRPC_HOST = "host.docker.internal"
-$GRPC_HOST = "127.0.0.1"
+# $GRPC_HOST = "127.0.0.1"
 
 Write-Host "Using gRPC host: $GRPC_HOST" -ForegroundColor Cyan
 
@@ -26,7 +26,7 @@ docker run -d --rm `
   --name envoy-grpc-proxy `
   --add-host=host.docker.internal:host-gateway `
   -p 8080:8080 `
-  -v "${PWD}/../envoy/envoy.tmp.yaml:/etc/envoy/envoy.yaml" `
+  -v "../envoy/envoy.tmp.yaml:/etc/envoy/envoy.yaml" `
   envoyproxy/envoy:v1.28-latest
 
 if ($LASTEXITCODE -eq 0) {

@@ -2,7 +2,18 @@
 import { GrpcWebFetchTransport } from "@protobuf-ts/grpcweb-transport";
 import { RpcError } from "@protobuf-ts/runtime-rpc";
 import { ExperimentServiceClient } from "./experiment_service.client";
-import { DataEditsRequest, DataEditsResponse, DataQueryRequest, DataQueryResponse, SampleEditType, DataSamplesRequest, DataSamplesResponse } from "./experiment_service";
+import {
+    DataEditsRequest,
+    DataEditsResponse,
+    DataQueryRequest,
+    DataQueryResponse,
+    SampleEditType,
+    DataSamplesRequest,
+    DataSamplesResponse,
+    TrainerCommand,
+    HyperParameterCommand,
+    HyperParameters,
+} from "./experiment_service";
 import { DataDisplayOptionsPanel } from "./DataDisplayOptionsPanel";
 import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteractionsPanel";
 import { GridManager } from "./GridManager";
@@ -18,6 +29,7 @@ const traversalPanel = new DataTraversalAndInteractionsPanel();
 let cellsContainer: HTMLElement | null;
 let displayOptionsPanel: DataDisplayOptionsPanel | null = null;
 let gridManager: GridManager;
+let isTraining = true; // local UI state, initialized from server on load
 
 let fetchTimeout: NodeJS.Timeout | null = null;
 let currentFetchRequestId = 0;
@@ -227,6 +239,65 @@ export async function initializeUIElements() {
                 chatInput.value = '';
             }
         });
+    }
+
+    const toggleBtn = document.getElementById('toggle-training') as HTMLButtonElement | null;
+    if (toggleBtn) {
+        const updateToggleLabel = () => {
+            toggleBtn.textContent = isTraining ? 'Pause' : 'Resume';
+            toggleBtn.classList.toggle('running', isTraining);
+            toggleBtn.classList.toggle('paused', !isTraining);
+        };
+
+        toggleBtn.addEventListener('click', async () => {
+            try {
+                // Toggle desired state
+                const nextState = !isTraining;
+
+                const cmd: TrainerCommand = {
+                    getHyperParameters: false,
+                    getInteractiveLayers: false,
+                    hyperParameterChange: {
+                        hyperParameters: { isTraining: nextState } as HyperParameters,
+                    } as HyperParameterCommand,
+                };
+
+                const resp = await dataClient.experimentCommand(cmd).response;
+                if (resp.success) {
+                    isTraining = nextState;
+                    updateToggleLabel();
+                } else {
+                    console.error('Failed to toggle training state:', resp.message);
+                    alert(`Failed to toggle training: ${resp.message}`);
+                }
+            } catch (err) {
+                console.error('Error toggling training state:', err);
+                alert('Error toggling training state. See console for details.');
+            }
+        });
+
+        // Initialize state from server hyper parameters
+        try {
+            const initResp = await dataClient.experimentCommand({
+                getHyperParameters: true,
+                getInteractiveLayers: false,
+            }).response;
+            const hp = initResp.hyperParametersDescs || [];
+            const isTrainingDesc = hp.find(d => d.name === 'is_training' || d.label === 'is_training');
+            if (isTrainingDesc) {
+                // Bool may come as stringValue ('true'/'false') or numericalValue (1/0)
+                if (typeof isTrainingDesc.stringValue === 'string') {
+                    isTraining = isTrainingDesc.stringValue.toLowerCase() === 'true';
+                } else if (typeof isTrainingDesc.numericalValue === 'number') {
+                    isTraining = isTrainingDesc.numericalValue !== 0;
+                }
+            }
+        } catch (e) {
+            console.warn('Could not fetch initial training state; defaulting to running.', e);
+            isTraining = true;
+        } finally {
+            updateToggleLabel();
+        }
     }
 
     // Initialize display options panel
