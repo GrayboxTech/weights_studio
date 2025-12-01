@@ -328,7 +328,6 @@ class DataServiceServicer(pb2_grpc.DataServiceServicer):
                 dataset.set(sid, "deny_listed", request.bool_value)
             # print(dataset.get(sid, "tags"))
 
-        # self._all_datasets_df = self._generate_all_datasets_df()
         for sid, origin in zip(request.samples_ids, request.sample_origins):
             self._all_datasets_df.loc[
                 (self._all_datasets_df['sample_id'] == sid) &

@@ -12,6 +12,8 @@ service DataService {
     rpc Statistics (StatsRequest) returns (StatsResponse);
     /* For changing anything about a group of Samples: label, tag, presence. */
     rpc EditSample (EditsRequest) returns (EditsResponse);
+
+    
 }
 
 message QueryRequest {

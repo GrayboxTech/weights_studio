@@ -6,7 +6,7 @@ WeightsLab UX is the on-premise, data-facing frontend for the WeightsLab machine
 
 This application serves as the primary user interface for exploring data, order, group, add slices and discard samples that are deemed unnecessary.
 
-![On-premise Architecture](architecture.png)
+![On-premise Architecture](architecture.jpg)
 
 ## Tech Stack
 
