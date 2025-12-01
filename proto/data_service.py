@@ -3,10 +3,12 @@ import grpc
 import io
 import importlib
 import logging
+import os
 import sys
 import torch
 import traceback
-
+from pathlib import Path
+sys.path.append(f'{Path(__file__).parent.parent}/proto')
 import data_service_pb2 as pb2
 import data_service_pb2_grpc as pb2_grpc
 import numpy as np
@@ -15,8 +17,8 @@ import pandas as pd
 from concurrent import futures
 from torchvision import transforms
 from PIL import Image
-from pathlib import Path
 
+sys.path.append(f'{Path(__file__).parent.parent}/agent')
 from agent import DataManipulationAgent
 
 
@@ -27,7 +29,8 @@ logging.basicConfig(
 )
 _LOGGER = logging.getLogger(__name__)
 
-_DEFAULT_DATA_SERVICE_PORT = 50051
+# Use environment variable if set, otherwise use default
+_DEFAULT_DATA_SERVICE_PORT = int(os.environ.get('DATA_SERVICE_PORT', 50051))
 
 
 class DataServiceError(Exception):

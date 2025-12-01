@@ -69,7 +69,12 @@ Follow these steps to set up the environment for both `weightslab` (backend) and
     ollama pull llama3.2:1b
     ```
 
-
+6. **Install vite**:
+   Download and install vite package:
+   ```bash
+   npm install --save-dev vite
+   ```
+   
 ### Usage
 
 You will need to run the following services simultaneously (e.g., in separate terminal tabs).

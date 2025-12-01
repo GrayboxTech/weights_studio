@@ -7,7 +7,8 @@ set -e  # Exit on error
 
 echo "=== Starting Data Service Setup ==="
 
-_DEFAULT_DATA_SERVICE_PORT=50051
+# Use environment variable if set, otherwise use default
+DATA_SERVICE_PORT=${DATA_SERVICE_PORT:-50051}
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
@@ -37,10 +38,11 @@ fi
 # Step 2: Check if Ollama is running
 echo ""
 echo "Step 2: Checking Ollama server..."
-if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-    echo "✓ Ollama server is running"
+OLLAMA_HOST=${OLLAMA_HOST:-localhost:11434}
+if curl -s "http://${OLLAMA_HOST}/api/tags" > /dev/null 2>&1; then
+    echo "✓ Ollama server is running at $OLLAMA_HOST"
 else
-    echo "⚠ Warning: Ollama server not detected on port 11434"
+    echo "⚠ Warning: Ollama server not detected at $OLLAMA_HOST"
     echo "  Natural language queries will not work"
     echo "  Start Ollama with: ollama serve"
 fi
