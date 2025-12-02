@@ -8,7 +8,7 @@
     "@protobuf-ts/plugin": "^2.11.1",
     "@types/node": "^24.6.2",
     "grpc_tools_node_protoc_ts": "^5.3.3",
-    "grpc-tools": "^1.13.0",
+    "grpc-tools": "^1.13.1",
     "ts-proto": "^2.8.3",
     "ts-protoc-gen": "^0.15.0",
     "typescript": "^4.9.5",
@@ -18,7 +18,7 @@
     "generate-proto": "npm run generate-proto:data",
     "generate-proto:data": "protoc --ts_out ../src/ --proto_path ../../weightslab/weightslab/proto --ts_opt=generate_dependencies ../../weightslab/weightslab/proto/experiment_service.proto",
     "build-client": "tsc ../src/grpc-client-main.ts --outDir ../public --target es2020 --module es2020",
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview"
   }

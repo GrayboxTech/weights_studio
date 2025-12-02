@@ -520,7 +520,7 @@ class DataManipulationAgent:
             else:
                 _LOGGER.error("Ollama health check failed with status: %s", response.status_code)
         except requests.RequestException as e:
-            _LOGGER.error("Ollama is not accessible at http://localhost:11434: %s", e)
+            _LOGGER.error(f"Ollama is not accessible at http://{os.environ.get("OLLAMA_HOST", "localhost:11434")}: %s", e)
             raise DataAgentError("Ollama service is not running. Please start Ollama first.") from e
 
     def _is_safe_expression(self, expr: str) -> bool:

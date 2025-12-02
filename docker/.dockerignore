@@ -1,0 +1,19 @@
+# Docker
+node_modules/
+npm-debug.log*
+.npm
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# Build outputs
+dist/
+build/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

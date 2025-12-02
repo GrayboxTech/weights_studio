@@ -1,0 +1,73 @@
+# Global Docker Compose configuration for Weights Studio
+
+services:
+  # Envoy proxy for gRPC-Web
+  envoy:
+    image: envoyproxy/envoy:v1.28-latest
+    container_name: weights_studio_envoy
+    ports:
+      - "8080:8080"  # gRPC-Web endpoint
+      - "9901:9901"  # Admin interface
+    volumes:
+      - ../envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["/usr/local/bin/envoy", "-c", "/etc/envoy/envoy.yaml"]
+    networks:
+      - weights_studio_network
+    restart: unless-stopped
+
+  # Weights Studio frontend (Vite dev server)
+  weights_studio:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: weights_studio_frontend
+    ports:
+      - "5173:5173"  # Vite dev server
+    volumes:
+      - ../:/app
+      - /app/node_modules  # Prevent overwriting node_modules
+    environment:
+      - HOST=0.0.0.0
+      - NODE_ENV=development
+      - VITE_GRPC_WEB_URL=http://localhost:8080
+      - VITE_OLLAMA_URL=http://ollama:11435
+    depends_on:
+      - envoy
+      - ollama
+    networks:
+      - weights_studio_network
+    restart: unless-stopped
+    command: ["npm", "run", "dev", "--host"]
+
+  # Ollama for LLM inference
+  ollama:
+    image: ollama/ollama:latest
+    container_name: weights_studio_ollama
+    ports:
+      - "11435:11435"  # Ollama API
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11435
+    networks:
+      - weights_studio_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Uncomment below if no GPU available
+    runtime: runc
+
+networks:
+  weights_studio_network:
+    driver: bridge
+
+volumes:
+  ollama_data:
+    driver: local
