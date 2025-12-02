@@ -7,10 +7,6 @@ build/
 public/
 .vite/
 
-# environment variables
-.env
-.env.local
-
 # system files
 .DS_Store
 Thumbs.db
