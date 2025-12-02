@@ -66,6 +66,7 @@ Follow these steps to set up the environment for both `weightslab` (backend) and
 
 2. **Deploy Docker Services**
    ```bash
+   cd ./docker
    docker compose up -d weights_studio
    ```
 
