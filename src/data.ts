@@ -29,7 +29,7 @@ const traversalPanel = new DataTraversalAndInteractionsPanel();
 let cellsContainer: HTMLElement | null;
 let displayOptionsPanel: DataDisplayOptionsPanel | null = null;
 let gridManager: GridManager;
-let isTraining = true; // local UI state, initialized from server on load
+let isTraining = false; // local UI state, initialized from server on load (default to paused)
 
 let fetchTimeout: NodeJS.Timeout | null = null;
 let currentFetchRequestId = 0;
@@ -249,6 +249,8 @@ export async function initializeUIElements() {
             toggleBtn.classList.toggle('paused', !isTraining);
         };
 
+        let lastToggleError: string | null = null;
+
         toggleBtn.addEventListener('click', async () => {
             try {
                 // Toggle desired state
@@ -266,13 +268,22 @@ export async function initializeUIElements() {
                 if (resp.success) {
                     isTraining = nextState;
                     updateToggleLabel();
+                    lastToggleError = null; // Reset error tracking on success
                 } else {
                     console.error('Failed to toggle training state:', resp.message);
-                    alert(`Failed to toggle training: ${resp.message}`);
+                    const errorMsg = `Failed to toggle training: ${resp.message}`;
+                    if (lastToggleError === errorMsg) {
+                        alert(errorMsg); // Show popup only on second consecutive same error
+                    }
+                    lastToggleError = errorMsg;
                 }
             } catch (err) {
                 console.error('Error toggling training state:', err);
-                alert('Error toggling training state. See console for details.');
+                const errorMsg = 'Error toggling training state. See console for details.';
+                if (lastToggleError === errorMsg) {
+                    alert(errorMsg); // Show popup only on second consecutive same error
+                }
+                lastToggleError = errorMsg;
             }
         });
 
@@ -293,8 +304,8 @@ export async function initializeUIElements() {
                 }
             }
         } catch (e) {
-            console.warn('Could not fetch initial training state; defaulting to running.', e);
-            isTraining = true;
+            console.warn('Could not fetch initial training state; defaulting to paused.', e);
+            isTraining = false;
         } finally {
             updateToggleLabel();
         }

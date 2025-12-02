@@ -34,6 +34,7 @@ Follow these steps to set up the environment for both `weightslab` (backend) and
    source venv/bin/activate
    ```
 
+
 2. **Install Backend Dependencies**:
    Navigate to the `weightslab` directory.
    ```bash
@@ -42,24 +43,34 @@ Follow these steps to set up the environment for both `weightslab` (backend) and
    pip install -r requirements.txt
    ```
 
+
 3. **Install `weightslab` package in Editable Mode**:
    This allows the backend scripts to import `weightslab` modules.
    ```bash
    pip install --no-deps -e .
    ```
 
+
 4. **Install protoc**:
    ```bash
    choco install protoc -y
+   ```
+
+
+5. **Install npm packages**
+   ```bash
    npm install --save-dev grpc-tools ts-protoc-gen vite
    ```
 
+
 5. (**Optional**) - **Generate Protocol Buffers**:
+
    Only if *.js files are not generated in ../src. Navigate to the `weights_studio` directory and run the generation script. This generates both Python (backend) and TypeScript (frontend) proto files.
    ```bash
    cd ../weights_studio/start
    ./generate_typescript_protos.sh
    ```
+
 
 6. **Install Ollama**:
     Download and install Ollama from https://ollama.com/download. 
@@ -105,5 +116,5 @@ Run your training script which hosts the service.
 ```bash
 # Ensure venv is activated
 # Example:
-python weightslab/examples/torch_mnist_training/mnist_training.py
+python ../../weightslab/examples/torch_mnist_training/mnist_training.py
 ```
