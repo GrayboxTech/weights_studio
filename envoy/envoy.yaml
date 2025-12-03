@@ -1,4 +1,3 @@
-
 static_resources:
   listeners:
   - name: listener_0
@@ -11,7 +10,7 @@ static_resources:
       - name: envoy.filters.network.http_connection_manager
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-          codec_type: auto
+          codec_type: AUTO
           stat_prefix: ingress_http
           route_config:
             name: local_route
@@ -43,13 +42,14 @@ static_resources:
           - name: envoy.filters.http.router
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
   clusters:
   - name: grpc_service
     connect_timeout: 0.25s
-    type: logical_dns
-    dns_lookup_family: V4_ONLY
-    http2_protocol_options: {}
-    lb_policy: round_robin
+    type: STRICT_DNS
+    lb_policy: ROUND_ROBIN
+    dns_lookup_family: V4_ONLY           # force IPv4 (avoids IPv6-only resolution issues)
+    http2_protocol_options: {}          # enable HTTP/2 (required for gRPC)
     load_assignment:
       cluster_name: grpc_service
       endpoints:
@@ -57,5 +57,12 @@ static_resources:
         - endpoint:
             address:
               socket_address:
-                address: host.docker.internal # FOR LINUX might needs to be changed to 127.0.0.1
+                address: host.docker.internal  # container -> host (make sure extra_hosts is set)
                 port_value: 50051
+
+admin:
+  access_log_path: /tmp/admin_access.log
+  address:
+    socket_address:
+      address: 0.0.0.0
+      port_value: 9901

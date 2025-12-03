@@ -1,19 +1,13 @@
-# dependencies
-node_modules/
-
 # build output
 dist/
 build/
+public/
 .vite/
-
-# environment variables
-.env
-.env.local
+__pycache__/
 
 # system files
 .DS_Store
 Thumbs.db
-
 
 # dependencies
 node_modules/
@@ -22,5 +16,4 @@ node_modules/
 
 # auto generated
 envoy.tmp.yaml
-
-__pycache__/
+package-lock.json

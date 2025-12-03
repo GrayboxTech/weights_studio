@@ -1,0 +1,73 @@
+# Global Docker Compose configuration for Weights Studio
+
+services:
+  # Envoy proxy for gRPC-Web
+  envoy:
+    image: envoyproxy/envoy:v1.28-latest
+    container_name: weights_studio_envoy
+    ports:
+      - "${ENVOY_PORT:-8080}:${ENVOY_PORT:-8080}"  # gRPC-Web endpoint
+      - "${ENVOY_ADMIN_PORT:-9901}:${ENVOY_ADMIN_PORT:-9901}"  # gRPC-Web endpoint
+    volumes:
+      - ../envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["/usr/local/bin/envoy", "-c", "/etc/envoy/envoy.yaml"]
+    networks:
+      - weights_studio_network
+    restart: unless-stopped
+
+  # Weights Studio frontend (Vite dev server)
+  weights_studio:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: weights_studio_frontend
+    ports:
+      - "${VITE_PORT:-5173}:${VITE_PORT:-5173}"  # Ollama API
+    volumes:
+      - ../:/app
+      - /app/node_modules  # Prevent overwriting node_modules
+    environment:
+      - HOST=${VITE_HOST:-0.0.0.0}
+      - PORT=${VITE_PORT:-5173}
+      - VITE_GRPC_WEB_URL=${VITE_GRPC_WEB_HOST}:${VITE_GRPC_WEB_PORT:-http://localhost:8080}
+      - VITE_OLLAMA_URL=${OLLAMA_HOST}:${OLLAMA_PORT:-http://localhost:11435}
+      - NODE_ENV=development
+    depends_on:
+      - envoy
+      - ollama
+    networks:
+      - weights_studio_network
+    restart: unless-stopped
+    command: ["npm", "run", "dev", "--host"]
+
+  # Ollama for LLM inference
+  ollama:
+    image: ollama/ollama:latest
+    container_name: weights_studio_ollama
+    ports:
+      - "${OLLAMA_PORT:-11435}:11435"  # Ollama API
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11435
+    networks:
+      - weights_studio_network
+    restart: unless-stopped
+    runtime: runc
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve &
+        sleep 5
+        ollama pull ${OLLAMA_MODEL:-llama3.2:1b}
+        wait
+
+networks:
+  weights_studio_network:
+    driver: bridge
+
+volumes:
+  ollama_data:
+    driver: local

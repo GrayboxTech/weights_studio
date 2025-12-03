@@ -1,9 +1,12 @@
 import pandas as pd
 import pytest
-from dataclasses import dataclass
-from typing import Optional, Set
+import os
+import sys
+sys.path.append(f"{os.path.dirname(__file__)}")
 
 from agent import DataManipulationAgent
+from dataclasses import dataclass
+from typing import Optional, Set
 
 
 # Test DataFrame
