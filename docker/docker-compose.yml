@@ -54,15 +54,14 @@ services:
     networks:
       - weights_studio_network
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    # Uncomment below if no GPU available
     runtime: runc
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve &
+        sleep 5
+        ollama pull llama3.2:1b
+        wait
 
 networks:
   weights_studio_network:
