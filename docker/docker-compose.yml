@@ -31,8 +31,8 @@ services:
     environment:
       - HOST=${VITE_HOST:-0.0.0.0}
       - PORT=${VITE_PORT:-5173}
-      - VITE_GRPC_WEB_URL=${VITE_GRPC_WEB_HOST}:${VITE_GRPC_WEB_PORT:-http://localhost:8080}
-      - VITE_OLLAMA_URL=${OLLAMA_HOST}:${OLLAMA_PORT:-http://localhost:11435}
+      - OLLAMA_HOST=${OLLAMA_HOST:-localhost}
+      - OLLAMA_PORT=${OLLAMA_PORT:-11435}
       - NODE_ENV=development
     depends_on:
       - envoy
@@ -47,11 +47,11 @@ services:
     image: ollama/ollama:latest
     container_name: weights_studio_ollama
     ports:
-      - "${OLLAMA_PORT:-11435}:11435"  # Ollama API
+      - "${OLLAMA_PORT:-11435}:${OLLAMA_PORT:-11435}"  # Ollama API
     volumes:
       - ollama_data:/root/.ollama
     environment:
-      - OLLAMA_HOST=0.0.0.0:11435
+      - OLLAMA_HOST=0.0.0.0:${OLLAMA_PORT:-11435}
     networks:
       - weights_studio_network
     restart: unless-stopped
