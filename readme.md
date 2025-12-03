@@ -70,7 +70,7 @@ Follow these steps to set up the environment for both `weightslab` (backend) and
    docker compose up -d weights_studio
    ```
 
-### Checklist to see if it works
+### Checklist to see if it works (addresses dependend on your env. variable defined)
 - Check Envoy administration page is reachable: http://localhost:9091/
 - Check OLLAMA is reachable: http://localhost:1135/
 - Check if Weights Studio page is reachable: http://localhost:5173/
@@ -85,4 +85,32 @@ Run your training script which hosts the service.
 # Ensure venv is activated
 # Example:
 python ../../weightslab/examples/torch_mnist_training/mnist_training.py
+```
+
+### For dev only
+
+Proto ts file generation
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Change to the repo root
+cd "$(dirname "$0")/.."
+
+# Generate TypeScript protobuf files (Frontend)
+echo "Generating TypeScript protobuf files..."
+
+if command -v npm &> /dev/null; then
+    cd weights_studio
+
+    if [ ! -d "node_modules" ]; then
+        echo "Installing frontend dependencies..."
+        npm install
+    fi
+
+    npm run generate-proto
+    echo "✓ TypeScript protobuf files generated successfully"
+else
+    echo "Warning: npm not found. Skipping TypeScript proto generation."
+fi
 ```
