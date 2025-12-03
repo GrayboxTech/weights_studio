@@ -57,7 +57,7 @@ Follow these steps to set up the environment for both `weightslab` (backend) and
 **Deploy Weights_Studio**
 1. **Set Env. Variables**:
    ```bash
-   cd ./weights_studio
+   cd docker/
    # ubuntu & macos
    ./source-env.sh
    # windows
