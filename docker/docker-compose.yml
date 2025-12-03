@@ -6,8 +6,8 @@ services:
     image: envoyproxy/envoy:v1.28-latest
     container_name: weights_studio_envoy
     ports:
-      - "8080:8080"  # gRPC-Web endpoint
-      - "9901:9901"  # Admin interface
+      - "${ENVOY_PORT:-8080}:${ENVOY_PORT:-8080}"  # gRPC-Web endpoint
+      - "${ENVOY_ADMIN_PORT:-9901}:${ENVOY_ADMIN_PORT:-9901}"  # gRPC-Web endpoint
     volumes:
       - ../envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
     extra_hosts:
@@ -24,15 +24,16 @@ services:
       dockerfile: docker/Dockerfile
     container_name: weights_studio_frontend
     ports:
-      - "5173:5173"  # Vite dev server
+      - "${VITE_PORT:-5173}:${VITE_PORT:-5173}"  # Ollama API
     volumes:
       - ../:/app
       - /app/node_modules  # Prevent overwriting node_modules
     environment:
-      - HOST=0.0.0.0
+      - HOST=${VITE_HOST:-0.0.0.0}
+      - PORT=${VITE_PORT:-5173}
+      - VITE_GRPC_WEB_URL=${VITE_GRPC_WEB_HOST}:${VITE_GRPC_WEB_PORT:-http://localhost:8080}
+      - VITE_OLLAMA_URL=${OLLAMA_HOST}:${OLLAMA_PORT:-http://localhost:11435}
       - NODE_ENV=development
-      - VITE_GRPC_WEB_URL=http://localhost:8080
-      - VITE_OLLAMA_URL=http://ollama:11435
     depends_on:
       - envoy
       - ollama
@@ -46,7 +47,7 @@ services:
     image: ollama/ollama:latest
     container_name: weights_studio_ollama
     ports:
-      - "11435:11435"  # Ollama API
+      - "${OLLAMA_PORT:-11435}:11435"  # Ollama API
     volumes:
       - ollama_data:/root/.ollama
     environment:
@@ -60,7 +61,7 @@ services:
       - |
         ollama serve &
         sleep 5
-        ollama pull llama3.2:1b
+        ollama pull ${OLLAMA_MODEL:-llama3.2:1b}
         wait
 
 networks:

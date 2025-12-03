@@ -18,7 +18,7 @@
     "generate-proto": "npm run generate-proto:data",
     "generate-proto:data": "protoc --ts_out ../src/ --proto_path ../../weightslab/weightslab/proto --ts_opt=generate_dependencies ../../weightslab/weightslab/proto/experiment_service.proto",
     "build-client": "tsc ../src/grpc-client-main.ts --outDir ../public --target es2020 --module es2020",
-    "dev": "vite --host 0.0.0.0",
+    "dev": "vite --host ${VITE_HOST:-0.0.0.0} --port ${VITE_PORT:-5173}",
     "build": "vite build",
     "preview": "vite preview"
   }

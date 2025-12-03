@@ -58,9 +58,9 @@ Follow these steps to set up the environment for both `weightslab` (backend) and
 1. **Set Env. Variables**:
    ```bash
    cd docker/
-   # ubuntu & macos
+   # for Ubuntu & Mac OS
    ./source-env.sh
-   # windows
+   # for Windows
    ./source-env.ps1
    ```
 
@@ -70,14 +70,14 @@ Follow these steps to set up the environment for both `weightslab` (backend) and
    docker compose up -d weights_studio
    ```
 
-Envoy administration: http://localhost:9091/
-Check OLLAMA is reachable: http://localhost:1135/
-Weights_studio: http://localhost:5173/
+### Checklist to see if it works
+- Check Envoy administration page is reachable: http://localhost:9091/
+- Check OLLAMA is reachable: http://localhost:1135/
+- Check if Weights Studio page is reachable: http://localhost:5173/
 
 
 ### Usage
-
-Access the UI at `http://localhost:3000` (or the port shown in the terminal).
+Access the UI at `http://localhost:5173`.
 
 **1. Start the Backend (Trainer Service)**
 Run your training script which hosts the service.

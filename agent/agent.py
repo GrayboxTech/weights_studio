@@ -508,7 +508,7 @@ class DataManipulationAgent:
     def _check_ollama_health(self):
         """Check if Ollama is running and accessible."""
         try:
-            response = requests.get(f"http://{os.environ.get('OLLAMA_HOST', 'localhost:11434')}/api/tags", timeout=5)
+            response = requests.get(f"http://{os.environ.get('OLLAMA_HOST', 'localhost')}:{os.environ.get('OLLAMA_PORT', '11434')}/api/tags", timeout=5)
             if response.status_code == 200:
                 models = response.json().get('models', [])
                 _LOGGER.info("Ollama is running with models: %s", [m.get('name') for m in models])
@@ -520,7 +520,7 @@ class DataManipulationAgent:
             else:
                 _LOGGER.error("Ollama health check failed with status: %s", response.status_code)
         except requests.RequestException as e:
-            _LOGGER.error(f"Ollama is not accessible at http://{os.environ.get('OLLAMA_HOST', 'localhost:11434')}: %s", e)
+            _LOGGER.error(f"Ollama is not accessible at http://{os.environ.get('OLLAMA_HOST', 'localhost')}:{os.environ.get('OLLAMA_PORT', '11434')}: %s", e)
             raise DataAgentError("Ollama service is not running. Please start Ollama first.") from e
 
     def _is_safe_expression(self, expr: str) -> bool:
@@ -695,7 +695,7 @@ class DataManipulationAgent:
             print(f"DEBUG: Prompt preview: {prompt[:200]}...")
 
             response = requests.post(
-                f"http://{os.environ.get('OLLAMA_HOST', 'localhost:11434')}/api/generate?source=data-agent",
+                f"http://{os.environ.get('OLLAMA_HOST', 'localhost')}:{os.environ.get('OLLAMA_PORT', '11434')}/api/generate?source=data-agent",
                 json={
                     'model': 'llama3.2:1b',
                     'prompt': prompt,
@@ -815,7 +815,7 @@ class DataManipulationAgent:
 
         try:
             resp = requests.post(
-                f"http://{os.environ.get('OLLAMA_HOST', 'localhost:11434')}/api/generate?source=data-intent",
+                f"http://{os.environ.get('OLLAMA_HOST', 'localhost')}:{os.environ.get('OLLAMA_PORT', '11434')}/api/generate?source=data-intent",
                 json={
                     'model': 'llama3.2:1b',
                     'prompt': prompt,
@@ -1060,7 +1060,7 @@ class DataManipulationAgent:
         _LOGGER.info("Canonicalizing instruction with prompt length %d", len(prompt))
         try:
             resp = requests.post(
-                f"http://{os.environ.get('OLLAMA_HOST', 'localhost:11434')}/api/generate?source=data-canonicalizer",
+                f"http://{os.environ.get('OLLAMA_HOST', 'localhost')}:{os.environ.get('OLLAMA_PORT', '11434')}/api/generate?source=data-canonicalizer",
                 json={
                     'model': 'llama3.2:1b',
                     'prompt': prompt,
