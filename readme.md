@@ -70,9 +70,9 @@ Follow these steps to set up the environment for both `weightslab` (backend) and
    docker compose up -d weights_studio
    ```
 
-### Checklist to see if it works (addresses dependend on your env. variable defined)
+### Checklist to verify if it works (addresses depend on your environment variables being defined).
 - Check Envoy administration page is reachable: http://localhost:9091/
-- Check OLLAMA is reachable: http://localhost:1135/
+- Check OLLAMA is reachable: http://localhost:11435/
 - Check if Weights Studio page is reachable: http://localhost:5173/
 
 
