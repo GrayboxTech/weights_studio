@@ -6,7 +6,7 @@ WeightsLab UX is the on-premise, data-facing frontend for the WeightsLab machine
 
 This application serves as the primary user interface for exploring data, order, group, add slices and discard samples that are deemed unnecessary.
 
-![On-premise Architecture](architecture.png)
+![On-premise Architecture](architecture.jpg)
 
 ## Tech Stack
 
@@ -79,7 +79,30 @@ Follow these steps to set up the environment for both `weightslab` (backend) and
 ### Usage
 Access the UI at `http://localhost:5173`.
 
-**1. Start the Backend (Trainer Service)**
+You will need to run the following services simultaneously (e.g., in separate terminal tabs).
+
+**1. Start Ollama**
+Ensure Ollama is running. If not started as a background app:
+```bash
+ollama serve
+```
+
+**2. Start Envoy Proxy**
+This container translates between gRPC (Python) and gRPC-web (Browser).
+```bash
+# In weights_studio directory
+./run_envoy.sh
+```
+
+**3. Start the Frontend (Weights Studio)**
+```bash
+# In weights_studio directory
+npm run dev
+```
+
+Access the UI at `http://localhost:3000` (or the port shown in the terminal).
+
+**4. Start the Backend (Trainer Service)**
 Run your training script which hosts the service.
 ```bash
 # Ensure venv is activated
