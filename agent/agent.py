@@ -308,7 +308,7 @@ into a simple JSON "intent" object. You NEVER output pandas code.
 ALLOWED INTENT SHAPE (single object, not a list):
 
 {{
-  "kind": "keep" | "drop" | "sort" | "head" | "tail" | "noop",
+  "kind": "keep" | "drop" | "sort" | "head" | "tail" | "reset" | "noop",
   "conditions": [
     {{
       "column": "<user column name>",
@@ -324,11 +324,12 @@ ALLOWED INTENT SHAPE (single object, not a list):
 }}
 
 Rules:
-- "kind" MUST be one of: keep, drop, sort, head, tail, noop.
+- "kind" MUST be one of: keep, drop, sort, head, tail, reset, noop.
 - You MUST NOT include any other top-level keys.
 - For "head" and "tail", set "n".
 - For "sort", set "sort_by" and "ascending".
 - For "keep" and "drop", set "conditions".
+- For "reset", you are asked to clear all filters / selections and show the full dataset again.
 - If request is unclear or unsupported, use kind: "noop".
 - Column names in "column" do NOT need to be exact; just use the words the user used ("loss", "label", "origin", "age", etc.). The caller will map them to real columns.
 - NEVER include pandas code or df[...] expressions anywhere.
@@ -372,6 +373,17 @@ Intent:
   "drop_frac": null
 }}
 
+User: "reset all filters and show all data"
+Intent:
+{{
+  "kind": "reset",
+  "conditions": null,
+  "sort_by": null,
+  "ascending": null,
+  "n": null,
+  "drop_frac": null
+}}
+
 NOW CONVERT THIS INSTRUCTION TO A SINGLE JSON OBJECT:
 
 User: {instruction}
@@ -390,7 +402,7 @@ class Condition:
 
 @dataclass
 class Intent:
-    # "keep" (filter rows), "drop" (remove rows), "sort", "head", "tail", "noop"
+    # "keep" (filter rows), "drop" (remove rows), "sort", "head", "tail", "reset", "noop"
     kind: str
 
     # For keep/drop
@@ -852,7 +864,7 @@ class DataManipulationAgent:
             return None
 
         kind = obj.get("kind", "noop")
-        if kind not in {"keep", "drop", "sort", "head", "tail", "noop"}:
+        if kind not in {"keep", "drop", "sort", "head", "tail", "reset", "noop"}:
             _LOGGER.warning("Invalid intent kind %r, defaulting to noop", kind)
             kind = "noop"
 
@@ -889,6 +901,10 @@ class DataManipulationAgent:
         Only uses ALLOWED_METHODS.
         """
         kind = intent.kind
+
+        # RESET: special signal to the caller to reset to base dataset
+        if kind == "reset":
+            return {"function": None, "params": {"__agent_reset__": True}}
 
         # NOOP
         if kind == "noop":
@@ -1190,6 +1206,26 @@ class DataManipulationAgent:
     def query(self, instruction: str) -> dict:
         """Send instruction to agent and get structured response."""
         _LOGGER.info("Querying agent with instruction: %s", instruction)
+
+        # FAST PATH: detect reset via simple keyword / regex before hitting any LLM
+        low = instruction.strip().lower()
+        reset_phrases = [
+            "reset",
+            "reset data",
+            "reset dataset",
+            "reset df",
+            "reset view",
+            "clear filter",
+            "clear filters",
+            "clear all filters",
+            "show all",
+            "show all data",
+            "show full dataset",
+            "start over",
+        ]
+        if any(phrase == low or phrase in low for phrase in reset_phrases):
+            _LOGGER.info("Detected reset instruction via keyword; returning reset operation.")
+            return {"function": None, "params": {"__agent_reset__": True}}
 
         operation: Optional[dict] = None
 
