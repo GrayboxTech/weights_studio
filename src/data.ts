@@ -19,9 +19,14 @@ import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteraction
 import { GridManager } from "./GridManager";
 
 const SERVER_URL = "http://localhost:8080";
+// Always request bytes; no cached-path mode
+const FORCE_BYTES_FLAG = "__force_image_bytes__";
 
 const transport = new GrpcWebFetchTransport(
     { baseUrl: SERVER_URL, format: "text", });
+
+// Expose base URL for image loading fallback (avoids file:// when opened locally)
+(window as any).__imageBaseUrl = SERVER_URL;
 
 const dataClient = new ExperimentServiceClient(transport);
 const traversalPanel = new DataTraversalAndInteractionsPanel();
@@ -33,6 +38,45 @@ let isTraining = false; // local UI state, initialized from server on load (defa
 
 let fetchTimeout: NodeJS.Timeout | null = null;
 let currentFetchRequestId = 0;
+
+// Initialize root log directory from server (for image caching)
+async function initializeRootLogDir(): Promise<void> {
+    try {
+        // Try to fetch from server endpoint (if available)
+        const response = await fetch(`${SERVER_URL}/api/root-log-dir`);
+        if (response.ok) {
+            const text = await response.text();
+            if (text && text.trim().length > 0) {
+                const data = JSON.parse(text);
+                if (data.root_log_dir) {
+                    (window as any).__rootLogDir = data.root_log_dir;
+                    console.log('Set root log dir from server:', data.root_log_dir);
+                    return;
+                }
+            }
+        }
+        console.warn('Could not fetch root log dir from server, using fallback');
+        fallbackRootLogDir();
+    } catch (error) {
+        console.warn('Failed to initialize root log dir:', error);
+        fallbackRootLogDir();
+    }
+}
+
+function fallbackRootLogDir(): void {
+    /**
+     * Fallback: Try common relative paths from the server location.
+     */
+    const candidates = [
+        './logs',
+        '../logs',
+        '../../logs',
+        '/logs',
+    ];
+    
+    (window as any).__rootLogDir = candidates[0];
+    console.debug('Using fallback root_log_dir:', (window as any).__rootLogDir);
+}
 
 
 function getSplitColors(): SplitColors {
@@ -93,12 +137,16 @@ async function fetchAndDisplaySamples() {
             }
 
             const currentBatchSize = Math.min(batchSize, count - i);
+
+            // Force bytes path; do not request cached paths
+            const statsFlags: string[] = [FORCE_BYTES_FLAG];
+
             const request: DataSamplesRequest = {
                 startIndex: start + i,
                 recordsCnt: currentBatchSize,
                 includeRawData: true,
                 includeTransformedData: false,
-                statsToRetrieve: []
+                statsToRetrieve: statsFlags
             };
 
             const response = await fetchSamples(request);
@@ -734,6 +782,64 @@ contextMenu.addEventListener('click', async (e) => {
                     alert(`Error adding tag: ${error}`);
                 }
                 break;
+            
+            case 'tag-non-discarded':
+                const tagNonDiscarded = prompt('Enter tag for all non-discarded cells:');
+                if (!tagNonDiscarded) break;
+                
+                // Filter to only non-discarded cells
+                const nonDiscardedIds: number[] = [];
+                const nonDiscardedOrigins: string[] = [];
+                
+                for (const cell of Array.from(selectedCells)) {
+                    const gridCell = getGridCell(cell);
+                    const record = gridCell?.getRecord();
+                    if (!record) continue;
+                    
+                    // Check if cell is discarded
+                    const denyListedStat = record.dataStats.find(stat => stat.name === 'deny_listed');
+                    const isDiscarded = denyListedStat?.value?.[0] === 1;
+                    
+                    if (!isDiscarded) {
+                        nonDiscardedIds.push(record.sampleId);
+                        const originStat = record.dataStats.find(stat => stat.name === 'origin');
+                        if (originStat?.valueString) {
+                            nonDiscardedOrigins.push(originStat.valueString);
+                        }
+                    }
+                }
+                
+                if (nonDiscardedIds.length === 0) {
+                    alert('No non-discarded samples selected');
+                    break;
+                }
+                
+                const tagNonDiscardedRequest: DataEditsRequest = {
+                    statName: "tags",
+                    floatValue: 0,
+                    stringValue: tagNonDiscarded,
+                    boolValue: false,
+                    type: SampleEditType.EDIT_OVERRIDE,
+                    samplesIds: nonDiscardedIds,
+                    sampleOrigins: nonDiscardedOrigins
+                };
+                
+                console.log(`Tagging ${nonDiscardedIds.length} non-discarded samples with: ${tagNonDiscarded}`);
+                try {
+                    const response = await dataClient.editDataSample(tagNonDiscardedRequest).response;
+                    console.log("Tag non-discarded response:", response);
+                    if (!response.success) {
+                        console.error("Failed to tag non-discarded:", response.message);
+                        alert(`Failed to tag: ${response.message}`);
+                    } else {
+                        alert(`Tagged ${nonDiscardedIds.length} non-discarded samples`);
+                    }
+                } catch (error) {
+                    console.error("Error tagging non-discarded:", error);
+                    alert(`Error: ${error}`);
+                }
+                break;
+            
             case 'discard':
                 selectedCells.forEach(cell => {
                     const gridCell = getGridCell(cell);
@@ -778,7 +884,13 @@ contextMenu.addEventListener('click', async (e) => {
 
 
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeUIElements);
+    document.addEventListener('DOMContentLoaded', async () => {
+        await initializeRootLogDir();
+        await initializeUIElements();
+    });
 } else {
-    initializeUIElements();
+    (async () => {
+        await initializeRootLogDir();
+        await initializeUIElements();
+    })();
 }

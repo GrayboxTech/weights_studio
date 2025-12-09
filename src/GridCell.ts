@@ -150,6 +150,7 @@ export class GridCell {
             }
         }
 
+        // Use byte-based images
         const rawData = record.dataStats.find(stat => stat.name === 'raw_data');
         if (rawData && rawData.value && rawData.value.length > 0) {
             const base64 = bytesToBase64(new Uint8Array(rawData.value));
