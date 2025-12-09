@@ -512,6 +512,23 @@ body.dark-mode #chat-input:focus {
   filter: brightness(1.03);
 }
 
+#chat-send:disabled,
+#chat-send.loading {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.2);
+  filter: grayscale(30%);
+}
+
+#chat-send:disabled:hover,
+#chat-send.loading:hover {
+  transform: none;
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.2);
+  filter: grayscale(30%);
+}
+
+
 /* Grid and cells (center tiles) */
 
 #cells-grid {

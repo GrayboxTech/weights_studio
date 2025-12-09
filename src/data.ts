@@ -298,15 +298,47 @@ export async function initializeUIElements() {
     }
 
     const chatInput = document.getElementById('chat-input') as HTMLInputElement;
+    const chatSendBtn = document.getElementById('chat-send') as HTMLButtonElement;
+
+    const submitQuery = async () => {
+        if (chatInput && chatInput.value.trim() && chatSendBtn) {
+            const query = chatInput.value.trim();
+
+            // Set loading state
+            chatSendBtn.disabled = true;
+            chatSendBtn.classList.add('loading');
+            chatSendBtn.textContent = 'Working...';
+            chatInput.disabled = true;
+
+            try {
+                await handleQuerySubmit(query);
+                chatInput.value = '';
+            } finally {
+                // Reset state
+                chatSendBtn.disabled = false;
+                chatSendBtn.classList.remove('loading');
+                chatSendBtn.textContent = 'Send';
+                chatInput.disabled = false;
+                chatInput.focus();
+            }
+        }
+    };
+
     if (chatInput) {
         chatInput.addEventListener('keydown', async (event) => {
-            if (event.key === 'Enter' && chatInput.value.trim()) {
+            if (event.key === 'Enter') {
                 event.preventDefault();
-                await handleQuerySubmit(chatInput.value.trim());
-                chatInput.value = '';
+                await submitQuery();
             }
         });
     }
+
+    if (chatSendBtn) {
+        chatSendBtn.addEventListener('click', async () => {
+            await submitQuery();
+        });
+    }
+
 
     const toggleBtn = document.getElementById('toggle-training') as HTMLButtonElement | null;
     if (toggleBtn) {
