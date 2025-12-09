@@ -726,6 +726,14 @@ export interface DataSamplesRequest {
      * @generated from protobuf field: repeated string stats_to_retrieve = 5
      */
     statsToRetrieve: string[];
+    /**
+     * @generated from protobuf field: int32 resize_width = 6
+     */
+    resizeWidth: number;
+    /**
+     * @generated from protobuf field: int32 resize_height = 7
+     */
+    resizeHeight: number;
 }
 /**
  * @generated from protobuf message DataStat
@@ -827,27 +835,6 @@ export interface DataEditsResponse {
      * @generated from protobuf field: string message = 2
      */
     message: string;
-}
-/**
- * @generated from protobuf message DataStreamRequest
- */
-export interface DataStreamRequest {
-    /**
-     * @generated from protobuf field: string query = 1
-     */
-    query: string; // Filter query (e.g., "loss > 2")
-    /**
-     * @generated from protobuf field: bool is_natural_language = 2
-     */
-    isNaturalLanguage: boolean; // Whether query is natural language
-    /**
-     * @generated from protobuf field: int32 max_samples = 3
-     */
-    maxSamples: number; // Max samples to return per update (0 = all)
-    /**
-     * @generated from protobuf field: int32 start_index = 4
-     */
-    startIndex: number; // Starting index for samples
 }
 /**
  * @generated from protobuf enum WeightOperationType
@@ -3200,7 +3187,9 @@ class DataSamplesRequest$Type extends MessageType<DataSamplesRequest> {
             { no: 2, name: "records_cnt", kind: "scalar", T: 5 /*ScalarType.INT32*/ },
             { no: 3, name: "include_transformed_data", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
             { no: 4, name: "include_raw_data", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
-            { no: 5, name: "stats_to_retrieve", kind: "scalar", repeat: 2 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ }
+            { no: 5, name: "stats_to_retrieve", kind: "scalar", repeat: 2 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ },
+            { no: 6, name: "resize_width", kind: "scalar", T: 5 /*ScalarType.INT32*/ },
+            { no: 7, name: "resize_height", kind: "scalar", T: 5 /*ScalarType.INT32*/ }
         ]);
     }
     create(value?: PartialMessage<DataSamplesRequest>): DataSamplesRequest {
@@ -3210,6 +3199,8 @@ class DataSamplesRequest$Type extends MessageType<DataSamplesRequest> {
         message.includeTransformedData = false;
         message.includeRawData = false;
         message.statsToRetrieve = [];
+        message.resizeWidth = 0;
+        message.resizeHeight = 0;
         if (value !== undefined)
             reflectionMergePartial<DataSamplesRequest>(this, message, value);
         return message;
@@ -3233,6 +3224,12 @@ class DataSamplesRequest$Type extends MessageType<DataSamplesRequest> {
                     break;
                 case /* repeated string stats_to_retrieve */ 5:
                     message.statsToRetrieve.push(reader.string());
+                    break;
+                case /* int32 resize_width */ 6:
+                    message.resizeWidth = reader.int32();
+                    break;
+                case /* int32 resize_height */ 7:
+                    message.resizeHeight = reader.int32();
                     break;
                 default:
                     let u = options.readUnknownField;
@@ -3261,6 +3258,12 @@ class DataSamplesRequest$Type extends MessageType<DataSamplesRequest> {
         /* repeated string stats_to_retrieve = 5; */
         for (let i = 0; i < message.statsToRetrieve.length; i++)
             writer.tag(5, WireType.LengthDelimited).string(message.statsToRetrieve[i]);
+        /* int32 resize_width = 6; */
+        if (message.resizeWidth !== 0)
+            writer.tag(6, WireType.Varint).int32(message.resizeWidth);
+        /* int32 resize_height = 7; */
+        if (message.resizeHeight !== 0)
+            writer.tag(7, WireType.Varint).int32(message.resizeHeight);
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -3642,77 +3645,6 @@ class DataEditsResponse$Type extends MessageType<DataEditsResponse> {
  * @generated MessageType for protobuf message DataEditsResponse
  */
 export const DataEditsResponse = new DataEditsResponse$Type();
-// @generated message type with reflection information, may provide speed optimized methods
-class DataStreamRequest$Type extends MessageType<DataStreamRequest> {
-    constructor() {
-        super("DataStreamRequest", [
-            { no: 1, name: "query", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
-            { no: 2, name: "is_natural_language", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
-            { no: 3, name: "max_samples", kind: "scalar", T: 5 /*ScalarType.INT32*/ },
-            { no: 4, name: "start_index", kind: "scalar", T: 5 /*ScalarType.INT32*/ }
-        ]);
-    }
-    create(value?: PartialMessage<DataStreamRequest>): DataStreamRequest {
-        const message = globalThis.Object.create((this.messagePrototype!));
-        message.query = "";
-        message.isNaturalLanguage = false;
-        message.maxSamples = 0;
-        message.startIndex = 0;
-        if (value !== undefined)
-            reflectionMergePartial<DataStreamRequest>(this, message, value);
-        return message;
-    }
-    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: DataStreamRequest): DataStreamRequest {
-        let message = target ?? this.create(), end = reader.pos + length;
-        while (reader.pos < end) {
-            let [fieldNo, wireType] = reader.tag();
-            switch (fieldNo) {
-                case /* string query */ 1:
-                    message.query = reader.string();
-                    break;
-                case /* bool is_natural_language */ 2:
-                    message.isNaturalLanguage = reader.bool();
-                    break;
-                case /* int32 max_samples */ 3:
-                    message.maxSamples = reader.int32();
-                    break;
-                case /* int32 start_index */ 4:
-                    message.startIndex = reader.int32();
-                    break;
-                default:
-                    let u = options.readUnknownField;
-                    if (u === "throw")
-                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
-                    let d = reader.skip(wireType);
-                    if (u !== false)
-                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
-            }
-        }
-        return message;
-    }
-    internalBinaryWrite(message: DataStreamRequest, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
-        /* string query = 1; */
-        if (message.query !== "")
-            writer.tag(1, WireType.LengthDelimited).string(message.query);
-        /* bool is_natural_language = 2; */
-        if (message.isNaturalLanguage !== false)
-            writer.tag(2, WireType.Varint).bool(message.isNaturalLanguage);
-        /* int32 max_samples = 3; */
-        if (message.maxSamples !== 0)
-            writer.tag(3, WireType.Varint).int32(message.maxSamples);
-        /* int32 start_index = 4; */
-        if (message.startIndex !== 0)
-            writer.tag(4, WireType.Varint).int32(message.startIndex);
-        let u = options.writeUnknownFields;
-        if (u !== false)
-            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
-        return writer;
-    }
-}
-/**
- * @generated MessageType for protobuf message DataStreamRequest
- */
-export const DataStreamRequest = new DataStreamRequest$Type();
 /**
  * @generated ServiceType for protobuf service ExperimentService
  */
@@ -3725,6 +3657,5 @@ export const ExperimentService = new ServiceType("ExperimentService", [
     { name: "GetSamples", options: {}, I: BatchSampleRequest, O: BatchSampleResponse },
     { name: "ApplyDataQuery", options: {}, I: DataQueryRequest, O: DataQueryResponse },
     { name: "GetDataSamples", options: {}, I: DataSamplesRequest, O: DataSamplesResponse },
-    { name: "EditDataSample", options: {}, I: DataEditsRequest, O: DataEditsResponse },
-    { name: "StreamDataUpdates", serverStreaming: true, options: {}, I: DataStreamRequest, O: DataSamplesResponse }
+    { name: "EditDataSample", options: {}, I: DataEditsRequest, O: DataEditsResponse }
 ]);
