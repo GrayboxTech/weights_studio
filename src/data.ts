@@ -19,14 +19,9 @@ import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteraction
 import { GridManager } from "./GridManager";
 
 const SERVER_URL = "http://localhost:8080";
-// Always request bytes; no cached-path mode
-const FORCE_BYTES_FLAG = "__force_image_bytes__";
 
 const transport = new GrpcWebFetchTransport(
     { baseUrl: SERVER_URL, format: "text", });
-
-// Expose base URL for image loading fallback (avoids file:// when opened locally)
-(window as any).__imageBaseUrl = SERVER_URL;
 
 const dataClient = new ExperimentServiceClient(transport);
 const traversalPanel = new DataTraversalAndInteractionsPanel();
@@ -38,46 +33,6 @@ let isTraining = false; // local UI state, initialized from server on load (defa
 
 let fetchTimeout: NodeJS.Timeout | null = null;
 let currentFetchRequestId = 0;
-
-// Initialize root log directory from server (for image caching)
-async function initializeRootLogDir(): Promise<void> {
-    try {
-        // Try to fetch from server endpoint (if available)
-        const response = await fetch(`${SERVER_URL}/api/root-log-dir`);
-        if (response.ok) {
-            const text = await response.text();
-            if (text && text.trim().length > 0) {
-                const data = JSON.parse(text);
-                if (data.root_log_dir) {
-                    (window as any).__rootLogDir = data.root_log_dir;
-                    console.log('Set root log dir from server:', data.root_log_dir);
-                    return;
-                }
-            }
-        }
-        console.warn('Could not fetch root log dir from server, using fallback');
-        fallbackRootLogDir();
-    } catch (error) {
-        console.warn('Failed to initialize root log dir:', error);
-        fallbackRootLogDir();
-    }
-}
-
-function fallbackRootLogDir(): void {
-    /**
-     * Fallback: Try common relative paths from the server location.
-     */
-    const candidates = [
-        './logs',
-        '../logs',
-        '../../logs',
-        '/logs',
-    ];
-    
-    (window as any).__rootLogDir = candidates[0];
-    console.debug('Using fallback root_log_dir:', (window as any).__rootLogDir);
-}
-
 
 function getSplitColors(): SplitColors {
     const trainColor = (document.getElementById('train-color') as HTMLInputElement)?.value;
@@ -138,15 +93,12 @@ async function fetchAndDisplaySamples() {
 
             const currentBatchSize = Math.min(batchSize, count - i);
 
-            // Force bytes path; do not request cached paths
-            const statsFlags: string[] = [FORCE_BYTES_FLAG];
-
             const request: DataSamplesRequest = {
                 startIndex: start + i,
                 recordsCnt: currentBatchSize,
                 includeRawData: true,
                 includeTransformedData: false,
-                statsToRetrieve: statsFlags
+                statsToRetrieve: []
             };
 
             const response = await fetchSamples(request);
@@ -627,16 +579,14 @@ document.addEventListener('mouseup', (e) => {
 
         if (!movedDuringDrag && cell) { // This was a click, not a drag.
             if (e.ctrlKey || e.metaKey) {
-                // With Ctrl, toggle the clicked cell.
+                // With Ctrl, toggle the clicked cell to build multi-selection
                 toggleCellSelection(cell);
+                console.log(`Multi-select: ${selectedCells.size} cells selected`);
             } else {
                 // Without Ctrl, it's a simple click.
-                // If the cell wasn't already part of a multi-selection, clear others and select just this one.
-                if (!selectedCells.has(cell) || selectedCells.size <= 1) {
-                    clearSelection();
-                    addCellToSelection(cell);
-                }
-                // If it was part of a selection, the mousedown already handled it, so do nothing on mouseup.
+                // Clear others and select just this one
+                clearSelection();
+                addCellToSelection(cell);
             }
         }
         // If it was a drag (movedDuringDrag is true), we do nothing on mouseup.
@@ -679,7 +629,7 @@ grid.addEventListener('contextmenu', (e) => {
     const target = e.target as HTMLElement;
     const cell = target.closest('.cell') as HTMLElement | null;
 
-    // Use the event's coordinates for the position
+    // Position menu on the right side of the screen
     const menuX = e.pageX;
     const menuY = e.pageY;
 
@@ -733,6 +683,9 @@ document.addEventListener('click', (e) => {
 contextMenu.addEventListener('click', async (e) => {
     const action = (e.target as HTMLElement).dataset.action;
     if (action) {
+        // Hide menu immediately when action is clicked
+        hideContextMenu();
+        
         console.log(
             `Action: ${action}, selected cells:`,
             Array.from(selectedCells)
@@ -776,6 +729,9 @@ contextMenu.addEventListener('click', async (e) => {
                     if (!response.success) {
                         console.error("Failed to add tag:", response.message);
                         alert(`Failed to add tag: ${response.message}`);
+                    } else {
+                        // Update cells locally without reload
+                        updateAffectedCellsOnly(sample_ids, request);
                     }
                 } catch (error) {
                     console.error("Error adding tag:", error);
@@ -833,6 +789,8 @@ contextMenu.addEventListener('click', async (e) => {
                         alert(`Failed to tag: ${response.message}`);
                     } else {
                         alert(`Tagged ${nonDiscardedIds.length} non-discarded samples`);
+                        // Update cells locally without reload
+                        updateAffectedCellsOnly(nonDiscardedIds, tagNonDiscardedRequest);
                     }
                 } catch (error) {
                     console.error("Error tagging non-discarded:", error);
@@ -863,18 +821,169 @@ contextMenu.addEventListener('click', async (e) => {
                     console.log("Discard response:", dresponse);
                     if (!dresponse.success) {
                         console.error("Failed to discard:", dresponse.message);
+                    } else {
+                        // Update cells locally without reload
+                        updateAffectedCellsOnly(sample_ids, drequest);
                     }
                 } catch (error) {
                     console.error("Error discarding:", error);
                 }
                 break;
         }
+        
+        // Don't clear selection after action - keep it for potential additional operations
+        // User can click elsewhere to clear selection
+    }
+});
 
-        hideContextMenu();
-        clearSelection();
+// =============================================================================
+// Helper functions for selective cell updates
 
-        // Refresh the display to show updated tags/discarded status
-        debouncedFetchAndDisplay();
+function getSelectedSampleIds(): number[] {
+    return selectionManager.getSelectedCells()
+        .map(cell => cell.getRecord()?.sampleId)
+        .filter((id): id is number => id !== undefined);
+}
+
+function updateAffectedCellsOnly(sampleIds: number[], request: DataEditsRequest): void {
+    // Update only the cells with changed samples instead of reloading entire grid
+    if (sampleIds.length === 0) return;
+    
+    for (const cell of gridManager.getCells()) {
+        const record = cell.getRecord();
+        if (record && sampleIds.includes(record.sampleId)) {
+            // Update the specific stat that was changed
+            if (request.statName === 'tags') {
+                // Update tags stat
+                const stat = record.dataStats.find(s => s.name === 'tags');
+                if (stat) {
+                    stat.valueString = request.stringValue;
+                } else {
+                    // Create if doesn't exist
+                    record.dataStats.push({
+                        name: 'tags',
+                        type: 'string',
+                        shape: [1],
+                        valueString: request.stringValue,
+                        value: []
+                    });
+                }
+            } else if (request.statName === 'deny_listed') {
+                // Update deny_listed stat
+                const stat = record.dataStats.find(s => s.name === 'deny_listed');
+                if (stat) {
+                    stat.value = [request.boolValue ? 1 : 0];
+                } else {
+                    record.dataStats.push({
+                        name: 'deny_listed',
+                        type: 'scalar',
+                        shape: [1],
+                        value: [request.boolValue ? 1 : 0],
+                        valueString: ''
+                    });
+                }
+            }
+            
+            // Update cell display without refetching
+            const prefs = displayOptionsPanel?.getDisplayPreferences();
+            if (prefs) {
+                cell.updateDisplay(prefs);
+            }
+        }
+    }
+}
+
+// Handle context menu actions from modal popup
+document.addEventListener('modalContextMenuAction', async (e: any) => {
+    const { action, sampleId, origin } = e.detail;
+    if (!sampleId) {
+        console.error('No sampleId provided in modal action');
+        return;
+    }
+    
+    const sample_ids = [sampleId];
+    const origins = origin ? [origin] : [];
+    
+    console.log('Modal action:', action, 'sampleId:', sampleId, 'origin:', origin);
+    
+    switch (action) {
+        case 'add-tag':
+            const tag = prompt('Enter tag:');
+            if (!tag) break;
+            
+            const tagRequest: DataEditsRequest = {
+                statName: "tags",
+                floatValue: 0,
+                stringValue: String(tag),
+                boolValue: false,
+                type: SampleEditType.EDIT_OVERRIDE,
+                samplesIds: sample_ids,
+                sampleOrigins: origins
+            }
+            console.log("Sending tag request from modal:", tagRequest);
+            try {
+                const response = await dataClient.editDataSample(tagRequest).response;
+                console.log("Tag response from modal:", response);
+                if (!response.success) {
+                    alert(`Failed to add tag: ${response.message}`);
+                } else {
+                    updateAffectedCellsOnly(sample_ids, tagRequest);
+                }
+            } catch (error) {
+                console.error("Error adding tag from modal:", error);
+                alert(`Error adding tag: ${error}`);
+            }
+            break;
+        
+        case 'tag-non-discarded':
+            const tagNonDiscarded = prompt('Enter tag for non-discarded cell:');
+            if (!tagNonDiscarded) break;
+            
+            const nonDiscardedRequest: DataEditsRequest = {
+                statName: "tags",
+                floatValue: 0,
+                stringValue: String(tagNonDiscarded),
+                boolValue: false,
+                type: SampleEditType.EDIT_OVERRIDE,
+                samplesIds: sample_ids,
+                sampleOrigins: origins
+            }
+            try {
+                const response = await dataClient.editDataSample(nonDiscardedRequest).response;
+                if (!response.success) {
+                    alert(`Failed to tag: ${response.message}`);
+                } else {
+                    updateAffectedCellsOnly(sample_ids, nonDiscardedRequest);
+                }
+            } catch (error) {
+                alert(`Error tagging: ${error}`);
+            }
+            break;
+        
+        case 'discard':
+            const discardRequest: DataEditsRequest = {
+                statName: "deny_listed",
+                floatValue: 0,
+                stringValue: '',
+                boolValue: true,
+                type: SampleEditType.EDIT_OVERRIDE,
+                samplesIds: sample_ids,
+                sampleOrigins: origins
+            }
+            console.log("Sending discard request from modal:", discardRequest);
+            try {
+                const response = await dataClient.editDataSample(discardRequest).response;
+                console.log("Discard response from modal:", response);
+                if (!response.success) {
+                    alert(`Failed to discard: ${response.message}`);
+                } else {
+                    updateAffectedCellsOnly(sample_ids, discardRequest);
+                }
+            } catch (error) {
+                console.error("Error discarding from modal:", error);
+                alert(`Error discarding: ${error}`);
+            }
+            break;
     }
 });
 
@@ -885,12 +994,10 @@ contextMenu.addEventListener('click', async (e) => {
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', async () => {
-        await initializeRootLogDir();
         await initializeUIElements();
     });
 } else {
     (async () => {
-        await initializeRootLogDir();
         await initializeUIElements();
     })();
 }

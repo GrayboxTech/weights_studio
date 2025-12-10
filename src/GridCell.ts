@@ -41,6 +41,131 @@ export class GridCell {
 
         // Store reference for selection.ts to use
         (this.element as any).__gridCell = this;
+        
+        // Add double-click listener to show enlarged image
+        this.element.addEventListener('dblclick', () => this.showEnlargedImage());
+    }
+    
+    private showEnlargedImage(): void {
+        if (!this.img.src || this.img.src === PLACEHOLDER_IMAGE_SRC) {
+            return;
+        }
+        
+        // Create modal overlay
+        const modal = document.createElement('div');
+        modal.style.position = 'fixed';
+        modal.style.top = '0';
+        modal.style.left = '0';
+        modal.style.width = '100%';
+        modal.style.height = '100%';
+        modal.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        modal.style.display = 'flex';
+        modal.style.justifyContent = 'center';
+        modal.style.alignItems = 'center';
+        modal.style.zIndex = '9999';
+        
+        // Create container for image and menu
+        const container = document.createElement('div');
+        container.style.display = 'flex';
+        container.style.alignItems = 'center';
+        container.style.gap = '20px';
+        
+        // Create enlarged image with fixed 512x512 size
+        const enlargedImg = document.createElement('img');
+        enlargedImg.src = this.img.src;
+        enlargedImg.style.width = '512px';
+        enlargedImg.style.height = '512px';
+        enlargedImg.style.objectFit = 'contain';
+        enlargedImg.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+        enlargedImg.style.borderRadius = '4px';
+        
+        // Create context menu
+        const menuContainer = document.createElement('div');
+        menuContainer.style.display = 'flex';
+        menuContainer.style.flexDirection = 'column';
+        menuContainer.style.gap = '8px';
+        menuContainer.style.backgroundColor = 'white';
+        menuContainer.style.borderRadius = '4px';
+        menuContainer.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.3)';
+        menuContainer.style.minWidth = '200px';
+        
+        // Menu items matching the right-click context menu
+        const menuItems = [
+            { label: 'Add Tag', action: 'add-tag' },
+            { label: 'Tag Non-Discarded', action: 'tag-non-discarded' },
+            { label: 'Discard', action: 'discard' }
+        ];
+        
+        menuItems.forEach(item => {
+            const menuItem = document.createElement('div');
+            menuItem.style.padding = '10px 16px';
+            menuItem.style.cursor = 'pointer';
+            menuItem.style.borderBottom = '1px solid #eee';
+            menuItem.style.color = '#333';
+            menuItem.style.fontSize = '14px';
+            menuItem.textContent = item.label;
+            menuItem.dataset.action = item.action;
+            
+            menuItem.addEventListener('mouseenter', () => {
+                menuItem.style.backgroundColor = '#f0f0f0';
+            });
+            menuItem.addEventListener('mouseleave', () => {
+                menuItem.style.backgroundColor = 'transparent';
+            });
+            
+            menuContainer.appendChild(menuItem);
+        });
+        
+        // Remove last border
+        const lastItem = menuContainer.lastElementChild as HTMLElement;
+        if (lastItem) {
+            lastItem.style.borderBottom = 'none';
+        }
+        
+        container.appendChild(enlargedImg);
+        container.appendChild(menuContainer);
+        modal.appendChild(container);
+        document.body.appendChild(modal);
+        
+        // Handle menu item clicks
+        menuContainer.addEventListener('click', (e) => {
+            const target = e.target as HTMLElement;
+            if (target.dataset.action) {
+                const action = target.dataset.action;
+                
+                // Get origin from record
+                const originStat = this.record?.dataStats.find(stat => stat.name === 'origin');
+                const origin = originStat?.valueString || '';
+                
+                // Dispatch custom event that data.ts can handle
+                const event = new CustomEvent('modalContextMenuAction', {
+                    detail: {
+                        action: action,
+                        sampleId: this.record?.sampleId,
+                        origin: origin
+                    }
+                });
+                document.dispatchEvent(event);
+                
+                modal.remove();
+            }
+        });
+        
+        // Close on click outside menu/image or on modal background
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+        
+        // Close on Escape key
+        const escapeListener = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                modal.remove();
+                document.removeEventListener('keydown', escapeListener);
+            }
+        };
+        document.addEventListener('keydown', escapeListener);
     }
 
     getElement(): HTMLElement {
@@ -150,7 +275,7 @@ export class GridCell {
             }
         }
 
-        // Use byte-based images
+        // Render byte-based images
         const rawData = record.dataStats.find(stat => stat.name === 'raw_data');
         if (rawData && rawData.value && rawData.value.length > 0) {
             const base64 = bytesToBase64(new Uint8Array(rawData.value));
