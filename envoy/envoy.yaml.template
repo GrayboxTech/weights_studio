@@ -4,7 +4,7 @@ static_resources:
     address:
       socket_address:
         address: 0.0.0.0
-        port_value: 8080
+        port_value: ${ENVOY_PORT}
     filter_chains:
     - filters:
       - name: envoy.filters.network.http_connection_manager
@@ -58,11 +58,11 @@ static_resources:
             address:
               socket_address:
                 address: host.docker.internal  # container -> host (make sure extra_hosts is set)
-                port_value: 50051
+                port_value: ${GRPC_BACKEND_PORT}
 
 admin:
   access_log_path: /tmp/admin_access.log
   address:
     socket_address:
       address: 0.0.0.0
-      port_value: 9901
+      port_value: ${ENVOY_ADMIN_PORT}

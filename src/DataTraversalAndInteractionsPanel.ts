@@ -270,11 +270,12 @@ export class DataTraversalAndInteractionsPanel {
     }
 
     public updateSampleCounts(availableSamples: number, totalSamples: number): void {
-        this.maxSampleId = availableSamples;
+        // availableSamples is the count; maxSampleId is the highest valid index (count - 1)
+        this.maxSampleId = availableSamples > 0 ? availableSamples - 1 : 0;
         this.totalSamples = totalSamples;
 
         if (this.sampleSlider) {
-            this.sampleSlider.max = availableSamples.toString();
+            this.sampleSlider.max = this.maxSampleId.toString();
         }
 
         if (this.sliderMaxLabel) {
@@ -282,7 +283,7 @@ export class DataTraversalAndInteractionsPanel {
         }
 
         if (this.startIndexSlider) {
-            this.startIndexSlider.max = availableSamples.toString();
+            this.startIndexSlider.max = this.maxSampleId.toString();
         }
     }
 }
