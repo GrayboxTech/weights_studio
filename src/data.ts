@@ -158,9 +158,21 @@ async function updateLayout() {
         return;
     }
 
+    // Preserve current selection by storing selected cell indices
+    const selectedCells = selectionManager.getSelectedCells();
+    const selectedIndices = new Set<number>();
+    
+    for (const selectedCell of selectedCells) {
+        // Try to find the index of this cell in the current grid
+        const cells = gridManager.getCells();
+        const index = cells.indexOf(selectedCell);
+        if (index !== -1) {
+            selectedIndices.add(index);
+        }
+    }
+
     gridManager.updateGridLayout();
     const gridDims = gridManager.calculateGridDimensions();
-    console.log(`[updateLayout] Grid dimensions: ${JSON.stringify(gridDims)}`);
 
     // Update SelectionManager with new cells array and register them
     const cells = gridManager.getCells();
@@ -170,14 +182,25 @@ async function updateLayout() {
     }
 
     gridManager.clearAllCells();
-    const cellsAfterClear = gridManager.getCells().length;
-    console.log(`[updateLayout] Cells after clear: ${cellsAfterClear}`);
 
     if (displayOptionsPanel) {
         const preferences = displayOptionsPanel.getDisplayPreferences();
         preferences.splitColors = getSplitColors();
         for (const cell of gridManager.getCells()) {
             cell.setDisplayPreferences(preferences);
+        }
+    }
+
+    // Restore selection to cells at the preserved indices
+    if (selectedIndices.size > 0) {
+        selectionManager.clearSelection();
+        const newCells = gridManager.getCells();
+        for (const index of selectedIndices) {
+            if (index >= 0 && index < newCells.length) {
+                selectionManager.addCellToSelection(newCells[index]);
+                // Update lastSelectedCell to the last one in the selection
+                selectionManager.setLastSelectedCell(newCells[index]);
+            }
         }
     }
 
@@ -429,10 +452,12 @@ export async function initializeUIElements() {
     selectionManager = new SelectionManager(cellsContainer);
     gridManager.setSelectionManager(selectionManager);
     
-    // Register cells with selection manager
-    for (const cell of gridManager.getCells()) {
+    // Register cells with selection manager and set all cells for range selection
+    const allCells = gridManager.getCells();
+    for (const cell of allCells) {
         selectionManager.registerCell(cell);
     }
+    selectionManager.setAllCells(allCells);
     
     // Initialize context menu (cellsContainer is the grid element)
     contextMenuManager = new ContextMenu(cellsContainer, selectionManager, {
@@ -440,14 +465,49 @@ export async function initializeUIElements() {
             const selectedCells = selectionManager.getSelectedCells();
             const sampleIds = selectedCells.map(cell => cell.getRecord()?.sampleId).filter((id): id is number => id !== undefined);
             const origins = selectedCells.map(cell => cell.getRecord()?.origin || 'train').filter((origin): origin is string => origin !== undefined);
-            
+
             if (sampleIds.length === 0) return;
-            
+
+            // Toggle discard: if any selected is already discarded, undiscard all; else discard all
+            const anyDiscarded = selectedCells.some(cell => {
+                const rec = cell.getRecord();
+                if (!rec) return false;
+                const stat = rec.dataStats?.find(s => s.name === 'deny_listed');
+                return !!stat && Array.isArray(stat.value) && stat.value[0] === 1;
+            });
+
             const request: DataEditsRequest = {
                 statName: "deny_listed",
                 floatValue: 0,
                 stringValue: '',
-                boolValue: true,
+                boolValue: anyDiscarded ? false : true,
+                type: SampleEditType.EDIT_OVERRIDE,
+                samplesIds: sampleIds,
+                sampleOrigins: origins
+            };
+
+            try {
+                const response = await dataClient.editDataSample(request).response;
+                if (response.success) {
+                    updateAffectedCellsOnly(sampleIds, request);
+                } else {
+                    console.error("Failed to update discard state:", response.message);
+                }
+            } catch (error) {
+                console.error("Error toggling discard:", error);
+            }
+        },
+        onAddTag: async (cells: GridCell[], tag: string) => {
+            const sampleIds = cells.map(cell => cell.getRecord()?.sampleId).filter((id): id is number => id !== undefined);
+            const origins = cells.map(cell => cell.getRecord()?.origin || 'train').filter((origin): origin is string => origin !== undefined);
+            
+            if (sampleIds.length === 0) return;
+            
+            const request: DataEditsRequest = {
+                statName: "tags",
+                floatValue: 0,
+                stringValue: tag,
+                boolValue: false,
                 type: SampleEditType.EDIT_OVERRIDE,
                 samplesIds: sampleIds,
                 sampleOrigins: origins
@@ -458,10 +518,10 @@ export async function initializeUIElements() {
                 if (response.success) {
                     updateAffectedCellsOnly(sampleIds, request);
                 } else {
-                    console.error("Failed to discard:", response.message);
+                    console.error("Failed to add tag:", response.message);
                 }
             } catch (error) {
-                console.error("Error discarding:", error);
+                console.error("Error adding tag:", error);
             }
         }
     });
@@ -526,16 +586,15 @@ async function checkAndUpdateAgentHealth() {
     if (!chatInput) return;
 
     try {
-        // Call the CheckAgentHealth gRPC method
-        const response = await dataClient.checkAgentHealth({}).response;
-        
-        if (response.available) {
-            // Enable the input
+        // Lightweight direct check to Ollama (fallback without gRPC types)
+        const resp = await fetch('http://localhost:11435/api/tags', { method: 'GET' });
+        const available = resp.ok;
+
+        if (available) {
             chatInput.disabled = false;
             chatInput.placeholder = "drop 50% of the samples with losses between 1.4 and 1.9";
             chatInput.title = "";
         } else {
-            // Disable the input
             chatInput.disabled = true;
             chatInput.placeholder = "Agent is not available";
             chatInput.title = "Agent is not available - please ensure Ollama is running";
@@ -624,59 +683,6 @@ document.addEventListener('modalContextMenuAction', async (e: any) => {
     console.log('Modal action:', action, 'sampleId:', sampleId, 'origin:', origin);
     
     switch (action) {
-        case 'add-tag':
-            const tag = prompt('Enter tag:');
-            if (!tag) break;
-            
-            const tagRequest: DataEditsRequest = {
-                statName: "tags",
-                floatValue: 0,
-                stringValue: String(tag),
-                boolValue: false,
-                type: SampleEditType.EDIT_OVERRIDE,
-                samplesIds: sample_ids,
-                sampleOrigins: origins
-            }
-            console.log("Sending tag request from modal:", tagRequest);
-            try {
-                const response = await dataClient.editDataSample(tagRequest).response;
-                console.log("Tag response from modal:", response);
-                if (!response.success) {
-                    alert(`Failed to add tag: ${response.message}`);
-                } else {
-                    updateAffectedCellsOnly(sample_ids, tagRequest);
-                }
-            } catch (error) {
-                console.error("Error adding tag from modal:", error);
-                alert(`Error adding tag: ${error}`);
-            }
-            break;
-        
-        case 'tag-non-discarded':
-            const tagNonDiscarded = prompt('Enter tag for non-discarded cell:');
-            if (!tagNonDiscarded) break;
-            
-            const nonDiscardedRequest: DataEditsRequest = {
-                statName: "tags",
-                floatValue: 0,
-                stringValue: String(tagNonDiscarded),
-                boolValue: false,
-                type: SampleEditType.EDIT_OVERRIDE,
-                samplesIds: sample_ids,
-                sampleOrigins: origins
-            }
-            try {
-                const response = await dataClient.editDataSample(nonDiscardedRequest).response;
-                if (!response.success) {
-                    alert(`Failed to tag: ${response.message}`);
-                } else {
-                    updateAffectedCellsOnly(sample_ids, nonDiscardedRequest);
-                }
-            } catch (error) {
-                alert(`Error tagging: ${error}`);
-            }
-            break;
-        
         case 'discard':
             const discardRequest: DataEditsRequest = {
                 statName: "deny_listed",

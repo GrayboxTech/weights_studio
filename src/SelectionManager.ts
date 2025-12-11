@@ -20,6 +20,7 @@ export class SelectionManager {
         this.container = container;
         // The container itself is the grid element
         this.gridElement = container;
+        console.log('[SelectionManager] Initialized - Version 2.1');
         this.setupEventListeners();
     }
 
@@ -168,6 +169,9 @@ export class SelectionManager {
                         this.isDragging = false;
                         return;
                     }
+                } else if (e.shiftKey) {
+                    // Shift was pressed but no previous selection or allCells not set
+                    // Fall through to regular click handling
                 }
 
                 // Ctrl/Cmd+Click: toggle selection
