@@ -17,6 +17,8 @@ import {
 import { DataDisplayOptionsPanel } from "./DataDisplayOptionsPanel";
 import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteractionsPanel";
 import { GridManager } from "./GridManager";
+import { SelectionManager } from "./SelectionManager";
+import { ContextMenu } from "./ContextMenu";
 
 const SERVER_URL = "http://localhost:8080";
 
@@ -29,6 +31,8 @@ const traversalPanel = new DataTraversalAndInteractionsPanel();
 let cellsContainer: HTMLElement | null;
 let displayOptionsPanel: DataDisplayOptionsPanel | null = null;
 let gridManager: GridManager;
+let selectionManager: SelectionManager;
+let contextMenuManager: ContextMenu;
 let isTraining = false; // local UI state, initialized from server on load (default to paused)
 
 let fetchTimeout: NodeJS.Timeout | null = null;
@@ -157,6 +161,13 @@ async function updateLayout() {
     gridManager.updateGridLayout();
     const gridDims = gridManager.calculateGridDimensions();
     console.log(`[updateLayout] Grid dimensions: ${JSON.stringify(gridDims)}`);
+
+    // Update SelectionManager with new cells array and register them
+    const cells = gridManager.getCells();
+    selectionManager.setAllCells(cells);
+    for (const cell of cells) {
+        selectionManager.registerCell(cell);
+    }
 
     gridManager.clearAllCells();
     const cellsAfterClear = gridManager.getCells().length;
@@ -414,6 +425,47 @@ export async function initializeUIElements() {
         cellsContainer, traversalPanel,
         displayOptionsPanel as DataDisplayOptionsPanel);
 
+    // Create selection manager and context menu
+    selectionManager = new SelectionManager(cellsContainer);
+    gridManager.setSelectionManager(selectionManager);
+    
+    // Register cells with selection manager
+    for (const cell of gridManager.getCells()) {
+        selectionManager.registerCell(cell);
+    }
+    
+    // Initialize context menu (cellsContainer is the grid element)
+    contextMenuManager = new ContextMenu(cellsContainer, selectionManager, {
+        onDiscard: async () => {
+            const selectedCells = selectionManager.getSelectedCells();
+            const sampleIds = selectedCells.map(cell => cell.getRecord()?.sampleId).filter((id): id is number => id !== undefined);
+            const origins = selectedCells.map(cell => cell.getRecord()?.origin || 'train').filter((origin): origin is string => origin !== undefined);
+            
+            if (sampleIds.length === 0) return;
+            
+            const request: DataEditsRequest = {
+                statName: "deny_listed",
+                floatValue: 0,
+                stringValue: '',
+                boolValue: true,
+                type: SampleEditType.EDIT_OVERRIDE,
+                samplesIds: sampleIds,
+                sampleOrigins: origins
+            };
+            
+            try {
+                const response = await dataClient.editDataSample(request).response;
+                if (response.success) {
+                    updateAffectedCellsOnly(sampleIds, request);
+                } else {
+                    console.error("Failed to discard:", response.message);
+                }
+            } catch (error) {
+                console.error("Error discarding:", error);
+            }
+        }
+    });
+
     traversalPanel.onUpdate(() => {
         debouncedFetchAndDisplay();
     });
@@ -458,383 +510,48 @@ export async function initializeUIElements() {
         refreshDynamicStatsOnly();
     }, 10000);
 
+    // Check agent health and update UI accordingly
+    await checkAndUpdateAgentHealth();
+    
+    // Periodically check agent health (every 10 seconds)
+    setInterval(async () => {
+        await checkAndUpdateAgentHealth();
+    }, 10000);
+
     setTimeout(updateLayout, 0);
 }
 
-// =============================================================================
+async function checkAndUpdateAgentHealth() {
+    const chatInput = document.getElementById('chat-input') as HTMLInputElement;
+    if (!chatInput) return;
 
-const grid = document.getElementById('cells-grid') as HTMLElement;
-const contextMenu = document.getElementById('context-menu') as HTMLElement;
-
-let selectedCells: Set<HTMLElement> = new Set();
-
-// Helper function to get GridCell from DOM element
-function getGridCell(element: HTMLElement): GridCell | null {
-    return (element as any).__gridCell || null;
-}
-
-// For drag selection
-let isDragging = false;
-let startX = 0;
-let startY = 0;
-let lastMouseUpX = 0;
-let lastMouseUpY = 0;
-let selectionBox: HTMLElement | null = null;
-
-function createSelectionBox() {
-    if (!selectionBox) {
-        selectionBox = document.createElement('div');
-        selectionBox.style.position = 'absolute';
-        selectionBox.style.border = '1px dashed #adcef3ff';
-        selectionBox.style.backgroundColor = 'rgba(3, 97, 198, 0.2)';
-        selectionBox.style.pointerEvents = 'none';
-        selectionBox.style.zIndex = '1000';
-        document.body.appendChild(selectionBox);
-    }
-}
-
-grid.addEventListener('mousedown', (e) => {
-    // Hide context menu on any new selection action
-    hideContextMenu();
-
-    // Prevent default browser drag behavior and text selection
-    e.preventDefault();
-
-    const target = e.target as HTMLElement;
-    const cell = target.closest('.cell') as HTMLElement | null;
-
-    // On a mousedown without Ctrl, if the click is not on an already selected cell,
-    // clear the existing selection. This prepares for a new selection (either click or drag).
-    if (!e.ctrlKey && !e.metaKey) {
-        if (!cell || !selectedCells.has(cell)) {
-            clearSelection();
-        }
-    }
-
-    // Start dragging to select
-    isDragging = true;
-    startX = e.clientX;
-    startY = e.clientY;
-
-    createSelectionBox();
-    selectionBox!.style.left = `${startX}px`;
-    selectionBox!.style.top = `${startY}px`;
-    selectionBox!.style.width = '0px';
-    selectionBox!.style.height = '0px';
-    selectionBox!.style.display = 'block';
-});
-
-document.addEventListener('mousemove', (e) => {
-    if (!isDragging || !selectionBox) return;
-
-    const currentX = e.clientX;
-    const currentY = e.clientY;
-
-    const x = Math.min(startX, currentX);
-    const y = Math.min(startY, currentY);
-    const width = Math.abs(currentX - startX);
-    const height = Math.abs(currentY - startY);
-
-    selectionBox.style.left = `${x}px`;
-    selectionBox.style.top = `${y}px`;
-    selectionBox.style.width = `${width}px`;
-    selectionBox.style.height = `${height}px`;
-
-    const selectionRect = selectionBox.getBoundingClientRect();
-
-    for (const cell of grid.children) {
-        const cellElem = cell as HTMLElement;
-        const cellRect = cellElem.getBoundingClientRect();
-
-        const isIntersecting =
-            selectionRect.left < cellRect.right &&
-            selectionRect.right > cellRect.left &&
-            selectionRect.top < cellRect.bottom &&
-            selectionRect.bottom > cellRect.top;
-
-        if (isIntersecting) {
-            addCellToSelection(cellElem);
-        } else if (!e.ctrlKey && !e.metaKey) {
-            // If not holding Ctrl, deselect cells that are no longer in the rectangle.
-            removeCellFromSelection(cellElem);
-        }
-    }
-});
-
-document.addEventListener('mouseup', (e) => {
-    if (!isDragging) return;
-    isDragging = false;
-
-    // Store the mouse up position for context menu
-    lastMouseUpX = e.clientX;
-    lastMouseUpY = e.clientY;
-
-    if (selectionBox) {
-        selectionBox.style.display = 'none';
-
-        // Distinguish a click from a drag by checking how much the mouse moved.
-        const movedDuringDrag = Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5;
-        const target = e.target as HTMLElement;
-        const cell = target.closest('.cell') as HTMLElement | null;
-
-        if (!movedDuringDrag && cell) { // This was a click, not a drag.
-            if (e.ctrlKey || e.metaKey) {
-                // With Ctrl, toggle the clicked cell to build multi-selection
-                toggleCellSelection(cell);
-                console.log(`Multi-select: ${selectedCells.size} cells selected`);
-            } else {
-                // Without Ctrl, it's a simple click.
-                // Clear others and select just this one
-                clearSelection();
-                addCellToSelection(cell);
-            }
-        }
-        // If it was a drag (movedDuringDrag is true), we do nothing on mouseup.
-        // The selection was already handled by the 'mousemove' event.
-    }
-});
-
-
-function toggleCellSelection(cell: HTMLElement) {
-    if (selectedCells.has(cell)) {
-        removeCellFromSelection(cell);
-    } else {
-        addCellToSelection(cell);
-    }
-}
-
-function addCellToSelection(cell: HTMLElement) {
-    if (!selectedCells.has(cell)) {
-        selectedCells.add(cell);
-        cell.classList.add('selected');
-    }
-}
-
-function removeCellFromSelection(cell: HTMLElement) {
-    if (selectedCells.has(cell)) {
-        selectedCells.delete(cell);
-        cell.classList.remove('selected');
-    }
-}
-
-function clearSelection() {
-    selectedCells.forEach(cell => {
-        cell.classList.remove('selected');
-    });
-    selectedCells.clear();
-}
-
-grid.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    const target = e.target as HTMLElement;
-    const cell = target.closest('.cell') as HTMLElement | null;
-
-    // Position menu on the right side of the screen
-    const menuX = e.pageX;
-    const menuY = e.pageY;
-
-    if (cell) {
-        if (e.ctrlKey || e.metaKey) {
-            // Ctrl+right-click: toggle the cell in selection and show menu
-            toggleCellSelection(cell);
-            if (selectedCells.size > 0) {
-                showContextMenu(menuX, menuY);
-            } else {
-                hideContextMenu();
-            }
-        } else if (selectedCells.has(cell)) {
-            // Right-click on already selected cell: keep selection, show menu
-            showContextMenu(menuX, menuY);
+    try {
+        // Call the CheckAgentHealth gRPC method
+        const response = await dataClient.checkAgentHealth({}).response;
+        
+        if (response.available) {
+            // Enable the input
+            chatInput.disabled = false;
+            chatInput.placeholder = "drop 50% of the samples with losses between 1.4 and 1.9";
+            chatInput.title = "";
         } else {
-            // Right-click on unselected cell: clear others, select this one, show menu
-            clearSelection();
-            addCellToSelection(cell);
-            showContextMenu(menuX, menuY);
+            // Disable the input
+            chatInput.disabled = true;
+            chatInput.placeholder = "Agent is not available";
+            chatInput.title = "Agent is not available - please ensure Ollama is running";
         }
-    } else {
-        // Right-click on empty space: clear selection and hide menu
-        clearSelection();
-        hideContextMenu();
+    } catch (error) {
+        console.error("Error checking agent health:", error);
+        // On error, disable the input as a safety measure
+        chatInput.disabled = true;
+        chatInput.placeholder = "Agent is not available";
+        chatInput.title = "Agent is not available - please ensure Ollama is running";
     }
-});
-
-function showContextMenu(x: number, y: number) {
-    contextMenu.style.left = `${x}px`;
-    contextMenu.style.top = `${y}px`;
-    contextMenu.classList.add('visible');
 }
 
-function hideContextMenu() {
-    contextMenu.classList.remove('visible');
-}
-
-document.addEventListener('click', (e) => {
-    // A drag is completed on mouseup, but a click event still fires.
-    // We check if the mouse moved significantly to distinguish a real click from the end of a drag.
-    const movedDuringDrag = Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5;
-
-    const target = e.target as HTMLElement;
-    if (!target.closest('.context-menu') && !target.closest('.cell') && !isDragging && !movedDuringDrag) {
-        hideContextMenu();
-        clearSelection();
-    }
-});
-
-contextMenu.addEventListener('click', async (e) => {
-    const action = (e.target as HTMLElement).dataset.action;
-    if (action) {
-        // Hide menu immediately when action is clicked
-        hideContextMenu();
-        
-        console.log(
-            `Action: ${action}, selected cells:`,
-            Array.from(selectedCells)
-                .map(c => getGridCell(c)?.getRecord()?.sampleId)
-                .filter(id => id !== undefined)
-        );
-
-        const sample_ids = Array.from(selectedCells)
-            .map(c => getGridCell(c)?.getRecord()?.sampleId)
-            .filter(id => id !== undefined)
-
-        let origins = []
-        for (const c of Array.from(selectedCells)) {
-            const gridCell = getGridCell(c);
-            const record = gridCell?.getRecord();
-            // console.log("record: ", record)
-            const originStat = record?.dataStats.find(stat => stat.name === 'origin');
-            if (originStat) {
-                origins.push(originStat.valueString as string);
-            }
-        }
-
-        switch (action) {
-            case 'add-tag':
-                const tag = prompt('Enter tag:');
-                console.log('Tag to add:', tag);
-
-                const request: DataEditsRequest = {
-                    statName: "tags",
-                    floatValue: 0,
-                    stringValue: String(tag),
-                    boolValue: false,
-                    type: SampleEditType.EDIT_OVERRIDE,
-                    samplesIds: sample_ids,
-                    sampleOrigins: origins
-                }
-                console.log("Sending tag request: ", request)
-                try {
-                    const response = await dataClient.editDataSample(request).response;
-                    console.log("Tag response:", response);
-                    if (!response.success) {
-                        console.error("Failed to add tag:", response.message);
-                        alert(`Failed to add tag: ${response.message}`);
-                    } else {
-                        // Update cells locally without reload
-                        updateAffectedCellsOnly(sample_ids, request);
-                    }
-                } catch (error) {
-                    console.error("Error adding tag:", error);
-                    alert(`Error adding tag: ${error}`);
-                }
-                break;
-            
-            case 'tag-non-discarded':
-                const tagNonDiscarded = prompt('Enter tag for all non-discarded cells:');
-                if (!tagNonDiscarded) break;
-                
-                // Filter to only non-discarded cells
-                const nonDiscardedIds: number[] = [];
-                const nonDiscardedOrigins: string[] = [];
-                
-                for (const cell of Array.from(selectedCells)) {
-                    const gridCell = getGridCell(cell);
-                    const record = gridCell?.getRecord();
-                    if (!record) continue;
-                    
-                    // Check if cell is discarded
-                    const denyListedStat = record.dataStats.find(stat => stat.name === 'deny_listed');
-                    const isDiscarded = denyListedStat?.value?.[0] === 1;
-                    
-                    if (!isDiscarded) {
-                        nonDiscardedIds.push(record.sampleId);
-                        const originStat = record.dataStats.find(stat => stat.name === 'origin');
-                        if (originStat?.valueString) {
-                            nonDiscardedOrigins.push(originStat.valueString);
-                        }
-                    }
-                }
-                
-                if (nonDiscardedIds.length === 0) {
-                    alert('No non-discarded samples selected');
-                    break;
-                }
-                
-                const tagNonDiscardedRequest: DataEditsRequest = {
-                    statName: "tags",
-                    floatValue: 0,
-                    stringValue: tagNonDiscarded,
-                    boolValue: false,
-                    type: SampleEditType.EDIT_OVERRIDE,
-                    samplesIds: nonDiscardedIds,
-                    sampleOrigins: nonDiscardedOrigins
-                };
-                
-                console.log(`Tagging ${nonDiscardedIds.length} non-discarded samples with: ${tagNonDiscarded}`);
-                try {
-                    const response = await dataClient.editDataSample(tagNonDiscardedRequest).response;
-                    console.log("Tag non-discarded response:", response);
-                    if (!response.success) {
-                        console.error("Failed to tag non-discarded:", response.message);
-                        alert(`Failed to tag: ${response.message}`);
-                    } else {
-                        alert(`Tagged ${nonDiscardedIds.length} non-discarded samples`);
-                        // Update cells locally without reload
-                        updateAffectedCellsOnly(nonDiscardedIds, tagNonDiscardedRequest);
-                    }
-                } catch (error) {
-                    console.error("Error tagging non-discarded:", error);
-                    alert(`Error: ${error}`);
-                }
-                break;
-            
-            case 'discard':
-                selectedCells.forEach(cell => {
-                    const gridCell = getGridCell(cell);
-                    if (gridCell) {
-                        cell.classList.add('discarded');
-                    }
-                });
-
-                const drequest: DataEditsRequest = {
-                    statName: "deny_listed",
-                    floatValue: 0,
-                    stringValue: '',
-                    boolValue: true,
-                    type: SampleEditType.EDIT_OVERRIDE,
-                    samplesIds: sample_ids,
-                    sampleOrigins: origins
-                }
-                console.log("Sending discard request: ", drequest)
-                try {
-                    const dresponse = await dataClient.editDataSample(drequest).response;
-                    console.log("Discard response:", dresponse);
-                    if (!dresponse.success) {
-                        console.error("Failed to discard:", dresponse.message);
-                    } else {
-                        // Update cells locally without reload
-                        updateAffectedCellsOnly(sample_ids, drequest);
-                    }
-                } catch (error) {
-                    console.error("Error discarding:", error);
-                }
-                break;
-        }
-        
-        // Don't clear selection after action - keep it for potential additional operations
-        // User can click elsewhere to clear selection
-    }
-});
+// =============================================================================
+// Old selection code removed - now using SelectionManager and ContextMenu classes
+// =============================================================================
 
 // =============================================================================
 // Helper functions for selective cell updates
