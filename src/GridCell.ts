@@ -78,7 +78,157 @@ function drawMaskOnContext(
     ctx.putImageData(imageData, 0, 0);
 }
 
+function drawDiffMaskOnContext(
+    ctx: CanvasRenderingContext2D,
+    gtStat: any,
+    predStat: any,
+    canvasWidth: number,
+    canvasHeight: number
+) {
+    if (!gtStat || !predStat) return;
+    if (!Array.isArray(gtStat.value) || !Array.isArray(gtStat.shape)) return;
+    if (!Array.isArray(predStat.value) || !Array.isArray(predStat.shape)) return;
 
+    const gtValues = gtStat.value as number[];
+    const gtShape = gtStat.shape as number[];
+    const predValues = predStat.value as number[];
+    const predShape = predStat.shape as number[];
+
+    // assume same shape, accept [H,W], [1,H,W], [H,W,1]
+    const getHW = (shape: number[]): [number, number] | null => {
+        if (shape.length === 2) return [shape[0], shape[1]];
+        if (shape.length === 3) return [shape[shape.length - 2], shape[shape.length - 1]];
+        return null;
+    };
+
+    const gtHW = getHW(gtShape);
+    const predHW = getHW(predShape);
+    if (!gtHW || !predHW) return;
+
+    const [gtH, gtW] = gtHW;
+    const [predH, predW] = predHW;
+
+    const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+    const data = imageData.data;
+
+    const scaleYgt = gtH / canvasHeight;
+    const scaleXgt = gtW / canvasWidth;
+    const scaleYpred = predH / canvasHeight;
+    const scaleXpred = predW / canvasWidth;
+
+    // Colors for errors:
+    const fnColor: [number, number, number, number] = [0, 0, 255, 200];   // FN = GT=1, Pred=0 (blue)
+    const fpColor: [number, number, number, number] = [255, 0, 0, 200];   // FP = GT=0, Pred=1 (red)
+
+    for (let y = 0; y < canvasHeight; y++) {
+        for (let x = 0; x < canvasWidth; x++) {
+            const gtY = Math.floor(y * scaleYgt);
+            const gtX = Math.floor(x * scaleXgt);
+            const predY = Math.floor(y * scaleYpred);
+            const predX = Math.floor(x * scaleXpred);
+
+            const gtIdx = gtY * gtW + gtX;
+            const predIdx = predY * predW + predX;
+
+            const gtVal = gtValues[gtIdx] || 0;
+            const predVal = predValues[predIdx] || 0;
+
+            const gtFg = gtVal > 0;
+            const predFg = predVal > 0;
+
+            // Only highlight mismatches
+            if (gtFg === predFg) continue;
+
+            const idx = (y * canvasWidth + x) * 4;
+            const rBase = data[idx + 0];
+            const gBase = data[idx + 1];
+            const bBase = data[idx + 2];
+
+            const color = gtFg && !predFg ? fnColor : fpColor;
+            const [rOverlay, gOverlay, bOverlay, aOverlay] = color;
+            const alpha = aOverlay / 255;
+
+            data[idx + 0] = (1 - alpha) * rBase + alpha * rOverlay;
+            data[idx + 1] = (1 - alpha) * gBase + alpha * gOverlay;
+            data[idx + 2] = (1 - alpha) * bBase + alpha * bOverlay;
+            data[idx + 3] = 255;
+        }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+}
+
+type ClassPreference = {
+    enabled: boolean;
+    color: string;
+};
+
+function drawMultiClassMaskOnContext(
+    ctx: CanvasRenderingContext2D,
+    maskStat: any,
+    canvasWidth: number,
+    canvasHeight: number,
+    classPrefs: Record<number, ClassPreference> | undefined,
+    alpha: number
+) {
+    if (!maskStat || !Array.isArray(maskStat.value) || !Array.isArray(maskStat.shape)) {
+        return;
+    }
+    if (!classPrefs) return;
+
+    const values = maskStat.value as number[];
+    const shape = maskStat.shape as number[];
+
+    let maskH: number;
+    let maskW: number;
+    if (shape.length === 2) {
+        maskH = shape[0];
+        maskW = shape[1];
+    } else if (shape.length === 3) {
+        maskH = shape[shape.length - 2];
+        maskW = shape[shape.length - 1];
+    } else {
+        return;
+    }
+
+    const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+    const data = imageData.data;
+
+    const scaleY = maskH / canvasHeight;
+    const scaleX = maskW / canvasWidth;
+
+    for (let y = 0; y < canvasHeight; y++) {
+        for (let x = 0; x < canvasWidth; x++) {
+            const srcY = Math.floor(y * scaleY);
+            const srcX = Math.floor(x * scaleX);
+            const idxMask = srcY * maskW + srcX;
+
+            const clsId = values[idxMask] ?? 0;
+            const pref = classPrefs[clsId];
+            if (!pref || !pref.enabled) continue;
+            if (clsId === 0) continue; // ignore background if it exists
+
+            const hex = pref.color.replace('#', '');
+            if (hex.length !== 6) continue;
+
+            const rOverlay = parseInt(hex.slice(0, 2), 16);
+            const gOverlay = parseInt(hex.slice(2, 4), 16);
+            const bOverlay = parseInt(hex.slice(4, 6), 16);
+
+            const idx = (y * canvasWidth + x) * 4;
+            const rBase = data[idx + 0];
+            const gBase = data[idx + 1];
+            const bBase = data[idx + 2];
+
+            data[idx + 0] = (1 - alpha) * rBase + alpha * rOverlay;
+            data[idx + 1] = (1 - alpha) * gBase + alpha * gOverlay;
+            data[idx + 2] = (1 - alpha) * bBase + alpha * bOverlay;
+            data[idx + 3] = 255;
+        }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+}
 
 
 export class GridCell {
@@ -123,6 +273,30 @@ export class GridCell {
         this.displayPreferences = displayPreferences;
     }
 
+    private redrawSegmentation(): void {
+        if (!this.displayPreferences) return;
+        if (!this.cachedRawBytes) return;
+
+        const base64 = bytesToBase64(this.cachedRawBytes);
+        const baseImageUrl = `data:image/png;base64,${base64}`;
+
+        const showRaw = this.displayPreferences['showRawImage'] as boolean ?? true;
+        const showGt = this.displayPreferences['showGtMask'] as boolean ?? true;
+        const showPred = this.displayPreferences['showPredMask'] as boolean ?? true;
+        const showDiff = this.displayPreferences['showDiffMask'] as boolean ?? false;
+
+        this.applySegmentationVisualization(
+            baseImageUrl,
+            this.cachedGtStat,
+            this.cachedPredStat,
+            showRaw,
+            showGt,
+            showPred,
+            showDiff
+        );
+    }
+
+
     populate(record: DataRecord, displayPreferences: DisplayPreferences): void {
         this.record = record;
         this.displayPreferences = displayPreferences;
@@ -148,23 +322,14 @@ export class GridCell {
             const gtStat = record.dataStats.find(stat => stat.name === 'label' && stat.type === 'array');
             const predStat = record.dataStats.find(stat => stat.name === 'pred_mask' && stat.type === 'array');
 
-            if (rawStat && rawStat.value && rawStat.shape && (gtStat || predStat)) {
-                const base64 = bytesToBase64(new Uint8Array(rawStat.value));
-                const dataUrl = `data:image/png;base64,${base64}`;
+            this.cachedRawBytes = rawStat && rawStat.value ? new Uint8Array(rawStat.value) : null;
+            this.cachedRawShape = rawStat?.shape || null;
+            this.cachedGtStat = gtStat || null;
+            this.cachedPredStat = predStat || null;
 
-                const showRaw = displayPreferences['showRawImage'] ?? true;
-                const showGt = displayPreferences['showGtMask'] ?? true;
-                const showPred = displayPreferences['showPredMask'] ?? true;
-
-                this.applySegmentationVisualization(
-                    dataUrl,
-                    gtStat || null,
-                    predStat || null,
-                    showRaw,
-                    showGt,
-                    showPred
-                );
-                return; // Skip normal image path
+            if (this.cachedRawBytes) {
+                this.redrawSegmentation();
+                return; // segmentation path handled
             }
         }
 
@@ -268,13 +433,14 @@ export class GridCell {
         predStat: any | null,
         showRaw: boolean,
         showGt: boolean,
-        showPred: boolean
+        showPred: boolean,
+        showDiff: boolean
     ): void {
         const img = new Image();
         img.onload = () => {
             const width = img.width;
             const height = img.height;
-            if (width === 0 || height === 0) {
+            if (!width || !height) {
                 this.setImageSrc(baseImageUrl);
                 return;
             }
@@ -288,23 +454,33 @@ export class GridCell {
                 return;
             }
 
-            // 1) Draw or clear base
+            // 1) Base: raw image or black
             if (showRaw) {
                 ctx.drawImage(img, 0, 0, width, height);
             } else {
                 ctx.clearRect(0, 0, width, height);
-                ctx.fillStyle = "black";  // or dark gray
+                ctx.fillStyle = 'black';
                 ctx.fillRect(0, 0, width, height);
             }
 
-            // 2) GT mask in green
-            if (showGt && gtStat) {
-                drawMaskOnContext(ctx, gtStat, width, height, [0, 255, 0, 120]);
-            }
+            const prefs = this.displayPreferences;
+            const classPrefs = prefs?.classPreferences as
+                | Record<number, ClassPreference>
+                | undefined;
 
-            // 3) Pred mask in magenta
-            if (showPred && predStat) {
-                drawMaskOnContext(ctx, predStat, width, height, [255, 0, 255, 120]);
+            // 2) Diff map, if enabled
+            if (showDiff && gtStat && predStat) {
+                // You can keep your existing (multi-class) drawDiffMaskOnContext here
+                drawDiffMaskOnContext(ctx, gtStat, predStat, width, height);
+            } else {
+                // 3) GT / Pred overlays with per-class toggles & colors
+                if (showGt && gtStat) {
+                    drawMultiClassMaskOnContext(ctx, gtStat, width, height, classPrefs, 0.45);
+                }
+                if (showPred && predStat) {
+                    // slightly different alpha to distinguish
+                    drawMultiClassMaskOnContext(ctx, predStat, width, height, classPrefs, 0.35);
+                }
             }
 
             const finalUrl = canvas.toDataURL();
@@ -416,9 +592,10 @@ export class GridCell {
                 const base64 = bytesToBase64(new Uint8Array(rawStat.value));
                 const dataUrl = `data:image/png;base64,${base64}`;
 
-                const showRaw = displayPreferences['showRawImage'] ?? true;
-                const showGt = displayPreferences['showGtMask'] ?? true;
-                const showPred = displayPreferences['showPredMask'] ?? true;
+                const showRaw = displayPreferences.showRawImage ?? true;
+                const showGt = displayPreferences.showGtMask ?? true;
+                const showPred = displayPreferences.showPredMask ?? true;
+                const showDiff = displayPreferences.showDiffMask ?? false;
 
                 this.applySegmentationVisualization(
                     dataUrl,
@@ -426,7 +603,8 @@ export class GridCell {
                     predStat || null,
                     showRaw,
                     showGt,
-                    showPred
+                    showPred,
+                    showDiff
                 );
                 return;
             }
