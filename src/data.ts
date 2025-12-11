@@ -17,6 +17,9 @@ import {
 import { DataDisplayOptionsPanel, SplitColors } from "./DataDisplayOptionsPanel";
 import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteractionsPanel";
 import { GridManager } from "./GridManager";
+import { SelectionManager } from "./SelectionManager";
+import { ContextMenu } from "./ContextMenu";
+import { GridCell } from "./GridCell";
 import { initializeDarkMode } from "./darkMode";
 
 

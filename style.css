@@ -101,7 +101,7 @@ body.dark-mode {
 .container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 10vh;
 }
 
 /* Top controls bar */
@@ -534,19 +534,17 @@ body.dark-mode #chat-input:focus {
 #cells-grid {
   display: grid;
   gap: 12px;
-  width: auto;
-  max-width: 1400px;
-  margin: 1rem auto;
-  /* centers as a block */
-  padding: 12px;
-  border: 1px solid var(--border-subtle);
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: none;
   box-sizing: border-box;
-  background: radial-gradient(circle at top, #e5e7eb, #f9fafb);
+  background: transparent;
 
-  justify-content: center;
-  /* center columns themselves */
+  justify-content: start;
   align-content: start;
-  justify-items: stretch;
+  justify-items: start;
 }
 
 .grid-content {
@@ -927,6 +925,25 @@ body.dark-mode .toggle-button:hover {
   height: 1px;
   background-color: var(--border-color);
   margin: 0.4rem 0;
+}
+
+/* Dark mode: context menu */
+body.dark-mode .context-menu {
+  background-color: #111827;
+  border-color: rgba(55, 65, 81, 1);
+  color: #f9fafb;
+}
+body.dark-mode .context-menu-item {
+  color: #f9fafb;
+}
+body.dark-mode .context-menu-item:hover {
+  background-color: #1f2937;
+}
+body.dark-mode .context-menu-item.danger {
+  color: #fca5a5;
+}
+body.dark-mode .context-menu-separator {
+  background-color: rgba(75, 85, 99, 1);
 }
 
 /* Tooltip content */
