@@ -14,6 +14,72 @@ function bytesToBase64(bytes: Uint8Array): string {
     return btoa(binary);
 }
 
+function drawMaskOnContext(
+    ctx: CanvasRenderingContext2D,
+    maskStat: any,
+    canvasWidth: number,
+    canvasHeight: number,
+    color: [number, number, number, number]  // RGBA, 0–255
+) {
+    if (!maskStat || !Array.isArray(maskStat.value) || !Array.isArray(maskStat.shape)) {
+        return;
+    }
+
+    const maskValues = maskStat.value as number[];
+    const shape = maskStat.shape as number[];
+
+    // Accept [H, W] or [1, H, W] or [H, W, 1]
+    let maskH: number;
+    let maskW: number;
+    if (shape.length === 2) {
+        maskH = shape[0];
+        maskW = shape[1];
+    } else if (shape.length === 3) {
+        maskH = shape[shape.length - 2];
+        maskW = shape[shape.length - 1];
+    } else {
+        return;
+    }
+
+    const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+    const data = imageData.data;
+
+    const scaleY = maskH / canvasHeight;
+    const scaleX = maskW / canvasWidth;
+
+    const [rOverlay, gOverlay, bOverlay, aOverlay] = color;
+    const alpha = aOverlay / 255;
+
+    for (let y = 0; y < canvasHeight; y++) {
+        for (let x = 0; x < canvasWidth; x++) {
+            const srcY = Math.floor(y * scaleY);
+            const srcX = Math.floor(x * scaleX);
+            const maskIdx = srcY * maskW + srcX;
+
+            const v = maskValues[maskIdx] || 0;
+            // Simple rule: >0 == foreground
+            if (v > 0) {
+                const idx = (y * canvasWidth + x) * 4;
+
+                // Alpha blend overlay color with existing pixel
+                const rBase = data[idx + 0];
+                const gBase = data[idx + 1];
+                const bBase = data[idx + 2];
+
+                data[idx + 0] = (1 - alpha) * rBase + alpha * rOverlay;
+                data[idx + 1] = (1 - alpha) * gBase + alpha * gOverlay;
+                data[idx + 2] = (1 - alpha) * bBase + alpha * bOverlay;
+                // leave data[idx + 3] (alpha) unchanged
+                data[idx + 3] = 255;
+            }
+        }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+}
+
+
+
 
 export class GridCell {
     private element: HTMLElement;
@@ -21,6 +87,12 @@ export class GridCell {
     private label: HTMLSpanElement;
     private record: DataRecord | null = null;
     private displayPreferences: DisplayPreferences | null = null;
+
+    private taskType: string | null = null;
+    private cachedRawBytes: Uint8Array | null = null;
+    private cachedRawShape: number[] | null = null;
+    private cachedGtStat: any | null = null;
+    private cachedPredStat: any | null = null;
 
     constructor(width: number, height: number) {
         this.element = document.createElement('div');
@@ -63,6 +135,37 @@ export class GridCell {
             this.element.classList.add('discarded');
         } else {
             this.element.classList.remove('discarded');
+        }
+
+        // --------------------------------------------------------------------
+        // SEGMENTATION: raw image + GT + predicted mask overlays
+        // --------------------------------------------------------------------
+        const taskTypeStat = record.dataStats.find(stat => stat.name === 'task_type');
+        const taskType = taskTypeStat?.valueString || '';
+
+        if (taskType === 'segmentation') {
+            const rawStat = record.dataStats.find(stat => stat.name === 'raw_data' && stat.type === 'bytes');
+            const gtStat = record.dataStats.find(stat => stat.name === 'label' && stat.type === 'array');
+            const predStat = record.dataStats.find(stat => stat.name === 'pred_mask' && stat.type === 'array');
+
+            if (rawStat && rawStat.value && rawStat.shape && (gtStat || predStat)) {
+                const base64 = bytesToBase64(new Uint8Array(rawStat.value));
+                const dataUrl = `data:image/png;base64,${base64}`;
+
+                const showRaw = displayPreferences['showRawImage'] ?? true;
+                const showGt = displayPreferences['showGtMask'] ?? true;
+                const showPred = displayPreferences['showPredMask'] ?? true;
+
+                this.applySegmentationVisualization(
+                    dataUrl,
+                    gtStat || null,
+                    predStat || null,
+                    showRaw,
+                    showGt,
+                    showPred
+                );
+                return; // Skip normal image path
+            }
         }
 
         // Look for the 'image' stat (array type with pixel data)
@@ -159,6 +262,60 @@ export class GridCell {
         }
     }
 
+    private applySegmentationVisualization(
+        baseImageUrl: string,
+        gtStat: any | null,
+        predStat: any | null,
+        showRaw: boolean,
+        showGt: boolean,
+        showPred: boolean
+    ): void {
+        const img = new Image();
+        img.onload = () => {
+            const width = img.width;
+            const height = img.height;
+            if (width === 0 || height === 0) {
+                this.setImageSrc(baseImageUrl);
+                return;
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                this.setImageSrc(baseImageUrl);
+                return;
+            }
+
+            // 1) Draw or clear base
+            if (showRaw) {
+                ctx.drawImage(img, 0, 0, width, height);
+            } else {
+                ctx.clearRect(0, 0, width, height);
+                ctx.fillStyle = "black";  // or dark gray
+                ctx.fillRect(0, 0, width, height);
+            }
+
+            // 2) GT mask in green
+            if (showGt && gtStat) {
+                drawMaskOnContext(ctx, gtStat, width, height, [0, 255, 0, 120]);
+            }
+
+            // 3) Pred mask in magenta
+            if (showPred && predStat) {
+                drawMaskOnContext(ctx, predStat, width, height, [255, 0, 255, 120]);
+            }
+
+            const finalUrl = canvas.toDataURL();
+            this.setImageSrc(finalUrl);
+        };
+
+        img.src = baseImageUrl;
+    }
+
+
+
     private formatFieldValue(value: any): string {
         if (Array.isArray(value)) {
             return value.map(item => this.formatFieldValue(item)).join(',');
@@ -244,6 +401,36 @@ export class GridCell {
         this.displayPreferences = displayPreferences;
         this.updateLabel();
         this.updateBorderColor();
+
+        if (!this.record) return;
+
+        const taskTypeStat = this.record.dataStats.find(stat => stat.name === 'task_type');
+        const taskType = taskTypeStat?.valueString || '';
+
+        if (taskType === 'segmentation') {
+            const rawStat = this.record.dataStats.find(stat => stat.name === 'raw_data' && stat.type === 'bytes');
+            const gtStat = this.record.dataStats.find(stat => stat.name === 'label' && stat.type === 'array');
+            const predStat = this.record.dataStats.find(stat => stat.name === 'pred_mask' && stat.type === 'array');
+
+            if (rawStat && rawStat.value && rawStat.shape && (gtStat || predStat)) {
+                const base64 = bytesToBase64(new Uint8Array(rawStat.value));
+                const dataUrl = `data:image/png;base64,${base64}`;
+
+                const showRaw = displayPreferences['showRawImage'] ?? true;
+                const showGt = displayPreferences['showGtMask'] ?? true;
+                const showPred = displayPreferences['showPredMask'] ?? true;
+
+                this.applySegmentationVisualization(
+                    dataUrl,
+                    gtStat || null,
+                    predStat || null,
+                    showRaw,
+                    showGt,
+                    showPred
+                );
+                return;
+            }
+        }
     }
 
     public getRecord(): DataRecord | null {

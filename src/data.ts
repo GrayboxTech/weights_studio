@@ -38,8 +38,8 @@ let currentFetchRequestId = 0;
 
 
 function getSplitColors(): SplitColors {
-    const trainColor = (document.getElementById('train-color') as HTMLInputElement)?.value;
-    const evalColor = (document.getElementById('eval-color') as HTMLInputElement)?.value;
+    const trainColor = (document.getElementById('color-train') as HTMLInputElement)?.value;
+    const evalColor = (document.getElementById('color-eval') as HTMLInputElement)?.value;
 
     console.log()
     return { train: trainColor, eval: evalColor };
@@ -252,20 +252,14 @@ async function refreshDynamicStatsOnly() {
     const count = traversalPanel.getLeftSamples();
     const batchSize = 32;
 
-    const preferences = displayOptionsPanel.getDisplayPreferences();
-    preferences.splitColors = getSplitColors();
-
-    // Here we DO NOT clear cells, we only update them
     for (let i = 0; i < count; i += batchSize) {
         const currentBatchSize = Math.min(batchSize, count - i);
         const request: DataSamplesRequest = {
             startIndex: start + i,
             recordsCnt: currentBatchSize,
-            includeRawData: false,          // <<-- important
+            includeRawData: false,          // important: no images
             includeTransformedData: false,
-            // Ask only for dynamic stats, if you want to be explicit
-            // statsToRetrieve: ["sample_last_loss", "sample_encounters", "deny_listed", "tags"]
-            statsToRetrieve: [],
+            statsToRetrieve: [],            // dynamic stats only
             resizeWidth: 0,
             resizeHeight: 0
         };
@@ -276,9 +270,7 @@ async function refreshDynamicStatsOnly() {
             response.dataRecords.forEach((record, index) => {
                 const cell = gridManager.getCellbyIndex(i + index);
                 if (cell) {
-                    // You might want a method like `updateFromRecord` if `populate` resets everything
-                    cell.populate(record, preferences);
-                    // or a more selective `cell.updateStats(record)`
+                    cell.updateStats(record);
                 }
             });
         } else if (!response.success) {

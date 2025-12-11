@@ -76,33 +76,54 @@
               <label><b>Colors</b></label>
               <div class="color-inputs">
                 <div class="color-picker-wrapper">
-                  <label for="color-train">Train</label>
-                  <input type="color" id="color-train" class="color-picker" value="#4CAF50" />
+                  <label for="train-color">Train</label>
+                  <input type="color" id="train-color" class="color-picker" value="#4CAF50" />
                 </div>
                 <div class="color-picker-wrapper">
-                  <label for="color-eval">Eval</label>
-                  <input type="color" id="color-eval" class="color-picker" value="#2196F3" />
+                  <label for="eval-color">Eval</label>
+                  <input type="color" id="eval-color" class="color-picker" value="#2196F3" />
                 </div>
               </div>
             </div>
           </div>
+
+          <!-- segmentation visualization toggles -->
+          <div class="options-section">
+            <div class="options-row">
+              <label><b>Segmentation</b></label>
+              <div class="checkbox-inputs">
+                <label>
+                  <input type="checkbox" id="toggle-raw" checked>
+                  Raw image
+                </label>
+                <label>
+                  <input type="checkbox" id="toggle-gt" checked>
+                  GT mask
+                </label>
+                <label>
+                  <input type="checkbox" id="toggle-pred" checked>
+                  Pred mask
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
+        <div class="main-content">
+          <div id="cells-grid"></div>
         </div>
       </div>
-
-      <div class="main-content">
-        <div id="cells-grid"></div>
-      </div>
     </div>
-  </div>
 
-  <div id="context-menu" class="context-menu">
-    <div class="context-menu-item" data-action="add-tag">Add Tag...</div>
-    <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="discard">Discard</div>
-  </div>
+    <div id="context-menu" class="context-menu">
+      <div class="context-menu-item" data-action="add-tag">Add Tag...</div>
+      <div class="context-menu-separator"></div>
+      <div class="context-menu-item" data-action="discard">Discard</div>
+    </div>
 
-  <script type="module" src="/src/data.ts"></script>
-  <!-- <script type="module" src="/src/selection.ts"></script> -->
+    <script type="module" src="/src/data.ts"></script>
+    <!-- <script type="module" src="/src/selection.ts"></script> -->
 </body>
 
 </html>

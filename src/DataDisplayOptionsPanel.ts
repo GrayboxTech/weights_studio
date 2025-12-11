@@ -7,9 +7,15 @@ export type SplitColors = {
 };
 
 export type DisplayPreferences = {
-    [key: string]: boolean;
+    [key: string]: boolean | SplitColors;
     splitColors?: SplitColors;
+
+    // segmentation-layer toggles
+    showRawImage?: boolean;
+    showGtMask?: boolean;
+    showPredMask?: boolean;
 };
+
 
 export class DataDisplayOptionsPanel {
     private element: HTMLElement; // The options-section container
@@ -48,7 +54,7 @@ export class DataDisplayOptionsPanel {
         if (firstRecord.dataStats) {
             console.log('[DataDisplayOptionsPanel] First record dataStats:', firstRecord.dataStats);
             console.log('[DataDisplayOptionsPanel] Number of stats:', firstRecord.dataStats.length);
-            
+
             firstRecord.dataStats.forEach(stat => {
                 console.log(`[DataDisplayOptionsPanel] Processing stat: ${stat.name}, type: ${typeof stat.name}`);
                 if (stat.name !== 'raw_data') {
@@ -58,6 +64,12 @@ export class DataDisplayOptionsPanel {
         } else {
             console.warn('[DataDisplayOptionsPanel] No dataStats found in first record');
         }
+
+        // segmentation layer toggles (not real stats)
+        // These will be used by GridCell to decide what to draw
+        availableFields.add('showRawImage');
+        availableFields.add('showGtMask');
+        availableFields.add('showPredMask');
 
         console.log('[DataDisplayOptionsPanel] Available fields after processing:', Array.from(availableFields));
 
@@ -71,13 +83,32 @@ export class DataDisplayOptionsPanel {
             checkbox.type = 'checkbox';
             checkbox.id = `display-${fieldName}`;
             checkbox.value = fieldName;
-            
-            // Only check sampleId and loss by default
-            checkbox.checked = (fieldName === 'sampleId' || fieldName === 'loss');
+
+            // Defaults:
+            // - sampleId: on
+            // - loss: on (if present)
+            // - segmentation toggles: all on by default
+            checkbox.checked =
+                fieldName === 'sampleId' ||
+                fieldName === 'loss' ||
+                fieldName === 'showRawImage' ||
+                fieldName === 'showGtMask' ||
+                fieldName === 'showPredMask';
 
             const label = document.createElement('label');
             label.htmlFor = checkbox.id;
-            label.textContent = fieldName; // Use exact name, no formatting
+
+            // prettier labels for our custom toggles
+            if (fieldName === 'showRawImage') {
+                label.textContent = 'Raw image';
+            } else if (fieldName === 'showGtMask') {
+                label.textContent = 'GT mask';
+            } else if (fieldName === 'showPredMask') {
+                label.textContent = 'Pred mask';
+            } else {
+                // existing behaviour
+                label.textContent = this.formatFieldName(fieldName);
+            }
 
             const wrapper = document.createElement('div');
             wrapper.className = 'checkbox-wrapper';
@@ -100,16 +131,27 @@ export class DataDisplayOptionsPanel {
         this.updateCallback?.();
     }
 
+
     private formatFieldName(name: string): string {
         return name.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
     }
 
     getDisplayPreferences(): DisplayPreferences {
         const preferences: DisplayPreferences = {};
-        // Query actual checkboxes from the Map
+
+        // Existing stats checkboxes
         for (const [field, checkbox] of this.checkboxes.entries()) {
             preferences[field] = checkbox.checked;
         }
+
+        const rawToggle = document.getElementById('toggle-raw') as HTMLInputElement | null;
+        const gtToggle = document.getElementById('toggle-gt') as HTMLInputElement | null;
+        const predToggle = document.getElementById('toggle-pred') as HTMLInputElement | null;
+
+        preferences['showRawImage'] = rawToggle ? rawToggle.checked : true;
+        preferences['showGtMask'] = gtToggle ? gtToggle.checked : true;
+        preferences['showPredMask'] = predToggle ? predToggle.checked : true;
+
         return preferences;
     }
 
@@ -122,7 +164,7 @@ export class DataDisplayOptionsPanel {
         // Cell size slider
         const cellSizeSlider = document.getElementById('cell-size') as HTMLInputElement;
         const cellSizeValue = document.getElementById('cell-size-value');
-        
+
         if (cellSizeSlider && cellSizeValue) {
             cellSizeSlider.addEventListener('input', () => {
                 cellSizeValue.textContent = cellSizeSlider.value;
@@ -133,13 +175,23 @@ export class DataDisplayOptionsPanel {
         // Zoom slider
         const zoomSlider = document.getElementById('zoom-level') as HTMLInputElement;
         const zoomValue = document.getElementById('zoom-value');
-        
+
         if (zoomSlider && zoomValue) {
             zoomSlider.addEventListener('input', () => {
                 zoomValue.textContent = `${zoomSlider.value}%`;
                 this.updateCallback?.();
             });
         }
+
+        const rawToggle = document.getElementById('toggle-raw') as HTMLInputElement | null;
+        const gtToggle = document.getElementById('toggle-gt') as HTMLInputElement | null;
+        const predToggle = document.getElementById('toggle-pred') as HTMLInputElement | null;
+
+        const onToggleChange = () => { this.updateCallback?.(); };
+
+        if (rawToggle) rawToggle.addEventListener('change', onToggleChange);
+        if (gtToggle) gtToggle.addEventListener('change', onToggleChange);
+        if (predToggle) predToggle.addEventListener('change', onToggleChange);
     }
 
     getCellSize(): number {
