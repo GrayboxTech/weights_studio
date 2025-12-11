@@ -14,11 +14,11 @@ import {
     HyperParameterCommand,
     HyperParameters,
 } from "./experiment_service";
-import { DataDisplayOptionsPanel } from "./DataDisplayOptionsPanel";
+import { DataDisplayOptionsPanel, SplitColors } from "./DataDisplayOptionsPanel";
 import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteractionsPanel";
 import { GridManager } from "./GridManager";
-import { SelectionManager } from "./SelectionManager";
-import { ContextMenu } from "./ContextMenu";
+import { initializeDarkMode } from "./darkMode";
+
 
 const SERVER_URL = "http://localhost:8080";
 
@@ -97,12 +97,32 @@ async function fetchAndDisplaySamples() {
 
             const currentBatchSize = Math.min(batchSize, count - i);
 
+            // Get user-specified image resolution percentage (0 = auto based on grid size)
+            const resolutionPercent = traversalPanel.getImageResolutionPercent();
+            let resizeWidth = 0;
+            let resizeHeight = 0;
+
+            if (resolutionPercent > 0 && resolutionPercent <= 100) {
+                // User specified a percentage - we'll send this as a special signal
+                // The backend will need to calculate actual dimensions based on original image size
+                // For now, we use a negative value to signal percentage mode
+                resizeWidth = -resolutionPercent;
+                resizeHeight = -resolutionPercent;
+            } else {
+                // Auto mode: use grid cell size
+                const cellSize = gridManager.calculateGridDimensions().cellSize;
+                resizeWidth = cellSize;
+                resizeHeight = cellSize;
+            }
+
             const request: DataSamplesRequest = {
                 startIndex: start + i,
                 recordsCnt: currentBatchSize,
                 includeRawData: true,
                 includeTransformedData: false,
-                statsToRetrieve: []
+                statsToRetrieve: [],
+                resizeWidth: resizeWidth,
+                resizeHeight: resizeHeight
             };
 
             const response = await fetchSamples(request);
@@ -276,7 +296,9 @@ async function refreshDynamicStatsOnly() {
             includeTransformedData: false,
             // Ask only for dynamic stats, if you want to be explicit
             // statsToRetrieve: ["sample_last_loss", "sample_encounters", "deny_listed", "tags"]
-            statsToRetrieve: []
+            statsToRetrieve: [],
+            resizeWidth: 0,
+            resizeHeight: 0
         };
 
         const response = await fetchSamples(request);
@@ -307,15 +329,47 @@ export async function initializeUIElements() {
     }
 
     const chatInput = document.getElementById('chat-input') as HTMLInputElement;
+    const chatSendBtn = document.getElementById('chat-send') as HTMLButtonElement;
+
+    const submitQuery = async () => {
+        if (chatInput && chatInput.value.trim() && chatSendBtn) {
+            const query = chatInput.value.trim();
+
+            // Set loading state
+            chatSendBtn.disabled = true;
+            chatSendBtn.classList.add('loading');
+            chatSendBtn.textContent = 'Working...';
+            chatInput.disabled = true;
+
+            try {
+                await handleQuerySubmit(query);
+                chatInput.value = '';
+            } finally {
+                // Reset state
+                chatSendBtn.disabled = false;
+                chatSendBtn.classList.remove('loading');
+                chatSendBtn.textContent = 'Send';
+                chatInput.disabled = false;
+                chatInput.focus();
+            }
+        }
+    };
+
     if (chatInput) {
         chatInput.addEventListener('keydown', async (event) => {
-            if (event.key === 'Enter' && chatInput.value.trim()) {
+            if (event.key === 'Enter') {
                 event.preventDefault();
-                await handleQuerySubmit(chatInput.value.trim());
-                chatInput.value = '';
+                await submitQuery();
             }
         });
     }
+
+    if (chatSendBtn) {
+        chatSendBtn.addEventListener('click', async () => {
+            await submitQuery();
+        });
+    }
+
 
     const toggleBtn = document.getElementById('toggle-training') as HTMLButtonElement | null;
     if (toggleBtn) {
@@ -549,7 +603,9 @@ export async function initializeUIElements() {
                 recordsCnt: 1,
                 includeRawData: true,
                 includeTransformedData: false,
-                statsToRetrieve: []
+                statsToRetrieve: [],
+                resizeWidth: 0,
+                resizeHeight: 0
             };
             const sampleResponse = await fetchSamples(sampleRequest);
 
@@ -716,11 +772,11 @@ document.addEventListener('modalContextMenuAction', async (e: any) => {
 
 
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', async () => {
-        await initializeUIElements();
+    document.addEventListener('DOMContentLoaded', () => {
+        initializeDarkMode();
+        initializeUIElements();
     });
 } else {
-    (async () => {
-        await initializeUIElements();
-    })();
+    initializeDarkMode();
+    initializeUIElements();
 }

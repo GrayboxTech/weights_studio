@@ -1,16 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <title>gRPC Samples Viewer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./style.css">
 
 </head>
 
 <body>
   <button id="grid-toggle" class="toggle-button expanded">−</button>
-  
+  <button id="dark-mode-toggle" class="toggle-button dark-mode-toggle" title="Toggle Dark Mode">◐</button>
+
   <div id="grid-content" class="grid-content">
     <div class="container">
       <div class="controls">
@@ -19,12 +21,12 @@
 
           <button id="toggle-training" class="control-button" data-state="running">Pause</button>
 
-          
+
           <div class="control-group">
             <label for="cell-size">Cell size</label>
             <input type="number" id="cell-size" value="150" min="10">
           </div>
-          
+
           <div class="control-group">
             <label for="zoom-level">Zoom</label>
             <select id="zoom-level">
@@ -33,7 +35,17 @@
               <option value="3">3x</option>
             </select>
           </div>
-          
+
+          <div class="control-group image-res-group">
+            <label>
+              <input type="checkbox" id="image-resolution-auto" checked>
+              Auto Res
+            </label>
+            <input type="range" id="image-resolution-percent" min="10" max="100" value="100" step="10" disabled
+              title="Image resolution % of original">
+            <span id="image-resolution-value">100%</span>
+          </div>
+
           <div class="slider-container">
             <span id="slider-min-label">0</span>
             <div class="slider-wrapper">
@@ -43,17 +55,19 @@
             <span id="slider-max-label">100</span>
           </div>
         </div>
-        
+
         <div class="controls-row">
-          <input type="text" id="chat-input" placeholder="drop 50% of the samples with losses between 1.4 and 1.9" />
+          <div class="chat-input-container">
+            <input type="text" id="chat-input" placeholder="drop 50% of the samples with losses between 1.4 and 1.9" />
+            <button id="chat-send" class="chat-send-button">Send</button>
+          </div>
         </div>
-        
+
         <div id="options-panel" class="options-panel" style="display: none;">
-            <div class="options-section">
-                <div class="options-row details-options-row">
-                    <label class="option-label">Details</label>
-                    <!-- Checkboxes will be dynamically generated here -->
-                </div>
+          <div class="options-section">
+            <div class="options-row details-options-row">
+              <label class="option-label">Details</label>
+              <!-- Checkboxes will be dynamically generated here -->
             </div>
             
             <div class="options-section">
@@ -70,12 +84,18 @@
                         </div>
                     </div>
                 </div>
+                <div class="color-picker-wrapper">
+                  <label for="color-eval">Eval</label>
+                  <input type="color" id="color-eval" class="color-picker" value="#2196F3" />
+                </div>
+              </div>
             </div>
+          </div>
         </div>
       </div>
-      
+
       <div class="main-content">
-          <div id="cells-grid"></div>
+        <div id="cells-grid"></div>
       </div>
     </div>
   </div>
@@ -83,4 +103,5 @@
   <script type="module" src="/src/data.ts"></script>
   <!-- <script type="module" src="/src/selection.ts"></script> -->
 </body>
+
 </html>
