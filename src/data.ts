@@ -32,16 +32,21 @@ let cellsContainer: HTMLElement | null;
 let displayOptionsPanel: DataDisplayOptionsPanel | null = null;
 let gridManager: GridManager;
 let isTraining = false; // local UI state, initialized from server on load (default to paused)
+let inspectorOpen = true;
+let inspectorContainer: HTMLElement | null = null;
+let inspectorPanel: HTMLElement | null = null;
+let trainingStatePill: HTMLElement | null = null;
+let trainingSummary: HTMLElement | null = null;
+let detailsToggle: HTMLButtonElement | null = null;
+let detailsBody: HTMLElement | null = null;
 
 let fetchTimeout: NodeJS.Timeout | null = null;
 let currentFetchRequestId = 0;
 
 
 function getSplitColors(): SplitColors {
-    const trainColor = (document.getElementById('color-train') as HTMLInputElement)?.value;
-    const evalColor = (document.getElementById('color-eval') as HTMLInputElement)?.value;
-
-    console.log()
+    const trainColor = (document.getElementById('train-color') as HTMLInputElement)?.value || '#4CAF50';
+    const evalColor = (document.getElementById('eval-color') as HTMLInputElement)?.value || '#2196F3';
     return { train: trainColor, eval: evalColor };
 }
 
@@ -176,6 +181,10 @@ async function updateLayout() {
         console.warn('[updateLayout] cellsContainer is missing.');
         return;
     }
+    if (!gridManager) {
+        console.warn('[updateLayout] gridManager is missing.');
+        return;
+    }
 
     gridManager.updateGridLayout();
     const gridDims = gridManager.calculateGridDimensions();
@@ -248,6 +257,8 @@ async function handleQuerySubmit(query: string): Promise<void> {
 async function refreshDynamicStatsOnly() {
     if (!displayOptionsPanel) return;
 
+    const displayPreferences = displayOptionsPanel.getDisplayPreferences();
+
     const start = traversalPanel.getStartIndex();
     const count = traversalPanel.getLeftSamples();
     const batchSize = 32;
@@ -269,8 +280,8 @@ async function refreshDynamicStatsOnly() {
         if (response.success && response.dataRecords.length > 0) {
             response.dataRecords.forEach((record, index) => {
                 const cell = gridManager.getCellbyIndex(i + index);
-                if (cell) {
-                    cell.updateStats(record);
+                if (cell && displayPreferences) {
+                    cell.populate(record, displayPreferences);
                 }
             });
         } else if (!response.success) {
@@ -332,12 +343,32 @@ export async function initializeUIElements() {
     }
 
 
+    inspectorContainer = document.querySelector('.inspector-container') as HTMLElement | null;
+    inspectorPanel = document.getElementById('options-panel') as HTMLElement | null;
+    trainingStatePill = document.getElementById('training-state-pill') as HTMLElement | null;
+    trainingSummary = document.getElementById('training-summary') as HTMLElement | null;
+    detailsToggle = document.getElementById('details-toggle') as HTMLButtonElement | null;
+    detailsBody = document.getElementById('details-body') as HTMLElement | null;
+
     const toggleBtn = document.getElementById('toggle-training') as HTMLButtonElement | null;
     if (toggleBtn) {
-        const updateToggleLabel = () => {
-            toggleBtn.textContent = isTraining ? 'Pause' : 'Resume';
-            toggleBtn.classList.toggle('running', isTraining);
-            toggleBtn.classList.toggle('paused', !isTraining);
+        const syncTrainingUI = () => {
+            if (toggleBtn) {
+                toggleBtn.textContent = isTraining ? 'Pause' : 'Resume';
+                toggleBtn.classList.toggle('running', isTraining);
+                toggleBtn.classList.toggle('paused', !isTraining);
+            }
+            if (trainingStatePill) {
+                trainingStatePill.textContent = isTraining ? 'Running' : 'Paused';
+                trainingStatePill.classList.toggle('pill-running', isTraining);
+                trainingStatePill.classList.toggle('pill-paused', !isTraining);
+            }
+            if (trainingSummary) {
+                const gridCount = gridManager ? gridManager.getCells().length : traversalPanel.getLeftSamples();
+                const start = traversalPanel.getStartIndex();
+                const end = Math.max(start, start + gridCount - 1);
+                trainingSummary.textContent = `TBD: add training stats`;
+            }
         };
 
         let lastToggleError: string | null = null;
@@ -346,6 +377,13 @@ export async function initializeUIElements() {
             try {
                 // Toggle desired state
                 const nextState = !isTraining;
+
+                // Optimistic UI update - update immediately for responsiveness
+                isTraining = nextState;
+                syncTrainingUI();
+
+                // Disable button while request is in flight
+                toggleBtn.disabled = true;
 
                 const cmd: TrainerCommand = {
                     getHyperParameters: false,
@@ -356,11 +394,17 @@ export async function initializeUIElements() {
                 };
 
                 const resp = await dataClient.experimentCommand(cmd).response;
+
+                // Re-enable button
+                toggleBtn.disabled = false;
+
                 if (resp.success) {
-                    isTraining = nextState;
-                    updateToggleLabel();
                     lastToggleError = null; // Reset error tracking on success
                 } else {
+                    // Revert UI on failure
+                    isTraining = !nextState;
+                    syncTrainingUI();
+
                     console.error('Failed to toggle training state:', resp.message);
                     const errorMsg = `Failed to toggle training: ${resp.message}`;
                     if (lastToggleError === errorMsg) {
@@ -369,6 +413,13 @@ export async function initializeUIElements() {
                     lastToggleError = errorMsg;
                 }
             } catch (err) {
+                // Re-enable button
+                toggleBtn.disabled = false;
+
+                // Revert UI on error
+                isTraining = !isTraining;
+                syncTrainingUI();
+
                 console.error('Error toggling training state:', err);
                 const errorMsg = 'Error toggling training state. See console for details.';
                 if (lastToggleError === errorMsg) {
@@ -398,7 +449,7 @@ export async function initializeUIElements() {
             console.warn('Could not fetch initial training state; defaulting to paused.', e);
             isTraining = false;
         } finally {
-            updateToggleLabel();
+            syncTrainingUI();
         }
     }
 
@@ -408,15 +459,9 @@ export async function initializeUIElements() {
         displayOptionsPanel = new DataDisplayOptionsPanel(detailsOptionsRow);
         displayOptionsPanel.initialize();
 
-        const optionsToggle = document.getElementById('options-toggle');
-        const optionsPanel = document.getElementById('options-panel');
-
-        if (optionsToggle && optionsPanel) {
-            optionsToggle.addEventListener('click', () => {
-                const isVisible = optionsPanel.style.display !== 'none';
-                optionsPanel.style.display = isVisible ? 'none' : 'block';
-                optionsToggle.classList.toggle('collapsed', isVisible);
-                optionsToggle.classList.toggle('expanded', !isVisible);
+        if (detailsToggle && inspectorPanel) {
+            detailsToggle.addEventListener('click', () => {
+                inspectorPanel.classList.toggle('details-collapsed');
             });
         }
 
@@ -444,14 +489,31 @@ export async function initializeUIElements() {
             });
         }
 
-        // Listen for color changes
-        const trainColorInput = document.getElementById('train-color');
-        const evalColorInput = document.getElementById('eval-color');
+        // Listen for color changes and persist to localStorage
+        const trainColorInput = document.getElementById('train-color') as HTMLInputElement;
+        const evalColorInput = document.getElementById('eval-color') as HTMLInputElement;
+
+        // Restore saved colors from localStorage
+        const savedTrainColor = localStorage.getItem('train-color');
+        const savedEvalColor = localStorage.getItem('eval-color');
+        if (savedTrainColor && trainColorInput) {
+            trainColorInput.value = savedTrainColor;
+        }
+        if (savedEvalColor && evalColorInput) {
+            evalColorInput.value = savedEvalColor;
+        }
+
         if (trainColorInput) {
-            trainColorInput.addEventListener('input', updateDisplayOnly);
+            trainColorInput.addEventListener('input', () => {
+                localStorage.setItem('train-color', trainColorInput.value);
+                updateDisplayOnly();
+            });
         }
         if (evalColorInput) {
-            evalColorInput.addEventListener('input', updateDisplayOnly);
+            evalColorInput.addEventListener('input', () => {
+                localStorage.setItem('eval-color', evalColorInput.value);
+                updateDisplayOnly();
+            });
         }
 
         // Checkbox changes only need display update, not layout recalculation
