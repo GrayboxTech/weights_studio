@@ -83,7 +83,8 @@ function drawDiffMaskOnContext(
     gtStat: any,
     predStat: any,
     canvasWidth: number,
-    canvasHeight: number
+    canvasHeight: number,
+    classPrefs?: Record<number, ClassPreference>  // ← Add class preferences
 ) {
     if (!gtStat || !predStat) return;
     if (!Array.isArray(gtStat.value) || !Array.isArray(gtStat.shape)) return;
@@ -117,8 +118,8 @@ function drawDiffMaskOnContext(
     const scaleXpred = predW / canvasWidth;
 
     // Colors for errors:
-    const fnColor: [number, number, number, number] = [0, 0, 255, 200];   // FN = GT=1, Pred=0 (blue)
-    const fpColor: [number, number, number, number] = [255, 0, 0, 200];   // FP = GT=0, Pred=1 (red)
+    const fnColor: [number, number, number, number] = [0, 0, 255, 200];   // FN = GT=class, Pred=other (blue)
+    const fpColor: [number, number, number, number] = [255, 0, 0, 200];   // FP = GT=other, Pred=class (red)
 
     for (let y = 0; y < canvasHeight; y++) {
         for (let x = 0; x < canvasWidth; x++) {
@@ -133,18 +134,40 @@ function drawDiffMaskOnContext(
             const gtVal = gtValues[gtIdx] || 0;
             const predVal = predValues[predIdx] || 0;
 
-            const gtFg = gtVal > 0;
-            const predFg = predVal > 0;
+            // If class preferences are provided, only show diffs for enabled classes
+            if (classPrefs) {
+                // Check if either GT or Pred class is enabled
+                const gtPref = classPrefs[gtVal];
+                const predPref = classPrefs[predVal];
 
-            // Only highlight mismatches
-            if (gtFg === predFg) continue;
+                // Skip if both classes are disabled
+                if ((!gtPref || !gtPref.enabled) && (!predPref || !predPref.enabled)) {
+                    continue;
+                }
+
+                // Skip if this is a match (no error)
+                if (gtVal === predVal) continue;
+
+                // Skip background (class 0) if not enabled
+                if (gtVal === 0 && (!gtPref || !gtPref.enabled)) continue;
+                if (predVal === 0 && (!predPref || !predPref.enabled)) continue;
+            } else {
+                // Original behavior: simple foreground/background diff
+                const gtFg = gtVal > 0;
+                const predFg = predVal > 0;
+
+                // Only highlight mismatches
+                if (gtFg === predFg) continue;
+            }
 
             const idx = (y * canvasWidth + x) * 4;
             const rBase = data[idx + 0];
             const gBase = data[idx + 1];
             const bBase = data[idx + 2];
 
-            const color = gtFg && !predFg ? fnColor : fpColor;
+            // FN (False Negative): GT has a class, Pred doesn't (or has wrong class) → Blue
+            // FP (False Positive): Pred has a class, GT doesn't (or has wrong class) → Red
+            const color = gtVal > predVal ? fnColor : fpColor;
             const [rOverlay, gOverlay, bOverlay, aOverlay] = color;
             const alpha = aOverlay / 255;
 
@@ -470,8 +493,8 @@ export class GridCell {
 
             // 2) Diff map, if enabled
             if (showDiff && gtStat && predStat) {
-                // You can keep your existing (multi-class) drawDiffMaskOnContext here
-                drawDiffMaskOnContext(ctx, gtStat, predStat, width, height);
+                // Pass class preferences to filter diff by enabled classes
+                drawDiffMaskOnContext(ctx, gtStat, predStat, width, height, classPrefs);
             } else {
                 // 3) GT / Pred overlays with per-class toggles & colors
                 if (showGt && gtStat) {
@@ -505,7 +528,7 @@ export class GridCell {
         return value?.toString() || '';
     }
 
-    private updateLabel(): void {
+    public updateLabel(): void {
         if (!this.record || !this.displayPreferences) {
             this.label.textContent = '';
             return;

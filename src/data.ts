@@ -281,7 +281,24 @@ async function refreshDynamicStatsOnly() {
             response.dataRecords.forEach((record, index) => {
                 const cell = gridManager.getCellbyIndex(i + index);
                 if (cell && displayPreferences) {
-                    cell.populate(record, displayPreferences);
+                    // Update the cell's record data without repopulating the entire cell
+                    // This preserves the current display state (overlay toggles, etc.)
+                    const currentRecord = cell.getRecord();
+                    if (currentRecord) {
+                        // Merge new stats into existing record
+                        record.dataStats.forEach(newStat => {
+                            const existingStatIndex = currentRecord.dataStats.findIndex(
+                                (s: any) => s.name === newStat.name
+                            );
+                            if (existingStatIndex >= 0) {
+                                currentRecord.dataStats[existingStatIndex] = newStat;
+                            } else {
+                                currentRecord.dataStats.push(newStat);
+                            }
+                        });
+                        // Update label to reflect new stats
+                        cell.updateLabel();
+                    }
                 }
             });
         } else if (!response.success) {
@@ -399,6 +416,8 @@ export async function initializeUIElements() {
                 toggleBtn.disabled = false;
 
                 if (resp.success) {
+                    // Persist state to localStorage for reload fallback
+                    localStorage.setItem('training-state', String(nextState));
                     lastToggleError = null; // Reset error tracking on success
                 } else {
                     // Revert UI on failure
@@ -429,28 +448,75 @@ export async function initializeUIElements() {
             }
         });
 
-        // Initialize state from server hyper parameters
-        try {
-            const initResp = await dataClient.experimentCommand({
-                getHyperParameters: true,
-                getInteractiveLayers: false,
-            }).response;
-            const hp = initResp.hyperParametersDescs || [];
-            const isTrainingDesc = hp.find(d => d.name === 'is_training' || d.label === 'is_training');
-            if (isTrainingDesc) {
-                // Bool may come as stringValue ('true'/'false') or numericalValue (1/0)
-                if (typeof isTrainingDesc.stringValue === 'string') {
-                    isTraining = isTrainingDesc.stringValue.toLowerCase() === 'true';
-                } else if (typeof isTrainingDesc.numericalValue === 'number') {
-                    isTraining = isTrainingDesc.numericalValue !== 0;
+        // Helper function to fetch training state with retry logic
+        // More patient settings for server startup
+        async function fetchInitialTrainingState(retries = 5, initialDelay = 1000): Promise<boolean> {
+            let delay = initialDelay;
+
+            for (let attempt = 0; attempt < retries; attempt++) {
+                try {
+                    const initResp = await dataClient.experimentCommand({
+                        getHyperParameters: true,
+                        getInteractiveLayers: false,
+                    }).response;
+
+                    const hp = initResp.hyperParametersDescs || [];
+                    const isTrainingDesc = hp.find(d => d.name === 'is_training' || d.label === 'is_training');
+
+                    if (isTrainingDesc) {
+                        let fetchedState = false;
+                        // Bool may come as stringValue ('true'/'false') or numericalValue (1/0)
+                        if (typeof isTrainingDesc.stringValue === 'string') {
+                            fetchedState = isTrainingDesc.stringValue.toLowerCase() === 'true';
+                        } else if (typeof isTrainingDesc.numericalValue === 'number') {
+                            fetchedState = isTrainingDesc.numericalValue !== 0;
+                        }
+
+                        // Successfully fetched - save to localStorage for future fallback
+                        localStorage.setItem('training-state', String(fetchedState));
+                        console.log(`Training state fetched from server: ${fetchedState}`);
+                        return fetchedState;
+                    }
+
+                    // No is_training parameter found, default to false
+                    return false;
+
+                } catch (e) {
+                    if (attempt < retries - 1) {
+                        console.log(`Retry ${attempt + 1}/${retries} to fetch training state in ${delay}ms...`);
+
+                        // Show visual feedback that we're retrying
+                        if (trainingStatePill) {
+                            trainingStatePill.textContent = `Connecting... (${attempt + 1}/${retries})`;
+                            trainingStatePill.classList.add('pill-paused');
+                        }
+
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay *= 2; // Exponential backoff
+                    } else {
+                        console.warn(`Failed to fetch training state after ${retries} attempts`, e);
+
+                        // Fall back to localStorage if available
+                        const savedState = localStorage.getItem('training-state');
+                        if (savedState !== null) {
+                            const cachedState = savedState === 'true';
+                            console.log(`Using cached training state from localStorage: ${cachedState}`);
+                            return cachedState;
+                        }
+
+                        // Ultimate fallback: default to false (paused)
+                        console.warn('No cached state available, defaulting to paused');
+                        return false;
+                    }
                 }
             }
-        } catch (e) {
-            console.warn('Could not fetch initial training state; defaulting to paused.', e);
-            isTraining = false;
-        } finally {
-            syncTrainingUI();
+
+            return false;
         }
+
+        // Initialize state from server with retry logic
+        isTraining = await fetchInitialTrainingState();
+        syncTrainingUI();
     }
 
     // Initialize display options panel
