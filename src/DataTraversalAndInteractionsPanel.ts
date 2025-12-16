@@ -15,8 +15,8 @@ export class DataTraversalAndInteractionsPanel {
     private startIndexSlider: HTMLInputElement | null = null;
     private startIndexTooltip: HTMLElement | null = null;
 
-    private maxSampleId: number = 60000;
-    private totalSamples: number = 60000;
+    private maxSampleId: number = 0;
+    private totalSamples: number = 0;
     private currentGridCount: number = 0;
 
     private onControlsChangeCallback: (() => void) | null = null;
