@@ -64,6 +64,80 @@ export class GridCell {
         modal.style.alignItems = 'center';
         modal.style.zIndex = '9999';
         
+        // Create container for left panel and center content
+        const mainContainer = document.createElement('div');
+        mainContainer.style.display = 'flex';
+        mainContainer.style.gap = '20px';
+        mainContainer.style.alignItems = 'stretch';
+        
+        // Create left metadata panel
+        const metadataPanel = document.createElement('div');
+        metadataPanel.style.backgroundColor = 'white';
+        metadataPanel.style.borderRadius = '4px';
+        metadataPanel.style.padding = '16px';
+        metadataPanel.style.minWidth = '280px';
+        metadataPanel.style.maxHeight = '600px';
+        metadataPanel.style.overflowY = 'auto';
+        metadataPanel.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.3)';
+        
+        // Add metadata content
+        if (this.record) {
+            const metadataTitle = document.createElement('h3');
+            metadataTitle.textContent = 'Image Data';
+            metadataTitle.style.marginTop = '0';
+            metadataTitle.style.marginBottom = '16px';
+            metadataTitle.style.color = '#333';
+            metadataPanel.appendChild(metadataTitle);
+            
+            // Sample ID
+            const sampleIdDiv = document.createElement('div');
+            sampleIdDiv.style.marginBottom = '12px';
+            sampleIdDiv.innerHTML = `<strong>Sample ID:</strong> <span>${this.record.sampleId}</span>`;
+            sampleIdDiv.style.color = '#333';
+            sampleIdDiv.style.fontSize = '14px';
+            metadataPanel.appendChild(sampleIdDiv);
+            
+            // Process data stats
+            for (const stat of this.record.dataStats) {
+                if (stat.name === 'raw_data' || stat.name === 'image') {
+                    continue; // Skip binary data fields
+                }
+                
+                const statDiv = document.createElement('div');
+                statDiv.style.marginBottom = '12px';
+                statDiv.style.color = '#333';
+                statDiv.style.fontSize = '14px';
+                statDiv.style.paddingBottom = '8px';
+                statDiv.style.borderBottom = '1px solid #eee';
+                
+                const label = document.createElement('strong');
+                label.textContent = stat.name + ':';
+                statDiv.appendChild(label);
+                
+                const value = document.createElement('div');
+                value.style.marginTop = '4px';
+                value.style.color = '#666';
+                value.style.wordBreak = 'break-word';
+                
+                if (stat.name === 'tags') {
+                    value.textContent = stat.valueString || '(none)';
+                } else if (Array.isArray(stat.value)) {
+                    value.textContent = stat.value.map(v => 
+                        typeof v === 'number' ? (v % 1 !== 0 ? v.toFixed(3) : v) : v
+                    ).join(', ');
+                } else if (typeof stat.value === 'number') {
+                    value.textContent = stat.value % 1 !== 0 ? stat.value.toFixed(3) : stat.value.toString();
+                } else if (typeof stat.value === 'boolean') {
+                    value.textContent = stat.value ? 'True' : 'False';
+                } else {
+                    value.textContent = stat.valueString || (stat.value?.toString() || '(none)');
+                }
+                
+                statDiv.appendChild(value);
+                metadataPanel.appendChild(statDiv);
+            }
+        }
+        
         // Create container for image and menu
         const container = document.createElement('div');
         container.style.display = 'flex';
@@ -92,7 +166,6 @@ export class GridCell {
         // Menu items matching the right-click context menu
         const menuItems = [
             { label: 'Add Tag', action: 'add-tag' },
-            { label: 'Tag Non-Discarded', action: 'tag-non-discarded' },
             { label: 'Discard', action: 'discard' }
         ];
         
@@ -124,7 +197,9 @@ export class GridCell {
         
         container.appendChild(enlargedImg);
         container.appendChild(menuContainer);
-        modal.appendChild(container);
+        mainContainer.appendChild(metadataPanel);
+        mainContainer.appendChild(container);
+        modal.appendChild(mainContainer);
         document.body.appendChild(modal);
         
         // Handle menu item clicks

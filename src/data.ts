@@ -737,11 +737,38 @@ document.addEventListener('modalContextMenuAction', async (e: any) => {
     }
     
     const sample_ids = [sampleId];
-    const origins = origin ? [origin] : [];
+    const origins = origin ? [origin] : ['train'];
     
     console.log('Modal action:', action, 'sampleId:', sampleId, 'origin:', origin);
     
     switch (action) {
+        case 'add-tag':
+            const tag = prompt('Enter tag:');
+            if (tag) {
+                const tagRequest: DataEditsRequest = {
+                    statName: "tags",
+                    floatValue: 0,
+                    stringValue: tag,
+                    boolValue: false,
+                    type: SampleEditType.EDIT_OVERRIDE,
+                    samplesIds: sample_ids,
+                    sampleOrigins: origins
+                };
+                console.log("Sending tag request from modal:", tagRequest);
+                try {
+                    const response = await dataClient.editDataSample(tagRequest).response;
+                    console.log("Tag response from modal:", response);
+                    if (!response.success) {
+                        alert(`Failed to add tag: ${response.message}`);
+                    } else {
+                        updateAffectedCellsOnly(sample_ids, tagRequest);
+                    }
+                } catch (error) {
+                    console.error("Error adding tag from modal:", error);
+                    alert(`Error adding tag: ${error}`);
+                }
+            }
+            break;
         case 'discard':
             const discardRequest: DataEditsRequest = {
                 statName: "deny_listed",
