@@ -454,11 +454,25 @@ export async function initializeUIElements() {
         const optionsPanel = document.getElementById('options-panel');
 
         if (optionsToggle && optionsPanel) {
-            optionsToggle.addEventListener('click', () => {
+            optionsToggle.addEventListener('click', (e) => {
+                e.stopPropagation();
                 const isVisible = optionsPanel.style.display !== 'none';
                 optionsPanel.style.display = isVisible ? 'none' : 'block';
                 optionsToggle.classList.toggle('collapsed', isVisible);
                 optionsToggle.classList.toggle('expanded', !isVisible);
+            });
+
+            // Close options panel when clicking outside
+            document.addEventListener('click', (e) => {
+                const target = e.target as HTMLElement;
+                const isVisible = optionsPanel.style.display !== 'none';
+                
+                // Close if panel is visible and click is outside both panel and toggle button
+                if (isVisible && !optionsPanel.contains(target) && !optionsToggle.contains(target)) {
+                    optionsPanel.style.display = 'none';
+                    optionsToggle.classList.add('collapsed');
+                    optionsToggle.classList.remove('expanded');
+                }
             });
         }
 
@@ -466,34 +480,73 @@ export async function initializeUIElements() {
         const cellSizeSlider = document.getElementById('cell-size') as HTMLInputElement;
         const zoomSlider = document.getElementById('zoom-level') as HTMLInputElement;
 
+        // Restore saved settings
+        const savedCellSize = localStorage.getItem('cellSize');
+        const savedZoomLevel = localStorage.getItem('zoomLevel');
+        
         if (cellSizeSlider) {
+            if (savedCellSize) {
+                cellSizeSlider.value = savedCellSize;
+                const cellSizeValue = document.getElementById('cell-size-value');
+                if (cellSizeValue) {
+                    cellSizeValue.textContent = savedCellSize;
+                }
+            }
+            
             cellSizeSlider.addEventListener('input', () => {
                 const cellSizeValue = document.getElementById('cell-size-value');
                 if (cellSizeValue) {
                     cellSizeValue.textContent = cellSizeSlider.value;
                 }
+                localStorage.setItem('cellSize', cellSizeSlider.value);
                 updateLayout();
             });
         }
 
         if (zoomSlider) {
+            if (savedZoomLevel) {
+                zoomSlider.value = savedZoomLevel;
+                const zoomValue = document.getElementById('zoom-value');
+                if (zoomValue) {
+                    zoomValue.textContent = `${savedZoomLevel}%`;
+                }
+            }
+            
             zoomSlider.addEventListener('input', () => {
                 const zoomValue = document.getElementById('zoom-value');
                 if (zoomValue) {
                     zoomValue.textContent = `${zoomSlider.value}%`;
                 }
+                localStorage.setItem('zoomLevel', zoomSlider.value);
                 updateLayout();
             });
         }
 
         // Listen for color changes
-        const trainColorInput = document.getElementById('train-color');
-        const evalColorInput = document.getElementById('eval-color');
+        const trainColorInput = document.getElementById('train-color') as HTMLInputElement;
+        const evalColorInput = document.getElementById('eval-color') as HTMLInputElement;
+        
+        // Restore saved colors
+        const savedTrainColor = localStorage.getItem('trainColor');
+        const savedEvalColor = localStorage.getItem('evalColor');
+        
         if (trainColorInput) {
-            trainColorInput.addEventListener('input', updateDisplayOnly);
+            if (savedTrainColor) {
+                trainColorInput.value = savedTrainColor;
+            }
+            trainColorInput.addEventListener('input', () => {
+                localStorage.setItem('trainColor', trainColorInput.value);
+                updateDisplayOnly();
+            });
         }
         if (evalColorInput) {
-            evalColorInput.addEventListener('input', updateDisplayOnly);
+            if (savedEvalColor) {
+                evalColorInput.value = savedEvalColor;
+            }
+            evalColorInput.addEventListener('input', () => {
+                localStorage.setItem('evalColor', evalColorInput.value);
+                updateDisplayOnly();
+            });
         }
 
         // Checkbox changes only need display update, not layout recalculation
@@ -521,7 +574,11 @@ export async function initializeUIElements() {
         onDiscard: async () => {
             const selectedCells = selectionManager.getSelectedCells();
             const sampleIds = selectedCells.map(cell => cell.getRecord()?.sampleId).filter((id): id is number => id !== undefined);
-            const origins = selectedCells.map(cell => cell.getRecord()?.origin || 'train').filter((origin): origin is string => origin !== undefined);
+            const origins = selectedCells.map(cell => {
+                const record = cell.getRecord();
+                const originStat = record?.dataStats.find(s => s.name === 'origin');
+                return originStat?.valueString || 'train';
+            }).filter((origin): origin is string => origin !== undefined);
 
             if (sampleIds.length === 0) return;
 
@@ -556,7 +613,11 @@ export async function initializeUIElements() {
         },
         onAddTag: async (cells: GridCell[], tag: string) => {
             const sampleIds = cells.map(cell => cell.getRecord()?.sampleId).filter((id): id is number => id !== undefined);
-            const origins = cells.map(cell => cell.getRecord()?.origin || 'train').filter((origin): origin is string => origin !== undefined);
+            const origins = cells.map(cell => {
+                const record = cell.getRecord();
+                const originStat = record?.dataStats.find(s => s.name === 'origin');
+                return originStat?.valueString || 'train';
+            }).filter((origin): origin is string => origin !== undefined);
             
             if (sampleIds.length === 0) return;
             
@@ -579,6 +640,37 @@ export async function initializeUIElements() {
                 }
             } catch (error) {
                 console.error("Error adding tag:", error);
+            }
+        },
+        onRemoveTag: async (cells: GridCell[]) => {
+            const sampleIds = cells.map(cell => cell.getRecord()?.sampleId).filter((id): id is number => id !== undefined);
+            const origins = cells.map(cell => {
+                const record = cell.getRecord();
+                const originStat = record?.dataStats.find(s => s.name === 'origin');
+                return originStat?.valueString || 'train';
+            }).filter((origin): origin is string => origin !== undefined);
+
+            if (sampleIds.length === 0) return;
+
+            const request: DataEditsRequest = {
+                statName: "tags",
+                floatValue: 0,
+                stringValue: "", // clearing tag
+                boolValue: false,
+                type: SampleEditType.EDIT_OVERRIDE,
+                samplesIds: sampleIds,
+                sampleOrigins: origins
+            };
+
+            try {
+                const response = await dataClient.editDataSample(request).response;
+                if (response.success) {
+                    updateAffectedCellsOnly(sampleIds, request);
+                } else {
+                    console.error("Failed to remove tag:", response.message);
+                }
+            } catch (error) {
+                console.error("Error removing tag:", error);
             }
         }
     });
@@ -690,18 +782,23 @@ function updateAffectedCellsOnly(sampleIds: number[], request: DataEditsRequest)
             // Update the specific stat that was changed
             if (request.statName === 'tags') {
                 // Update tags stat
-                const stat = record.dataStats.find(s => s.name === 'tags');
+                let stat = record.dataStats.find(s => s.name === 'tags');
                 if (stat) {
                     stat.valueString = request.stringValue;
                 } else {
                     // Create if doesn't exist
-                    record.dataStats.push({
+                    stat = {
                         name: 'tags',
                         type: 'string',
                         shape: [1],
                         valueString: request.stringValue,
                         value: []
-                    });
+                    };
+                    record.dataStats.push(stat);
+                }
+                // If clearing, ensure valueString is empty
+                if (!request.stringValue) {
+                    stat.valueString = "";
                 }
             } else if (request.statName === 'deny_listed') {
                 // Update deny_listed stat
@@ -767,6 +864,28 @@ document.addEventListener('modalContextMenuAction', async (e: any) => {
                     console.error("Error adding tag from modal:", error);
                     alert(`Error adding tag: ${error}`);
                 }
+            }
+            break;
+        case 'remove-tag':
+            const clearRequest: DataEditsRequest = {
+                statName: "tags",
+                floatValue: 0,
+                stringValue: "",
+                boolValue: false,
+                type: SampleEditType.EDIT_OVERRIDE,
+                samplesIds: sample_ids,
+                sampleOrigins: origins
+            };
+            try {
+                const response = await dataClient.editDataSample(clearRequest).response;
+                if (!response.success) {
+                    alert(`Failed to remove tag: ${response.message}`);
+                } else {
+                    updateAffectedCellsOnly(sample_ids, clearRequest);
+                }
+            } catch (error) {
+                console.error("Error removing tag from modal:", error);
+                alert(`Error removing tag: ${error}`);
             }
             break;
         case 'discard':

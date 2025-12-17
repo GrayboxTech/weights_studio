@@ -61,6 +61,10 @@ export class DataDisplayOptionsPanel {
 
         console.log('[DataDisplayOptionsPanel] Available fields after processing:', Array.from(availableFields));
 
+        // Load saved preferences from localStorage
+        const savedPreferences = localStorage.getItem('displayPreferences');
+        const savedPrefs = savedPreferences ? JSON.parse(savedPreferences) : {};
+
         // Clear existing checkboxes
         this.element.innerHTML = '';
         this.checkboxes.clear(); // Clear the Map too
@@ -72,8 +76,12 @@ export class DataDisplayOptionsPanel {
             checkbox.id = `display-${fieldName}`;
             checkbox.value = fieldName;
             
-            // Only check sampleId and loss by default
-            checkbox.checked = (fieldName === 'sampleId' || fieldName === 'loss');
+            // Check saved preference, or default to sampleId and loss
+            if (savedPrefs.hasOwnProperty(fieldName)) {
+                checkbox.checked = savedPrefs[fieldName];
+            } else {
+                checkbox.checked = (fieldName === 'sampleId' || fieldName === 'loss');
+            }
 
             const label = document.createElement('label');
             label.htmlFor = checkbox.id;
@@ -90,6 +98,7 @@ export class DataDisplayOptionsPanel {
             this.checkboxes.set(fieldName, checkbox);
 
             checkbox.addEventListener('change', () => {
+                this.savePreferences();
                 this.updateCallback?.();
             });
         });
@@ -111,6 +120,11 @@ export class DataDisplayOptionsPanel {
             preferences[field] = checkbox.checked;
         }
         return preferences;
+    }
+
+    savePreferences(): void {
+        const preferences = this.getDisplayPreferences();
+        localStorage.setItem('displayPreferences', JSON.stringify(preferences));
     }
 
     initializeStatsOptions(statsNames: string[]): void {
