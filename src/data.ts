@@ -18,6 +18,7 @@ import { DataDisplayOptionsPanel, SplitColors } from "./DataDisplayOptionsPanel"
 import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteractionsPanel";
 import { GridManager } from "./GridManager";
 import { initializeDarkMode } from "./darkMode";
+import { drawDiffMaskOnContext, drawMultiClassMaskOnContext, ClassPreference } from "./GridCell";
 
 
 const SERVER_URL = "http://localhost:8080";
@@ -586,6 +587,20 @@ export async function initializeUIElements() {
         displayOptionsPanel.onUpdate(updateDisplayOnly);
     }
 
+    // Grid settings toggle functionality
+    const gridSettingsToggle = document.getElementById('grid-settings-toggle') as HTMLButtonElement;
+    const viewControls = document.getElementById('view-controls') as HTMLElement;
+
+    if (gridSettingsToggle && viewControls) {
+        let isSettingsExpanded = false; // Start collapsed
+        viewControls.classList.add('collapsed'); // Start collapsed
+
+        gridSettingsToggle.addEventListener('click', () => {
+            isSettingsExpanded = !isSettingsExpanded;
+            viewControls.classList.toggle('collapsed', !isSettingsExpanded);
+        });
+    }
+
     traversalPanel.initialize();
     gridManager = new GridManager(
         cellsContainer, traversalPanel,
@@ -952,7 +967,378 @@ contextMenu.addEventListener('click', async (e) => {
 });
 
 // =============================================================================
+// Image Detail Modal
+// =============================================================================
 
+const imageDetailModal = document.getElementById('image-detail-modal') as HTMLElement;
+const modalImage = document.getElementById('modal-image') as HTMLImageElement;
+const modalStatsContainer = document.getElementById('modal-stats-container') as HTMLElement;
+const modalCloseBtn = document.getElementById('modal-close-btn') as HTMLButtonElement;
+
+// Helper function to apply segmentation overlays to modal image
+function applySegmentationToModal(
+    baseImageUrl: string,
+    gtStat: any | null,
+    predStat: any | null,
+    showRaw: boolean,
+    showGt: boolean,
+    showPred: boolean,
+    showDiff: boolean,
+    classPreferences: any
+) {
+    const img = new Image();
+    img.onload = () => {
+        const width = img.width;
+        const height = img.height;
+
+        if (!width || !height) {
+            modalImage.src = baseImageUrl;
+            return;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+            modalImage.src = baseImageUrl;
+            return;
+        }
+
+        // 1) Base: raw image or black
+        if (showRaw) {
+            ctx.drawImage(img, 0, 0, width, height);
+        } else {
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, width, height);
+        }
+
+        // 2) Apply segmentation overlays using the same functions as GridCell
+        if (showDiff && gtStat && predStat) {
+            // Apply diff visualization
+            drawDiffMaskOnContext(
+                ctx,
+                gtStat,
+                predStat,
+                width,
+                height,
+                classPreferences as Record<number, ClassPreference> | undefined
+            );
+        } else {
+            // 3) GT / Pred overlays with per-class toggles & colors
+            if (showGt && gtStat) {
+                drawMultiClassMaskOnContext(
+                    ctx,
+                    gtStat,
+                    width,
+                    height,
+                    classPreferences as Record<number, ClassPreference> | undefined,
+                    0.45  // Alpha for GT overlay
+                );
+            }
+            if (showPred && predStat) {
+                // Slightly different alpha to distinguish from GT
+                drawMultiClassMaskOnContext(
+                    ctx,
+                    predStat,
+                    width,
+                    height,
+                    classPreferences as Record<number, ClassPreference> | undefined,
+                    0.35  // Alpha for Pred overlay
+                );
+            }
+        }
+
+        const finalUrl = canvas.toDataURL();
+        modalImage.src = finalUrl;
+
+        console.log('[Modal] Applied segmentation overlays at', width, 'x', height);
+    };
+
+    img.src = baseImageUrl;
+}
+
+async function openImageDetailModal(cell: HTMLElement) {
+    const gridCell = getGridCell(cell);
+    if (!gridCell) return;
+
+    const record = gridCell.getRecord();
+    if (!record) return;
+
+    // Show the modal immediately with the grid's current image
+    const imgElement = gridCell.getImage();
+    if (imgElement && imgElement.src) {
+        modalImage.src = imgElement.src;
+    }
+
+    // Populate metadata stats
+    modalStatsContainer.innerHTML = '';
+
+    // Add sample ID first
+    const sampleIdItem = document.createElement('div');
+    sampleIdItem.className = 'modal-stat-item';
+    sampleIdItem.innerHTML = `
+        <div class="modal-stat-label">Sample ID</div>
+        <div class="modal-stat-value">${record.sampleId}</div>
+    `;
+    modalStatsContainer.appendChild(sampleIdItem);
+
+    // Add all data stats (sorted for better readability)
+    if (record.dataStats && record.dataStats.length > 0) {
+        // Sort stats for better organization
+        const sortedStats = [...record.dataStats].sort((a, b) => {
+            // Define sort order categories
+            const getCategory = (statName: string): number => {
+                // 1. General info (top)
+                if (statName === 'origin') return 1;
+                if (statName === 'task_type') return 2;
+                if (statName === 'tags') return 3;
+
+                // 2. Class distribution stats
+                if (statName === 'num_classes_present') return 10;
+                if (statName === 'dominant_class') return 11;
+                if (statName === 'dominant_class_ratio') return 12;
+                if (statName === 'background_ratio') return 13;
+
+                // 3. Other stats (alphabetically)
+                // Skip loss-related stats here
+                if (!statName.includes('loss')) {
+                    return 100;
+                }
+
+                // 4. Aggregate loss stats (bottom, for closer inspection)
+                if (statName === 'mean_loss') return 1000;
+                if (statName === 'median_loss') return 1001;
+                if (statName === 'min_loss') return 1002;
+                if (statName === 'max_loss') return 1003;
+                if (statName === 'std_loss') return 1004;
+
+                // 5. Per-class losses (loss_class_0, loss_class_1, etc.) - very bottom
+                if (statName.startsWith('loss_class_')) {
+                    const classNum = parseInt(statName.replace('loss_class_', ''));
+                    return 2000 + classNum; // Sort numerically
+                }
+
+                // 6. Any other loss-related stats
+                if (statName.includes('loss')) {
+                    return 1500;
+                }
+
+                return 100;
+            };
+
+            const catA = getCategory(a.name);
+            const catB = getCategory(b.name);
+
+            if (catA !== catB) {
+                return catA - catB;
+            }
+
+            // Within same category, sort alphabetically
+            return a.name.localeCompare(b.name);
+        });
+
+        sortedStats.forEach((stat: any) => {
+            // Skip raw_data and other binary/large data
+            if (stat.name === 'raw_data' || stat.name === 'transformed_data' ||
+                stat.name === 'label' || stat.name === 'pred_mask') {
+                return;
+            }
+
+            const statItem = document.createElement('div');
+            statItem.className = 'modal-stat-item';
+
+            let value = '';
+
+            // Handle string values
+            if (stat.valueString !== undefined && stat.valueString !== '') {
+                value = stat.valueString;
+            }
+            // Handle scalar values (in value array)
+            else if (stat.value && stat.value.length > 0) {
+                if (stat.value.length === 1) {
+                    // Single scalar value
+                    const num = stat.value[0];
+                    value = typeof num === 'number' && num % 1 !== 0
+                        ? num.toFixed(4)
+                        : String(num);
+                } else {
+                    // Array of values - show first few
+                    value = stat.value.slice(0, 3).map((v: number) =>
+                        typeof v === 'number' && v % 1 !== 0 ? v.toFixed(2) : String(v)
+                    ).join(', ');
+                    if (stat.value.length > 3) {
+                        value += '...';
+                    }
+                }
+            }
+            else {
+                value = '-';
+            }
+
+            statItem.innerHTML = `
+                <div class="modal-stat-label">${stat.name || 'Unknown'}</div>
+                <div class="modal-stat-value">${value}</div>
+            `;
+            modalStatsContainer.appendChild(statItem);
+        });
+    }
+
+    // Show the modal
+    imageDetailModal.classList.add('visible');
+    document.body.style.overflow = 'hidden';
+
+    // Now fetch full resolution image in background
+    try {
+        // Find the cell's position in the grid
+        const cells = gridManager.getCells();
+        const cellIndex = cells.indexOf(gridCell);
+
+        if (cellIndex === -1) {
+            console.warn('[Modal] Could not find cell in grid');
+            return;
+        }
+
+        // Calculate the actual index in the current dataset view
+        const startIndex = traversalPanel.getStartIndex();
+        const actualIndex = startIndex + cellIndex;
+
+        console.log('[Modal] Fetching full resolution:');
+        console.log('  - Cell index in grid:', cellIndex);
+        console.log('  - Current start index:', startIndex);
+        console.log('  - Actual fetch index:', actualIndex);
+        console.log('  - Sample ID:', record.sampleId);
+
+        // Add loading indicator
+        modalImage.classList.add('loading');
+
+        // Request FULL resolution image
+        const highResRequest: DataSamplesRequest = {
+            startIndex: actualIndex,
+            recordsCnt: 1,
+            includeRawData: true,
+            includeTransformedData: false,
+            statsToRetrieve: [],
+            resizeWidth: -100,  // -100 = 100% of original
+            resizeHeight: -100
+        };
+
+        const highResResponse = await fetchSamples(highResRequest);
+
+        if (highResResponse.success && highResResponse.dataRecords.length > 0) {
+            const highResRecord = highResResponse.dataRecords[0];
+
+            // Find raw_data stat
+            const rawDataStat = highResRecord.dataStats.find(
+                (stat: any) => stat.name === 'raw_data' && stat.type === 'bytes'
+            );
+
+            if (rawDataStat && rawDataStat.value && rawDataStat.value.length > 0) {
+                // Convert bytes to base64 in chunks to avoid stack overflow
+                const bytes = new Uint8Array(rawDataStat.value);
+                let binary = '';
+                const chunkSize = 8192;
+
+                for (let i = 0; i < bytes.length; i += chunkSize) {
+                    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+                    binary += String.fromCharCode.apply(null, Array.from(chunk));
+                }
+
+                const base64Image = btoa(binary);
+
+                // Check if this is a segmentation task and apply overlays
+                const taskTypeStat = highResRecord.dataStats.find(
+                    (stat: any) => stat.name === 'task_type'
+                );
+                const isSegmentation = taskTypeStat?.valueString === 'segmentation';
+
+                if (isSegmentation && displayOptionsPanel) {
+                    // Get GT and Pred masks from the response
+                    const gtStat = highResRecord.dataStats.find(
+                        (stat: any) => stat.name === 'label' && stat.type === 'array'
+                    );
+                    const predStat = highResRecord.dataStats.find(
+                        (stat: any) => stat.name === 'pred_mask' && stat.type === 'array'
+                    );
+
+                    // Get current display preferences
+                    const prefs = displayOptionsPanel.getDisplayPreferences();
+                    const showRaw = prefs['showRawImage'] ?? true;
+                    const showGt = prefs['showGtMask'] ?? true;
+                    const showPred = prefs['showPredMask'] ?? true;
+                    const showDiff = prefs['showDiffMask'] ?? false;
+
+                    // Apply segmentation visualization
+                    const baseImageUrl = `data:image/png;base64,${base64Image}`;
+                    applySegmentationToModal(
+                        baseImageUrl,
+                        gtStat,
+                        predStat,
+                        showRaw,
+                        showGt,
+                        showPred,
+                        showDiff,
+                        prefs.classPreferences
+                    );
+                } else {
+                    // Non-segmentation: just show the image
+                    modalImage.src = `data:image/png;base64,${base64Image}`;
+                }
+
+                console.log('[Modal] Updated to full resolution');
+            } else {
+                console.warn('[Modal] No raw_data found in response');
+            }
+        } else {
+            console.warn('[Modal] Failed to fetch full resolution:', highResResponse.message);
+        }
+
+        modalImage.classList.remove('loading');
+    } catch (error) {
+        console.error('[Modal] Error fetching full resolution:', error);
+        modalImage.classList.remove('loading');
+    }
+}
+
+function closeImageDetailModal() {
+    imageDetailModal.classList.remove('visible');
+    document.body.style.overflow = ''; // Restore scrolling
+}
+
+// Close button
+if (modalCloseBtn) {
+    modalCloseBtn.addEventListener('click', closeImageDetailModal);
+}
+
+// Close on backdrop click
+if (imageDetailModal) {
+    imageDetailModal.addEventListener('click', (e) => {
+        if (e.target === imageDetailModal || (e.target as HTMLElement).classList.contains('modal-backdrop')) {
+            closeImageDetailModal();
+        }
+    });
+}
+
+// Close on Escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && imageDetailModal.classList.contains('visible')) {
+        closeImageDetailModal();
+    }
+});
+
+// Add double-click event listener to grid cells
+grid.addEventListener('dblclick', (e) => {
+    const target = e.target as HTMLElement;
+    const cell = target.closest('.cell') as HTMLElement | null;
+
+    if (cell) {
+        openImageDetailModal(cell);
+    }
+});
+
+// =============================================================================
 
 
 

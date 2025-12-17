@@ -3,54 +3,32 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>gRPC Samples Viewer</title>
+  <title>weights-studio @ Graybx</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="./favicon.png">
   <link rel="stylesheet" href="./style.css">
 </head>
 
 <body>
-  <button id="grid-toggle" class="toggle-button expanded">−</button>
-  <button id="dark-mode-toggle" class="toggle-button dark-mode-toggle" title="Toggle Dark Mode">◐</button>
-
   <div id="grid-content" class="grid-content">
     <div class="container">
-      <!-- TOP CONTROLS BAR -->
-      <div class="controls">
-        <div class="controls-row">
+      <!-- TOP HEADER BAR -->
+      <div class="app-header">
+        <div class="header-controls-left">
+          <button id="grid-toggle" class="toggle-button expanded">−</button>
+          <button id="dark-mode-toggle" class="toggle-button dark-mode-toggle" title="Toggle Dark Mode">◐</button>
           <button id="toggle-training" class="control-button primary" data-state="paused">Resume</button>
-
-          <div class="control-group wide">
-            <label for="cell-size">Cell size</label>
-            <input type="number" id="cell-size" value="150" min="10">
-          </div>
-
-          <div class="control-group wide">
-            <label for="zoom-level">Zoom</label>
-            <select id="zoom-level">
-              <option value="1">1x</option>
-              <option value="2">2x</option>
-              <option value="3">3x</option>
-            </select>
-          </div>
-
-          <div class="control-group image-res-group">
-            <label>
-              <input type="checkbox" id="image-resolution-auto" checked>
-              Auto Res
-            </label>
-            <input type="range" id="image-resolution-percent" min="5" max="100" value="100" step="5" disabled
-              title="Image resolution % of original">
-            <span id="image-resolution-value">100%</span>
-          </div>
         </div>
 
-        <div class="controls-row">
-          <div class="chat-input-container">
-            <input type="text" id="chat-input" placeholder="drop 50% of the samples with losses between 1.4 and 1.9" />
-            <button id="chat-send" class="chat-send-button">Send</button>
-          </div>
+        <div class="header-branding">
+          <span class="branding-text">weights-studio by</span>
+          <a href="https://www.graybx.com/" target="_blank" class="logo-link">
+            <img src="./logo.png" alt="Graybx Logo" class="logo-img">
+            <span class="logo-text">Graybx</span>
+          </a>
         </div>
       </div>
+
 
       <!-- WORKSPACE: LEFT INSPECTOR + GRID -->
       <div class="workspace-row">
@@ -123,7 +101,48 @@
 
         <!-- GRID -->
         <div class="main-content">
-          <div id="cells-grid"></div>
+          <!-- Content Header: Chat -->
+          <div class="content-header">
+            <div class="chat-input-container">
+              <input type="text" id="chat-input"
+                placeholder="drop 50% of the samples with losses between 1.4 and 1.9" />
+              <button id="chat-send" class="chat-send-button">Send</button>
+            </div>
+          </div>
+
+          <div class="grid-wrapper">
+            <button class="grid-settings-toggle" id="grid-settings-toggle">
+              <span id="settings-toggle-text">Grid Settings</span>
+            </button>
+
+            <div class="view-controls" id="view-controls">
+              <div class="control-group">
+                <label for="cell-size">Cell size</label>
+                <input type="number" id="cell-size" value="150" min="10">
+              </div>
+
+              <div class="control-group">
+                <label for="zoom-level">Zoom</label>
+                <select id="zoom-level">
+                  <option value="1">1x</option>
+                  <option value="2">2x</option>
+                  <option value="3">3x</option>
+                </select>
+              </div>
+
+              <div class="control-group image-res-group">
+                <label>
+                  <input type="checkbox" id="image-resolution-auto" checked>
+                  Auto Res
+                </label>
+                <input type="range" id="image-resolution-percent" min="5" max="100" value="100" step="5" disabled
+                  title="Image resolution % of original">
+                <span id="image-resolution-value">100%</span>
+              </div>
+            </div>
+
+            <div id="cells-grid"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -144,6 +163,27 @@
       <div class="context-menu-item" data-action="add-tag">Add Tag...</div>
       <div class="context-menu-separator"></div>
       <div class="context-menu-item" data-action="discard">Discard</div>
+    </div>
+
+    <!-- Image Detail Modal -->
+    <div id="image-detail-modal" class="image-detail-modal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-container">
+        <button class="modal-close" id="modal-close-btn">×</button>
+        <div class="modal-content">
+          <!-- Left: Metadata Stats -->
+          <div class="modal-metadata">
+            <h2 class="modal-title">Sample Details</h2>
+            <div id="modal-stats-container" class="modal-stats-container">
+              <!-- Stats will be populated here -->
+            </div>
+          </div>
+          <!-- Right: Large Image -->
+          <div class="modal-image-container">
+            <img id="modal-image" class="modal-image" src="" alt="Sample Image">
+          </div>
+        </div>
+      </div>
     </div>
 
     <script type="module" src="/src/data.ts"></script>

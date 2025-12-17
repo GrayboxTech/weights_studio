@@ -78,7 +78,7 @@ function drawMaskOnContext(
     ctx.putImageData(imageData, 0, 0);
 }
 
-function drawDiffMaskOnContext(
+export function drawDiffMaskOnContext(
     ctx: CanvasRenderingContext2D,
     gtStat: any,
     predStat: any,
@@ -181,12 +181,12 @@ function drawDiffMaskOnContext(
     ctx.putImageData(imageData, 0, 0);
 }
 
-type ClassPreference = {
+export type ClassPreference = {
     enabled: boolean;
     color: string;
 };
 
-function drawMultiClassMaskOnContext(
+export function drawMultiClassMaskOnContext(
     ctx: CanvasRenderingContext2D,
     maskStat: any,
     canvasWidth: number,
@@ -540,7 +540,37 @@ export class GridCell {
             parts.push(formatted);
         }
 
-        for (const stat of this.record.dataStats) {
+        // Sort stats before displaying (same order as modal)
+        const sortedStats = [...this.record.dataStats].sort((a, b) => {
+            const getCategory = (statName: string): number => {
+                if (statName === 'origin') return 1;
+                if (statName === 'task_type') return 2;
+                if (statName === 'tags') return 3;
+                if (statName === 'num_classes_present') return 10;
+                if (statName === 'dominant_class') return 11;
+                if (statName === 'dominant_class_ratio') return 12;
+                if (statName === 'background_ratio') return 13;
+                if (!statName.includes('loss')) return 100;
+                if (statName === 'mean_loss') return 1000;
+                if (statName === 'median_loss') return 1001;
+                if (statName === 'min_loss') return 1002;
+                if (statName === 'max_loss') return 1003;
+                if (statName === 'std_loss') return 1004;
+                if (statName.startsWith('loss_class_')) {
+                    const classNum = parseInt(statName.replace('loss_class_', ''));
+                    return 2000 + classNum;
+                }
+                if (statName.includes('loss')) return 1500;
+                return 100;
+            };
+
+            const catA = getCategory(a.name);
+            const catB = getCategory(b.name);
+            if (catA !== catB) return catA - catB;
+            return a.name.localeCompare(b.name);
+        });
+
+        for (const stat of sortedStats) {
             if (stat.name === 'raw_data')
                 continue;
             if (!this.displayPreferences[stat.name])

@@ -119,17 +119,29 @@ export class DataDisplayOptionsPanel {
         availableFields.add("tags");
 
         if (firstRecord.dataStats) {
-            firstRecord.dataStats.forEach(stat => {
-                if (stat.name === "raw_data") return;
-                if (/^class(_\d+)?$/i.test(stat.name)) return; // keep classes out of metadata list
+            console.log('[DataDisplayOptionsPanel] Total stats received:', firstRecord.dataStats.length);
+            console.log('[DataDisplayOptionsPanel] All stat names:', firstRecord.dataStats.map(s => s.name));
 
-                if (this.isSegmentationDataset && SEGMENTATION_HIDDEN_FIELDS.has(stat.name)) {
-                    // we handle these conceptually elsewhere (overlays/classes)
+            firstRecord.dataStats.forEach(stat => {
+                if (stat.name === "raw_data") {
+                    console.log('[DataDisplayOptionsPanel] Skipping raw_data');
+                    return;
+                }
+                if (/^class(_\d+)?$/i.test(stat.name)) {
+                    console.log('[DataDisplayOptionsPanel] Skipping class field:', stat.name);
                     return;
                 }
 
+                if (this.isSegmentationDataset && SEGMENTATION_HIDDEN_FIELDS.has(stat.name)) {
+                    console.log('[DataDisplayOptionsPanel] Hiding segmentation field:', stat.name);
+                    return;
+                }
+
+                console.log('[DataDisplayOptionsPanel] Adding field:', stat.name);
                 availableFields.add(stat.name);
             });
+
+            console.log('[DataDisplayOptionsPanel] Final available fields:', Array.from(availableFields));
         }
 
         // NOTE: showRawImage, showGtMask, showPredMask, showDiffMask are handled 
@@ -143,7 +155,54 @@ export class DataDisplayOptionsPanel {
             "sampleId",
         ]);
 
-        availableFields.forEach(fieldName => {
+        // Sort fields for better organization (same order as modal)
+        const sortedFields = Array.from(availableFields).sort((a, b) => {
+            const getCategory = (fieldName: string): number => {
+                // 1. General info (top)
+                if (fieldName === 'sampleId') return 0;  // Always first
+                if (fieldName === 'origin') return 1;
+                if (fieldName === 'task_type') return 2;
+                if (fieldName === 'tags') return 3;
+
+                // 2. Class distribution stats
+                if (fieldName === 'num_classes_present') return 10;
+                if (fieldName === 'dominant_class') return 11;
+                if (fieldName === 'dominant_class_ratio') return 12;
+                if (fieldName === 'background_ratio') return 13;
+
+                // 3. Other stats (alphabetically) - skip loss-related
+                if (!fieldName.toLowerCase().includes('loss')) {
+                    return 100;
+                }
+
+                // 4. Aggregate loss stats (bottom, for closer inspection)
+                if (fieldName === 'mean_loss') return 1000;
+                if (fieldName === 'median_loss') return 1001;
+                if (fieldName === 'min_loss') return 1002;
+                if (fieldName === 'max_loss') return 1003;
+                if (fieldName === 'std_loss') return 1004;
+
+                // 5. Per-class losses (loss_class_0, loss_class_1, etc.) - very bottom
+                if (fieldName.startsWith('loss_class_')) {
+                    const classNum = parseInt(fieldName.replace('loss_class_', ''));
+                    return 2000 + classNum;
+                }
+
+                // 6. Any other loss-related stats
+                if (fieldName.toLowerCase().includes('loss')) {
+                    return 1500;
+                }
+
+                return 100;
+            };
+
+            const catA = getCategory(a);
+            const catB = getCategory(b);
+            if (catA !== catB) return catA - catB;
+            return a.localeCompare(b);
+        });
+
+        sortedFields.forEach(fieldName => {
             const checkbox = document.createElement("input");
             checkbox.type = "checkbox";
             checkbox.id = `display-${fieldName}`;
