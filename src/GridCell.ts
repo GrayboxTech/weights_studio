@@ -434,4 +434,38 @@ export class GridCell {
     public getRecord(): DataRecord | null {
         return this.record;
     }
+
+    public updateStats(newStats: Record<string, any>): void {
+        if (!this.record) return;
+        for (const [key, value] of Object.entries(newStats)) {
+            const stat = this.record.dataStats.find((s: any) => s.name === key);
+            if (stat) {
+                if (typeof value === 'string') {
+                    stat.valueString = value;
+                } else if (typeof value === 'number') {
+                    stat.value = [value];
+                } else if (Array.isArray(value)) {
+                    stat.value = value;
+                }
+            } else {
+                this.record.dataStats.push({
+                    name: key,
+                    type: typeof value === 'string' ? 'string' : 'scalar',
+                    shape: [],
+                    value: typeof value === 'number' ? [value] : [],
+                    valueString: typeof value === 'string' ? value : ''
+                });
+            }
+
+            // Special handling for deny_listed
+            if (key === 'deny_listed') {
+                if (value === 1 || value === true) {
+                    this.element.classList.add('discarded');
+                } else {
+                    this.element.classList.remove('discarded');
+                }
+            }
+        }
+        this.updateLabel();
+    }
 }

@@ -161,6 +161,7 @@
 
     <div id="context-menu" class="context-menu">
       <div class="context-menu-item" data-action="add-tag">Add Tag...</div>
+      <div class="context-menu-item" data-action="remove-tag">Remove Tag</div>
       <div class="context-menu-separator"></div>
       <div class="context-menu-item" data-action="discard">Discard</div>
     </div>
@@ -181,6 +182,37 @@
           <!-- Right: Large Image -->
           <div class="modal-image-container">
             <img id="modal-image" class="modal-image" src="" alt="Sample Image">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tagging Modal -->
+    <div id="tagging-modal" class="image-detail-modal tagging-modal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-container tagging-container">
+        <button class="modal-close" id="tagging-close-btn">×</button>
+        <div class="modal-content tagging-content">
+          <div class="modal-metadata tagging-panel">
+            <h2 class="modal-title">Add Tag</h2>
+            <div class="tag-input-group">
+              <input type="text" id="tag-input" list="existing-tags" placeholder="Enter or select tag..."
+                class="inspector-search tag-input-field">
+              <datalist id="existing-tags"></datalist>
+            </div>
+
+            <div class="quick-tags-section">
+              <div class="section-title">Previous Tags</div>
+              <div id="quick-tags-container" class="quick-tags-container">
+                <!-- tags injected here -->
+              </div>
+            </div>
+
+            <div class="tagging-actions">
+              <button id="tag-clear-btn" class="control-button danger" style="margin-right: auto;">Clear Tag</button>
+              <button id="tag-cancel-btn" class="control-button">Cancel</button>
+              <button id="tag-submit-btn" class="control-button primary">Apply Tag</button>
+            </div>
           </div>
         </div>
       </div>

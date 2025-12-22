@@ -18,7 +18,7 @@ import { DataDisplayOptionsPanel, SplitColors } from "./DataDisplayOptionsPanel"
 import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteractionsPanel";
 import { GridManager } from "./GridManager";
 import { initializeDarkMode } from "./darkMode";
-import { ClassPreference } from "./GridCell";
+import { ClassPreference, GridCell } from "./GridCell";
 import { SegmentationRenderer } from "./SegmentationRenderer";
 
 
@@ -41,8 +41,9 @@ let trainingStatePill: HTMLElement | null = null;
 let trainingSummary: HTMLElement | null = null;
 let detailsToggle: HTMLButtonElement | null = null;
 let detailsBody: HTMLElement | null = null;
+let uniqueTags: string[] = [];
 
-let fetchTimeout: NodeJS.Timeout | null = null;
+let fetchTimeout: any = null;
 let currentFetchRequestId = 0;
 
 
@@ -230,6 +231,7 @@ async function handleQuerySubmit(query: string): Promise<void> {
     try {
         const request: DataQueryRequest = { query, accumulate: false, isNaturalLanguage: true };
         const response: DataQueryResponse = await dataClient.applyDataQuery(request).response;
+        updateUniqueTags(response.uniqueTags);
         const sampleCount = response.numberOfAllSamples;
 
         let currentStartIndex = traversalPanel.getStartIndex();
@@ -529,7 +531,10 @@ export async function initializeUIElements() {
 
         if (detailsToggle && inspectorPanel) {
             detailsToggle.addEventListener('click', () => {
-                inspectorPanel.classList.toggle('details-collapsed');
+                if (inspectorPanel) {
+                    inspectorPanel.style.transform = 'translateX(-100%)';
+                    inspectorPanel.classList.toggle('details-collapsed');
+                }
             });
         }
 
@@ -616,6 +621,7 @@ export async function initializeUIElements() {
     try {
         const request: DataQueryRequest = { query: "", accumulate: false, isNaturalLanguage: false };
         const response: DataQueryResponse = await dataClient.applyDataQuery(request).response;
+        updateUniqueTags(response.uniqueTags);
         const sampleCount = response.numberOfAllSamples;
         // traversalPanel.setMaxSampleId(sampleCount > 0 ? sampleCount - 1 : 0);
         traversalPanel.updateSampleCounts(
@@ -896,7 +902,7 @@ contextMenu.addEventListener('click', async (e) => {
             const gridCell = getGridCell(c);
             const record = gridCell?.getRecord();
             // console.log("record: ", record)
-            const originStat = record?.dataStats.find(stat => stat.name === 'origin');
+            const originStat = record.dataStats.find((stat: any) => stat.name === 'origin');
             if (originStat) {
                 origins.push(originStat.valueString as string);
             }
@@ -904,30 +910,10 @@ contextMenu.addEventListener('click', async (e) => {
 
         switch (action) {
             case 'add-tag':
-                const tag = prompt('Enter tag:');
-                console.log('Tag to add:', tag);
-
-                const request: DataEditsRequest = {
-                    statName: "tags",
-                    floatValue: 0,
-                    stringValue: String(tag),
-                    boolValue: false,
-                    type: SampleEditType.EDIT_OVERRIDE,
-                    samplesIds: sample_ids,
-                    sampleOrigins: origins
-                }
-                console.log("Sending tag request: ", request)
-                try {
-                    const response = await dataClient.editDataSample(request).response;
-                    console.log("Tag response:", response);
-                    if (!response.success) {
-                        console.error("Failed to add tag:", response.message);
-                        alert(`Failed to add tag: ${response.message}`);
-                    }
-                } catch (error) {
-                    console.error("Error adding tag:", error);
-                    alert(`Error adding tag: ${error}`);
-                }
+                openTaggingModal(sample_ids, origins);
+                break;
+            case 'remove-tag':
+                removeTag(sample_ids, origins);
                 break;
             case 'discard':
                 selectedCells.forEach(cell => {
@@ -1329,4 +1315,147 @@ if (document.readyState === 'loading') {
 } else {
     initializeDarkMode();
     initializeUIElements();
+}
+
+function updateUniqueTags(tags: string[]) {
+    uniqueTags = tags || [];
+    const datalist = document.getElementById('existing-tags');
+    if (datalist) {
+        datalist.innerHTML = uniqueTags.map(t => `<option value="${t}">`).join('');
+    }
+}
+
+function openTaggingModal(sampleIds: number[], origins: string[]) {
+    const modal = document.getElementById('tagging-modal');
+    const input = document.getElementById('tag-input') as HTMLInputElement;
+    const container = document.getElementById('quick-tags-container');
+    const submitBtn = document.getElementById('tag-submit-btn');
+    const cancelBtn = document.getElementById('tag-cancel-btn');
+    const closeBtn = document.getElementById('tagging-close-btn');
+    const clearBtn = document.getElementById('tag-clear-btn');
+
+    if (!modal || !input || !container) return;
+
+    input.value = '';
+
+    // Fill quick tags
+    container.innerHTML = '';
+    uniqueTags.forEach(tag => {
+        const btn = document.createElement('button');
+        btn.className = 'quick-tag-btn';
+        btn.textContent = tag;
+        btn.onclick = () => {
+            input.value = tag;
+            handleSubmit();
+        };
+        container.appendChild(btn);
+    });
+
+    modal.style.display = 'flex';
+    setTimeout(() => {
+        modal.classList.add('visible');
+        input.focus();
+    }, 10);
+
+    const cleanup = () => {
+        modal.classList.remove('visible');
+        setTimeout(() => {
+            modal.style.display = 'none';
+        }, 300);
+        submitBtn?.removeEventListener('click', handleSubmit);
+        cancelBtn?.removeEventListener('click', cleanup);
+        closeBtn?.removeEventListener('click', cleanup);
+        clearBtn?.removeEventListener('click', handleClear);
+        input.onkeydown = null;
+    };
+
+    const handleSubmit = async () => {
+        const tag = input.value.trim();
+        if (!tag) {
+            cleanup();
+            return;
+        }
+
+        const request: DataEditsRequest = {
+            statName: "tags",
+            floatValue: 0,
+            stringValue: tag,
+            boolValue: false,
+            type: SampleEditType.EDIT_OVERRIDE,
+            samplesIds: sampleIds,
+            sampleOrigins: origins
+        };
+
+        try {
+            const response = await dataClient.editDataSample(request).response;
+            if (response.success) {
+                // Optionally refresh or add to uniqueTags if new
+                if (!uniqueTags.includes(tag)) {
+                    updateUniqueTags([...uniqueTags, tag].sort());
+                }
+                // Update local UI for selected cells
+                selectedCells.forEach(cell => {
+                    const gridCell = getGridCell(cell);
+                    if (gridCell) {
+                        gridCell.updateStats({ "tags": tag });
+                    }
+                });
+            } else {
+                alert(`Failed to add tag: ${response.message}`);
+            }
+        } catch (error) {
+            alert(`Error adding tag: ${error}`);
+        }
+        cleanup();
+    };
+
+    const handleClear = () => {
+        input.value = '';
+        handleSubmit();
+    };
+
+    submitBtn?.addEventListener('click', handleSubmit);
+    cancelBtn?.addEventListener('click', cleanup);
+    closeBtn?.addEventListener('click', cleanup);
+    clearBtn?.addEventListener('click', handleClear);
+
+    // Handle keys
+    input.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleSubmit();
+        }
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            cleanup();
+        }
+    };
+}
+
+async function removeTag(sampleIds: number[], origins: string[]) {
+    const request: DataEditsRequest = {
+        statName: "tags",
+        floatValue: 0,
+        stringValue: "",
+        boolValue: false,
+        type: SampleEditType.EDIT_OVERRIDE,
+        samplesIds: sampleIds,
+        sampleOrigins: origins
+    };
+
+    try {
+        const response = await dataClient.editDataSample(request).response;
+        if (response.success) {
+            selectedCells.forEach(cell => {
+                const gridCell = getGridCell(cell);
+                if (gridCell) {
+                    gridCell.updateStats({ "tags": "" });
+                }
+            });
+        } else {
+            alert(`Failed to remove tag: ${response.message}`);
+        }
+    } catch (error) {
+        alert(`Error removing tag: ${error}`);
+    }
 }
