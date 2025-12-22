@@ -21,6 +21,8 @@ import { SelectionManager } from "./SelectionManager";
 import { ContextMenu } from "./ContextMenu";
 import { GridCell } from "./GridCell";
 import { initializeDarkMode } from "./darkMode";
+import { ClassPreference, GridCell } from "./GridCell";
+import { SegmentationRenderer } from "./SegmentationRenderer";
 
 
 const SERVER_URL = "http://localhost:8080";
@@ -37,15 +39,21 @@ let gridManager: GridManager;
 let selectionManager: SelectionManager;
 let contextMenuManager: ContextMenu;
 let isTraining = false; // local UI state, initialized from server on load (default to paused)
+let inspectorOpen = true;
+let inspectorContainer: HTMLElement | null = null;
+let inspectorPanel: HTMLElement | null = null;
+let trainingStatePill: HTMLElement | null = null;
+let trainingSummary: HTMLElement | null = null;
+let detailsToggle: HTMLButtonElement | null = null;
+let detailsBody: HTMLElement | null = null;
+let uniqueTags: string[] = [];
 
-let fetchTimeout: NodeJS.Timeout | null = null;
+let fetchTimeout: any = null;
 let currentFetchRequestId = 0;
 
 function getSplitColors(): SplitColors {
-    const trainColor = (document.getElementById('train-color') as HTMLInputElement)?.value;
-    const evalColor = (document.getElementById('eval-color') as HTMLInputElement)?.value;
-
-    console.log()
+    const trainColor = (document.getElementById('train-color') as HTMLInputElement)?.value || '#4CAF50';
+    const evalColor = (document.getElementById('eval-color') as HTMLInputElement)?.value || '#2196F3';
     return { train: trainColor, eval: evalColor };
 }
 
@@ -180,6 +188,10 @@ async function updateLayout() {
         console.warn('[updateLayout] cellsContainer is missing.');
         return;
     }
+    if (!gridManager) {
+        console.warn('[updateLayout] gridManager is missing.');
+        return;
+    }
 
     // Preserve current selection by storing selected cell indices
     const selectedCells = selectionManager.getSelectedCells();
@@ -253,6 +265,7 @@ async function handleQuerySubmit(query: string): Promise<void> {
     try {
         const request: DataQueryRequest = { query, accumulate: false, isNaturalLanguage: true };
         const response: DataQueryResponse = await dataClient.applyDataQuery(request).response;
+        updateUniqueTags(response.uniqueTags);
         const sampleCount = response.numberOfAllSamples;
 
         let currentStartIndex = traversalPanel.getStartIndex();
@@ -282,24 +295,20 @@ async function handleQuerySubmit(query: string): Promise<void> {
 async function refreshDynamicStatsOnly() {
     if (!displayOptionsPanel) return;
 
+    const displayPreferences = displayOptionsPanel.getDisplayPreferences();
+
     const start = traversalPanel.getStartIndex();
     const count = traversalPanel.getLeftSamples();
     const batchSize = 32;
 
-    const preferences = displayOptionsPanel.getDisplayPreferences();
-    preferences.splitColors = getSplitColors();
-
-    // Here we DO NOT clear cells, we only update them
     for (let i = 0; i < count; i += batchSize) {
         const currentBatchSize = Math.min(batchSize, count - i);
         const request: DataSamplesRequest = {
             startIndex: start + i,
             recordsCnt: currentBatchSize,
-            includeRawData: false,          // <<-- important
+            includeRawData: false,          // important: no images
             includeTransformedData: false,
-            // Ask only for dynamic stats, if you want to be explicit
-            // statsToRetrieve: ["sample_last_loss", "sample_encounters", "deny_listed", "tags"]
-            statsToRetrieve: [],
+            statsToRetrieve: [],            // dynamic stats only
             resizeWidth: 0,
             resizeHeight: 0
         };
@@ -309,12 +318,30 @@ async function refreshDynamicStatsOnly() {
         if (response.success && response.dataRecords.length > 0) {
             response.dataRecords.forEach((record, index) => {
                 const cell = gridManager.getCellbyIndex(i + index);
-                if (cell) {
-                    // You might want a method like `updateFromRecord` if `populate` resets everything
-                    cell.populate(record, preferences);
-                    // or a more selective `cell.updateStats(record)`
+                if (cell && displayPreferences) {
+                    // Update the cell's record data without repopulating the entire cell
+                    // This preserves the current display state (overlay toggles, etc.)
+                    const currentRecord = cell.getRecord();
+                    if (currentRecord) {
+                        // Merge new stats into existing record
+                        record.dataStats.forEach(newStat => {
+                            const existingStatIndex = currentRecord.dataStats.findIndex(
+                                (s: any) => s.name === newStat.name
+                            );
+                            if (existingStatIndex >= 0) {
+                                currentRecord.dataStats[existingStatIndex] = newStat;
+                            } else {
+                                currentRecord.dataStats.push(newStat);
+                            }
+                        });
+                        // Update label to reflect new stats
+                        cell.updateLabel();
+                    }
                 }
             });
+
+            // Re-populate options to discover any newly added columns (like loss_class_N)
+            displayOptionsPanel.populateOptions(response.dataRecords);
         } else if (!response.success) {
             console.error("Failed to retrieve samples:", response.message);
             break;
@@ -374,12 +401,32 @@ export async function initializeUIElements() {
     }
 
 
+    inspectorContainer = document.querySelector('.inspector-container') as HTMLElement | null;
+    inspectorPanel = document.getElementById('options-panel') as HTMLElement | null;
+    trainingStatePill = document.getElementById('training-state-pill') as HTMLElement | null;
+    trainingSummary = document.getElementById('training-summary') as HTMLElement | null;
+    detailsToggle = document.getElementById('details-toggle') as HTMLButtonElement | null;
+    detailsBody = document.getElementById('details-body') as HTMLElement | null;
+
     const toggleBtn = document.getElementById('toggle-training') as HTMLButtonElement | null;
     if (toggleBtn) {
-        const updateToggleLabel = () => {
-            toggleBtn.textContent = isTraining ? 'Pause' : 'Resume';
-            toggleBtn.classList.toggle('running', isTraining);
-            toggleBtn.classList.toggle('paused', !isTraining);
+        const syncTrainingUI = () => {
+            if (toggleBtn) {
+                toggleBtn.textContent = isTraining ? 'Pause' : 'Resume';
+                toggleBtn.classList.toggle('running', isTraining);
+                toggleBtn.classList.toggle('paused', !isTraining);
+            }
+            if (trainingStatePill) {
+                trainingStatePill.textContent = isTraining ? 'Running' : 'Paused';
+                trainingStatePill.classList.toggle('pill-running', isTraining);
+                trainingStatePill.classList.toggle('pill-paused', !isTraining);
+            }
+            if (trainingSummary) {
+                const gridCount = gridManager ? gridManager.getCells().length : traversalPanel.getLeftSamples();
+                const start = traversalPanel.getStartIndex();
+                const end = Math.max(start, start + gridCount - 1);
+                trainingSummary.textContent = `TBD: add training stats`;
+            }
         };
 
         let lastToggleError: string | null = null;
@@ -388,6 +435,13 @@ export async function initializeUIElements() {
             try {
                 // Toggle desired state
                 const nextState = !isTraining;
+
+                // Optimistic UI update - update immediately for responsiveness
+                isTraining = nextState;
+                syncTrainingUI();
+
+                // Disable button while request is in flight
+                toggleBtn.disabled = true;
 
                 const cmd: TrainerCommand = {
                     getHyperParameters: false,
@@ -398,11 +452,19 @@ export async function initializeUIElements() {
                 };
 
                 const resp = await dataClient.experimentCommand(cmd).response;
+
+                // Re-enable button
+                toggleBtn.disabled = false;
+
                 if (resp.success) {
-                    isTraining = nextState;
-                    updateToggleLabel();
+                    // Persist state to localStorage for reload fallback
+                    localStorage.setItem('training-state', String(nextState));
                     lastToggleError = null; // Reset error tracking on success
                 } else {
+                    // Revert UI on failure
+                    isTraining = !nextState;
+                    syncTrainingUI();
+
                     console.error('Failed to toggle training state:', resp.message);
                     const errorMsg = `Failed to toggle training: ${resp.message}`;
                     if (lastToggleError === errorMsg) {
@@ -411,6 +473,13 @@ export async function initializeUIElements() {
                     lastToggleError = errorMsg;
                 }
             } catch (err) {
+                // Re-enable button
+                toggleBtn.disabled = false;
+
+                // Revert UI on error
+                isTraining = !isTraining;
+                syncTrainingUI();
+
                 console.error('Error toggling training state:', err);
                 const errorMsg = 'Error toggling training state. See console for details.';
                 if (lastToggleError === errorMsg) {
@@ -420,28 +489,75 @@ export async function initializeUIElements() {
             }
         });
 
-        // Initialize state from server hyper parameters
-        try {
-            const initResp = await dataClient.experimentCommand({
-                getHyperParameters: true,
-                getInteractiveLayers: false,
-            }).response;
-            const hp = initResp.hyperParametersDescs || [];
-            const isTrainingDesc = hp.find(d => d.name === 'is_training' || d.label === 'is_training');
-            if (isTrainingDesc) {
-                // Bool may come as stringValue ('true'/'false') or numericalValue (1/0)
-                if (typeof isTrainingDesc.stringValue === 'string') {
-                    isTraining = isTrainingDesc.stringValue.toLowerCase() === 'true';
-                } else if (typeof isTrainingDesc.numericalValue === 'number') {
-                    isTraining = isTrainingDesc.numericalValue !== 0;
+        // Helper function to fetch training state with retry logic
+        // More patient settings for server startup
+        async function fetchInitialTrainingState(retries = 5, initialDelay = 1000): Promise<boolean> {
+            let delay = initialDelay;
+
+            for (let attempt = 0; attempt < retries; attempt++) {
+                try {
+                    const initResp = await dataClient.experimentCommand({
+                        getHyperParameters: true,
+                        getInteractiveLayers: false,
+                    }).response;
+
+                    const hp = initResp.hyperParametersDescs || [];
+                    const isTrainingDesc = hp.find(d => d.name === 'is_training' || d.label === 'is_training');
+
+                    if (isTrainingDesc) {
+                        let fetchedState = false;
+                        // Bool may come as stringValue ('true'/'false') or numericalValue (1/0)
+                        if (typeof isTrainingDesc.stringValue === 'string') {
+                            fetchedState = isTrainingDesc.stringValue.toLowerCase() === 'true';
+                        } else if (typeof isTrainingDesc.numericalValue === 'number') {
+                            fetchedState = isTrainingDesc.numericalValue !== 0;
+                        }
+
+                        // Successfully fetched - save to localStorage for future fallback
+                        localStorage.setItem('training-state', String(fetchedState));
+                        console.log(`Training state fetched from server: ${fetchedState}`);
+                        return fetchedState;
+                    }
+
+                    // No is_training parameter found, default to false
+                    return false;
+
+                } catch (e) {
+                    if (attempt < retries - 1) {
+                        console.log(`Retry ${attempt + 1}/${retries} to fetch training state in ${delay}ms...`);
+
+                        // Show visual feedback that we're retrying
+                        if (trainingStatePill) {
+                            trainingStatePill.textContent = `Connecting... (${attempt + 1}/${retries})`;
+                            trainingStatePill.classList.add('pill-paused');
+                        }
+
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay *= 2; // Exponential backoff
+                    } else {
+                        console.warn(`Failed to fetch training state after ${retries} attempts`, e);
+
+                        // Fall back to localStorage if available
+                        const savedState = localStorage.getItem('training-state');
+                        if (savedState !== null) {
+                            const cachedState = savedState === 'true';
+                            console.log(`Using cached training state from localStorage: ${cachedState}`);
+                            return cachedState;
+                        }
+
+                        // Ultimate fallback: default to false (paused)
+                        console.warn('No cached state available, defaulting to paused');
+                        return false;
+                    }
                 }
             }
-        } catch (e) {
-            console.warn('Could not fetch initial training state; defaulting to paused.', e);
-            isTraining = false;
-        } finally {
-            updateToggleLabel();
+
+            return false;
         }
+
+        // Initialize state from server with retry logic
+        isTraining = await fetchInitialTrainingState();
+        syncTrainingUI();
     }
 
     // Initialize display options panel
@@ -450,16 +566,12 @@ export async function initializeUIElements() {
         displayOptionsPanel = new DataDisplayOptionsPanel(detailsOptionsRow);
         displayOptionsPanel.initialize();
 
-        const optionsToggle = document.getElementById('options-toggle');
-        const optionsPanel = document.getElementById('options-panel');
-
-        if (optionsToggle && optionsPanel) {
-            optionsToggle.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const isVisible = optionsPanel.style.display !== 'none';
-                optionsPanel.style.display = isVisible ? 'none' : 'block';
-                optionsToggle.classList.toggle('collapsed', isVisible);
-                optionsToggle.classList.toggle('expanded', !isVisible);
+        if (detailsToggle && inspectorPanel) {
+            detailsToggle.addEventListener('click', () => {
+                if (inspectorPanel) {
+                    inspectorPanel.style.transform = 'translateX(-100%)';
+                    inspectorPanel.classList.toggle('details-collapsed');
+                }
             });
 
             // Close options panel when clicking outside
@@ -522,35 +634,49 @@ export async function initializeUIElements() {
             });
         }
 
-        // Listen for color changes
+        // Listen for color changes and persist to localStorage
         const trainColorInput = document.getElementById('train-color') as HTMLInputElement;
         const evalColorInput = document.getElementById('eval-color') as HTMLInputElement;
-        
-        // Restore saved colors
-        const savedTrainColor = localStorage.getItem('trainColor');
-        const savedEvalColor = localStorage.getItem('evalColor');
-        
+
+        // Restore saved colors from localStorage
+        const savedTrainColor = localStorage.getItem('train-color');
+        const savedEvalColor = localStorage.getItem('eval-color');
+        if (savedTrainColor && trainColorInput) {
+            trainColorInput.value = savedTrainColor;
+        }
+        if (savedEvalColor && evalColorInput) {
+            evalColorInput.value = savedEvalColor;
+        }
+
         if (trainColorInput) {
-            if (savedTrainColor) {
-                trainColorInput.value = savedTrainColor;
-            }
             trainColorInput.addEventListener('input', () => {
-                localStorage.setItem('trainColor', trainColorInput.value);
+                localStorage.setItem('train-color', trainColorInput.value);
                 updateDisplayOnly();
             });
         }
         if (evalColorInput) {
-            if (savedEvalColor) {
-                evalColorInput.value = savedEvalColor;
-            }
             evalColorInput.addEventListener('input', () => {
-                localStorage.setItem('evalColor', evalColorInput.value);
+                localStorage.setItem('eval-color', evalColorInput.value);
                 updateDisplayOnly();
             });
         }
 
         // Checkbox changes only need display update, not layout recalculation
         displayOptionsPanel.onUpdate(updateDisplayOnly);
+    }
+
+    // Grid settings toggle functionality
+    const gridSettingsToggle = document.getElementById('grid-settings-toggle') as HTMLButtonElement;
+    const viewControls = document.getElementById('view-controls') as HTMLElement;
+
+    if (gridSettingsToggle && viewControls) {
+        let isSettingsExpanded = false; // Start collapsed
+        viewControls.classList.add('collapsed'); // Start collapsed
+
+        gridSettingsToggle.addEventListener('click', () => {
+            isSettingsExpanded = !isSettingsExpanded;
+            viewControls.classList.toggle('collapsed', !isSettingsExpanded);
+        });
     }
 
     traversalPanel.initialize();
@@ -684,6 +810,7 @@ export async function initializeUIElements() {
     try {
         const request: DataQueryRequest = { query: "", accumulate: false, isNaturalLanguage: false };
         const response: DataQueryResponse = await dataClient.applyDataQuery(request).response;
+        updateUniqueTags(response.uniqueTags);
         const sampleCount = response.numberOfAllSamples;
         // traversalPanel.setMaxSampleId(sampleCount > 0 ? sampleCount - 1 : 0);
         traversalPanel.updateSampleCounts(
@@ -832,91 +959,429 @@ document.addEventListener('modalContextMenuAction', async (e: any) => {
         console.error('No sampleId provided in modal action');
         return;
     }
-    
-    const sample_ids = [sampleId];
-    const origins = origin ? [origin] : ['train'];
-    
-    console.log('Modal action:', action, 'sampleId:', sampleId, 'origin:', origin);
-    
-    switch (action) {
-        case 'add-tag':
-            const tag = prompt('Enter tag:');
-            if (tag) {
-                const tagRequest: DataEditsRequest = {
-                    statName: "tags",
+});
+
+contextMenu.addEventListener('click', async (e) => {
+    const action = (e.target as HTMLElement).dataset.action;
+    if (action) {
+        console.log(
+            `Action: ${action}, selected cells:`,
+            Array.from(selectedCells)
+                .map(c => getGridCell(c)?.getRecord()?.sampleId)
+                .filter(id => id !== undefined)
+        );
+
+        const sample_ids = Array.from(selectedCells)
+            .map(c => getGridCell(c)?.getRecord()?.sampleId)
+            .filter(id => id !== undefined)
+
+        let origins = []
+        for (const c of Array.from(selectedCells)) {
+            const gridCell = getGridCell(c);
+            const record = gridCell?.getRecord();
+            // console.log("record: ", record)
+            const originStat = record.dataStats.find((stat: any) => stat.name === 'origin');
+            if (originStat) {
+                origins.push(originStat.valueString as string);
+            }
+        }
+
+        hideContextMenu();
+
+        switch (action) {
+            case 'add-tag':
+                openTaggingModal(sample_ids, origins);
+                // We DON'T clear selection or refresh here. 
+                // The modal will stay on top of the selected items.
+                return;
+            case 'remove-tag':
+                removeTag(sample_ids, origins);
+                clearSelection();
+                debouncedFetchAndDisplay();
+                break;
+            case 'discard':
+                selectedCells.forEach(cell => {
+                    const gridCell = getGridCell(cell);
+                    if (gridCell) {
+                        cell.classList.add('discarded');
+                    }
+                });
+
+                const drequest: DataEditsRequest = {
+                    statName: "deny_listed",
                     floatValue: 0,
-                    stringValue: tag,
-                    boolValue: false,
+                    stringValue: '',
+                    boolValue: true,
                     type: SampleEditType.EDIT_OVERRIDE,
                     samplesIds: sample_ids,
                     sampleOrigins: origins
-                };
-                console.log("Sending tag request from modal:", tagRequest);
+                }
                 try {
-                    const response = await dataClient.editDataSample(tagRequest).response;
-                    console.log("Tag response from modal:", response);
-                    if (!response.success) {
-                        alert(`Failed to add tag: ${response.message}`);
-                    } else {
-                        updateAffectedCellsOnly(sample_ids, tagRequest);
+                    const dresponse = await dataClient.editDataSample(drequest).response;
+                    if (!dresponse.success) {
+                        console.error("Failed to discard:", dresponse.message);
                     }
                 } catch (error) {
-                    console.error("Error adding tag from modal:", error);
-                    alert(`Error adding tag: ${error}`);
+                    console.error("Error discarding:", error);
                 }
-            }
-            break;
-        case 'remove-tag':
-            const clearRequest: DataEditsRequest = {
-                statName: "tags",
-                floatValue: 0,
-                stringValue: "",
-                boolValue: false,
-                type: SampleEditType.EDIT_OVERRIDE,
-                samplesIds: sample_ids,
-                sampleOrigins: origins
-            };
-            try {
-                const response = await dataClient.editDataSample(clearRequest).response;
-                if (!response.success) {
-                    alert(`Failed to remove tag: ${response.message}`);
-                } else {
-                    updateAffectedCellsOnly(sample_ids, clearRequest);
-                }
-            } catch (error) {
-                console.error("Error removing tag from modal:", error);
-                alert(`Error removing tag: ${error}`);
-            }
-            break;
-        case 'discard':
-            const discardRequest: DataEditsRequest = {
-                statName: "deny_listed",
-                floatValue: 0,
-                stringValue: '',
-                boolValue: true,
-                type: SampleEditType.EDIT_OVERRIDE,
-                samplesIds: sample_ids,
-                sampleOrigins: origins
-            }
-            console.log("Sending discard request from modal:", discardRequest);
-            try {
-                const response = await dataClient.editDataSample(discardRequest).response;
-                console.log("Discard response from modal:", response);
-                if (!response.success) {
-                    alert(`Failed to discard: ${response.message}`);
-                } else {
-                    updateAffectedCellsOnly(sample_ids, discardRequest);
-                }
-            } catch (error) {
-                console.error("Error discarding from modal:", error);
-                alert(`Error discarding: ${error}`);
-            }
-            break;
+                clearSelection();
+                debouncedFetchAndDisplay();
+                break;
+        }
     }
 });
 
 // =============================================================================
+// Image Detail Modal
+// =============================================================================
 
+const imageDetailModal = document.getElementById('image-detail-modal') as HTMLElement;
+const modalImage = document.getElementById('modal-image') as HTMLImageElement;
+const modalStatsContainer = document.getElementById('modal-stats-container') as HTMLElement;
+const modalCloseBtn = document.getElementById('modal-close-btn') as HTMLButtonElement;
+
+// Helper function to apply segmentation overlays to modal image
+function applySegmentationToModal(
+    baseImageUrl: string,
+    gtStat: any | null,
+    predStat: any | null,
+    showRaw: boolean,
+    showGt: boolean,
+    showPred: boolean,
+    showDiff: boolean,
+    classPreferences: any
+) {
+    const img = new Image();
+    img.onload = () => {
+        const width = img.width;
+        const height = img.height;
+
+        if (!width || !height) {
+            modalImage.src = baseImageUrl;
+            return;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+            modalImage.src = baseImageUrl;
+            return;
+        }
+
+        // 1) Base: raw image or black
+        if (showRaw) {
+            ctx.drawImage(img, 0, 0, width, height);
+        } else {
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, width, height);
+        }
+
+        // 2) Use WebGL Renderer for masks
+        const finalUrl = SegmentationRenderer.getInstance().render(
+            img,
+            gtStat ? { value: gtStat.value, shape: gtStat.shape } : null,
+            predStat ? { value: predStat.value, shape: predStat.shape } : null,
+            {
+                showRaw,
+                showGt,
+                showPred,
+                showDiff,
+                alpha: 0.45,
+                classPrefs: classPreferences
+            }
+        );
+
+        modalImage.src = finalUrl;
+
+        console.log('[Modal] Applied segmentation overlays at', width, 'x', height);
+    };
+
+    img.src = baseImageUrl;
+}
+
+async function openImageDetailModal(cell: HTMLElement) {
+    const gridCell = getGridCell(cell);
+    if (!gridCell) return;
+
+    const record = gridCell.getRecord();
+    if (!record) return;
+
+    // Show the modal immediately with the grid's current image
+    const imgElement = gridCell.getImage();
+    if (imgElement && imgElement.src) {
+        modalImage.src = imgElement.src;
+    }
+
+    // Populate metadata stats
+    modalStatsContainer.innerHTML = '';
+
+    // Add sample ID first
+    const sampleIdItem = document.createElement('div');
+    sampleIdItem.className = 'modal-stat-item';
+    sampleIdItem.innerHTML = `
+        <div class="modal-stat-label">Sample ID</div>
+        <div class="modal-stat-value">${record.sampleId}</div>
+    `;
+    modalStatsContainer.appendChild(sampleIdItem);
+
+    // Add all data stats (sorted for better readability)
+    if (record.dataStats && record.dataStats.length > 0) {
+        // Sort stats for better organization
+        const sortedStats = [...record.dataStats].sort((a, b) => {
+            // Define sort order categories
+            const getCategory = (statName: string): number => {
+                // 1. General info (top)
+                if (statName === 'origin') return 1;
+                if (statName === 'task_type') return 2;
+                if (statName === 'tags') return 3;
+
+                // 2. Class distribution stats
+                if (statName === 'num_classes_present') return 10;
+                if (statName === 'dominant_class') return 11;
+                if (statName === 'dominant_class_ratio') return 12;
+                if (statName === 'background_ratio') return 13;
+
+                // 3. Other stats (alphabetically)
+                // Skip loss-related stats here
+                if (!statName.includes('loss')) {
+                    return 100;
+                }
+
+                // 4. Aggregate loss stats (bottom, for closer inspection)
+                if (statName === 'mean_loss') return 1000;
+                if (statName === 'median_loss') return 1001;
+                if (statName === 'min_loss') return 1002;
+                if (statName === 'max_loss') return 1003;
+                if (statName === 'std_loss') return 1004;
+
+                // 5. Per-class losses (loss_class_0, loss_class_1, etc.) - very bottom
+                if (statName.startsWith('loss_class_')) {
+                    const classNum = parseInt(statName.replace('loss_class_', ''));
+                    return 2000 + classNum; // Sort numerically
+                }
+
+                // 6. Any other loss-related stats
+                if (statName.includes('loss')) {
+                    return 1500;
+                }
+
+                return 100;
+            };
+
+            const catA = getCategory(a.name);
+            const catB = getCategory(b.name);
+
+            if (catA !== catB) {
+                return catA - catB;
+            }
+
+            // Within same category, sort alphabetically
+            return a.name.localeCompare(b.name);
+        });
+
+        sortedStats.forEach((stat: any) => {
+            // Skip raw_data and other binary/large data
+            if (stat.name === 'raw_data' || stat.name === 'transformed_data' ||
+                stat.name === 'label' || stat.name === 'pred_mask') {
+                return;
+            }
+
+            const statItem = document.createElement('div');
+            statItem.className = 'modal-stat-item';
+
+            let value = '';
+
+            // Handle string values
+            if (stat.valueString !== undefined && stat.valueString !== '') {
+                value = stat.valueString;
+            }
+            // Handle scalar values (in value array)
+            else if (stat.value && stat.value.length > 0) {
+                if (stat.value.length === 1) {
+                    // Single scalar value
+                    const num = stat.value[0];
+                    value = typeof num === 'number' && num % 1 !== 0
+                        ? num.toFixed(4)
+                        : String(num);
+                } else {
+                    // Array of values - show first few
+                    value = stat.value.slice(0, 3).map((v: number) =>
+                        typeof v === 'number' && v % 1 !== 0 ? v.toFixed(2) : String(v)
+                    ).join(', ');
+                    if (stat.value.length > 3) {
+                        value += '...';
+                    }
+                }
+            }
+            else {
+                value = '-';
+            }
+
+            statItem.innerHTML = `
+                <div class="modal-stat-label">${stat.name || 'Unknown'}</div>
+                <div class="modal-stat-value">${value}</div>
+            `;
+            modalStatsContainer.appendChild(statItem);
+        });
+    }
+
+    // Show the modal
+    imageDetailModal.classList.add('visible');
+    document.body.style.overflow = 'hidden';
+
+    // Now fetch full resolution image in background
+    try {
+        // Find the cell's position in the grid
+        const cells = gridManager.getCells();
+        const cellIndex = cells.indexOf(gridCell);
+
+        if (cellIndex === -1) {
+            console.warn('[Modal] Could not find cell in grid');
+            return;
+        }
+
+        // Calculate the actual index in the current dataset view
+        const startIndex = traversalPanel.getStartIndex();
+        const actualIndex = startIndex + cellIndex;
+
+        console.log('[Modal] Fetching full resolution:');
+        console.log('  - Cell index in grid:', cellIndex);
+        console.log('  - Current start index:', startIndex);
+        console.log('  - Actual fetch index:', actualIndex);
+        console.log('  - Sample ID:', record.sampleId);
+
+        // Add loading indicator
+        modalImage.classList.add('loading');
+
+        // Request FULL resolution image
+        const highResRequest: DataSamplesRequest = {
+            startIndex: actualIndex,
+            recordsCnt: 1,
+            includeRawData: true,
+            includeTransformedData: false,
+            statsToRetrieve: [],
+            resizeWidth: -100,  // -100 = 100% of original
+            resizeHeight: -100
+        };
+
+        const highResResponse = await fetchSamples(highResRequest);
+
+        if (highResResponse.success && highResResponse.dataRecords.length > 0) {
+            const highResRecord = highResResponse.dataRecords[0];
+
+            // Find raw_data stat
+            const rawDataStat = highResRecord.dataStats.find(
+                (stat: any) => stat.name === 'raw_data' && stat.type === 'bytes'
+            );
+
+            if (rawDataStat && rawDataStat.value && rawDataStat.value.length > 0) {
+                // Convert bytes to base64 in chunks to avoid stack overflow
+                const bytes = new Uint8Array(rawDataStat.value);
+                let binary = '';
+                const chunkSize = 8192;
+
+                for (let i = 0; i < bytes.length; i += chunkSize) {
+                    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+                    binary += String.fromCharCode.apply(null, Array.from(chunk));
+                }
+
+                const base64Image = btoa(binary);
+
+                // Check if this is a segmentation task and apply overlays
+                const taskTypeStat = highResRecord.dataStats.find(
+                    (stat: any) => stat.name === 'task_type'
+                );
+                const isSegmentation = taskTypeStat?.valueString === 'segmentation';
+
+                if (isSegmentation && displayOptionsPanel) {
+                    // Get GT and Pred masks from the response
+                    const gtStat = highResRecord.dataStats.find(
+                        (stat: any) => stat.name === 'label' && stat.type === 'array'
+                    );
+                    const predStat = highResRecord.dataStats.find(
+                        (stat: any) => stat.name === 'pred_mask' && stat.type === 'array'
+                    );
+
+                    // Get current display preferences
+                    const prefs = displayOptionsPanel.getDisplayPreferences();
+                    const showRaw = prefs['showRawImage'] ?? true;
+                    const showGt = prefs['showGtMask'] ?? true;
+                    const showPred = prefs['showPredMask'] ?? true;
+                    const showDiff = prefs['showDiffMask'] ?? false;
+
+                    // Apply segmentation visualization
+                    const baseImageUrl = `data:image/png;base64,${base64Image}`;
+                    applySegmentationToModal(
+                        baseImageUrl,
+                        gtStat,
+                        predStat,
+                        showRaw,
+                        showGt,
+                        showPred,
+                        showDiff,
+                        prefs.classPreferences
+                    );
+                } else {
+                    // Non-segmentation: just show the image
+                    modalImage.src = `data:image/png;base64,${base64Image}`;
+                }
+
+                console.log('[Modal] Updated to full resolution');
+            } else {
+                console.warn('[Modal] No raw_data found in response');
+            }
+        } else {
+            console.warn('[Modal] Failed to fetch full resolution:', highResResponse.message);
+        }
+
+        modalImage.classList.remove('loading');
+    } catch (error) {
+        console.error('[Modal] Error fetching full resolution:', error);
+        modalImage.classList.remove('loading');
+    }
+}
+
+function closeImageDetailModal() {
+    imageDetailModal.classList.remove('visible');
+    document.body.style.overflow = ''; // Restore scrolling
+}
+
+// Close button
+if (modalCloseBtn) {
+    modalCloseBtn.addEventListener('click', closeImageDetailModal);
+}
+
+// Close on backdrop click
+if (imageDetailModal) {
+    imageDetailModal.addEventListener('click', (e) => {
+        if (e.target === imageDetailModal || (e.target as HTMLElement).classList.contains('modal-backdrop')) {
+            closeImageDetailModal();
+        }
+    });
+}
+
+// Close on Escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && imageDetailModal.classList.contains('visible')) {
+        closeImageDetailModal();
+    }
+});
+
+// Add double-click event listener to grid cells
+grid.addEventListener('dblclick', (e) => {
+    const target = e.target as HTMLElement;
+    const cell = target.closest('.cell') as HTMLElement | null;
+
+    if (cell) {
+        openImageDetailModal(cell);
+    }
+});
+
+// =============================================================================
 
 
 
@@ -928,4 +1393,217 @@ if (document.readyState === 'loading') {
 } else {
     initializeDarkMode();
     initializeUIElements();
+}
+
+function updateUniqueTags(tags: string[]) {
+    uniqueTags = tags || [];
+    const datalist = document.getElementById('existing-tags');
+    if (datalist) {
+        datalist.innerHTML = uniqueTags.map(t => `<option value="${t}">`).join('');
+    }
+}
+
+function openTaggingModal(sampleIds: number[], origins: string[]) {
+    const modal = document.getElementById('tagging-modal');
+    const input = document.getElementById('tag-input') as HTMLInputElement;
+    const container = document.getElementById('quick-tags-container');
+    const selectionContainer = document.getElementById('selection-tags-container');
+    const selectionSection = document.getElementById('selection-tags-section');
+    const submitBtn = document.getElementById('tag-submit-btn');
+    const cancelBtn = document.getElementById('tag-cancel-btn');
+    const closeBtn = document.getElementById('tagging-close-btn');
+    const clearBtn = document.getElementById('tag-clear-btn');
+
+    if (!modal || !input || !container) return;
+
+    input.value = '';
+
+    // Calculate current tags union
+    const currentTagsSet = new Set<string>();
+    selectedCells.forEach(cell => {
+        const gridCell = getGridCell(cell);
+        const record = gridCell?.getRecord();
+        const tagsStat = record?.dataStats.find((s: any) => s.name === 'tags');
+        const tagsStr = tagsStat?.valueString || "";
+        tagsStr.split(',').map((t: string) => t.trim()).filter((t: string) => t).forEach((t: string) => currentTagsSet.add(t));
+    });
+
+    // Fill current tags
+    if (selectionContainer && selectionSection) {
+        if (currentTagsSet.size > 0) {
+            selectionSection.style.display = 'block';
+            selectionContainer.innerHTML = '';
+            Array.from(currentTagsSet).sort().forEach(tag => {
+                const btn = document.createElement('button');
+                btn.className = 'quick-tag-btn current-tag-chip';
+                btn.innerHTML = `${tag} <span class="remove-x">×</span>`;
+                btn.title = `Remove tag "${tag}"`;
+                btn.onclick = () => handleRemove(tag);
+                selectionContainer.appendChild(btn);
+            });
+        } else {
+            selectionSection.style.display = 'none';
+        }
+    }
+
+    // Fill all tags (historical)
+    container.innerHTML = '';
+    uniqueTags.forEach(tag => {
+        const btn = document.createElement('button');
+        btn.className = 'quick-tag-btn';
+        btn.textContent = tag;
+        btn.onclick = () => {
+            input.value = tag;
+            handleSubmit();
+        };
+        container.appendChild(btn);
+    });
+
+    modal.style.display = 'flex';
+    setTimeout(() => {
+        modal.classList.add('visible');
+        input.focus();
+    }, 10);
+
+    const cleanup = () => {
+        modal.classList.remove('visible');
+        setTimeout(() => {
+            modal.style.display = 'none';
+        }, 300);
+        submitBtn?.removeEventListener('click', handleSubmit);
+        cancelBtn?.removeEventListener('click', cleanup);
+        closeBtn?.removeEventListener('click', cleanup);
+        clearBtn?.removeEventListener('click', handleClear);
+        input.onkeydown = null;
+    };
+
+    const handleRemove = async (tag: string) => {
+        const request: DataEditsRequest = {
+            statName: "tags",
+            floatValue: 0,
+            stringValue: tag,
+            boolValue: false,
+            type: SampleEditType.EDIT_REMOVE,
+            samplesIds: sampleIds,
+            sampleOrigins: origins
+        };
+
+        try {
+            const response = await dataClient.editDataSample(request).response;
+            if (response.success) {
+                selectedCells.forEach(cell => {
+                    const gridCell = getGridCell(cell);
+                    if (gridCell) {
+                        const record = gridCell.getRecord();
+                        const existingTagsStat = record?.dataStats.find((s: any) => s.name === 'tags');
+                        const currentTagsStr = existingTagsStat?.valueString || "";
+                        const newTagsStr = currentTagsStr.split(',').map((t: string) => t.trim()).filter((t: string) => t && t !== tag).join(', ');
+                        gridCell.updateStats({ "tags": newTagsStr });
+                    }
+                });
+                cleanup(); // Close modal on success
+            } else {
+                alert(`Failed to remove tag: ${response.message}`);
+            }
+        } catch (error) {
+            alert(`Error removing tag: ${error}`);
+        }
+    };
+
+    const handleSubmit = async () => {
+        const tag = input.value.trim();
+        if (!tag) {
+            cleanup();
+            return;
+        }
+
+        const request: DataEditsRequest = {
+            statName: "tags",
+            floatValue: 0,
+            stringValue: tag,
+            boolValue: false,
+            type: SampleEditType.EDIT_ACCUMULATE,
+            samplesIds: sampleIds,
+            sampleOrigins: origins
+        };
+
+        try {
+            const response = await dataClient.editDataSample(request).response;
+            if (response.success) {
+                if (!uniqueTags.includes(tag)) {
+                    updateUniqueTags([...uniqueTags, tag].sort());
+                }
+                selectedCells.forEach(cell => {
+                    const gridCell = getGridCell(cell);
+                    if (gridCell) {
+                        const record = gridCell.getRecord();
+                        const existingTagsStat = record?.dataStats.find((s: any) => s.name === 'tags');
+                        const currentTagsStr = existingTagsStat?.valueString || "";
+                        const currentTags = currentTagsStr.split(',').map((t: string) => t.trim()).filter((t: string) => t);
+                        if (!currentTags.includes(tag)) {
+                            currentTags.push(tag);
+                        }
+                        const newTagsStr = currentTags.join(', ');
+                        gridCell.updateStats({ "tags": newTagsStr });
+                    }
+                });
+            } else {
+                alert(`Failed to add tag: ${response.message}`);
+            }
+        } catch (error) {
+            alert(`Error adding tag: ${error}`);
+        }
+        cleanup();
+    };
+
+    const handleClear = async () => {
+        if (confirm("Are you sure you want to remove all tags from the selected images?")) {
+            await removeTag(sampleIds, origins);
+            cleanup();
+        }
+    };
+
+    submitBtn?.addEventListener('click', handleSubmit);
+    cancelBtn?.addEventListener('click', cleanup);
+    closeBtn?.addEventListener('click', cleanup);
+    clearBtn?.addEventListener('click', handleClear);
+
+    input.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleSubmit();
+        }
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            cleanup();
+        }
+    };
+}
+
+async function removeTag(sampleIds: number[], origins: string[]) {
+    const request: DataEditsRequest = {
+        statName: "tags",
+        floatValue: 0,
+        stringValue: "",
+        boolValue: false,
+        type: SampleEditType.EDIT_OVERRIDE,
+        samplesIds: sampleIds,
+        sampleOrigins: origins
+    };
+
+    try {
+        const response = await dataClient.editDataSample(request).response;
+        if (response.success) {
+            selectedCells.forEach(cell => {
+                const gridCell = getGridCell(cell);
+                if (gridCell) {
+                    gridCell.updateStats({ "tags": "" });
+                }
+            });
+        } else {
+            alert(`Failed to remove tag: ${response.message}`);
+        }
+    } catch (error) {
+        alert(`Error removing tag: ${error}`);
+    }
 }

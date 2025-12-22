@@ -1,6 +1,7 @@
 
 import { DataRecord } from "./data_service";
 import { DisplayPreferences } from "./DataDisplayOptionsPanel";
+import { SegmentationRenderer } from "./SegmentationRenderer";
 
 
 const PLACEHOLDER_IMAGE_SRC = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
@@ -15,12 +16,24 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 
+export type ClassPreference = {
+    enabled: boolean;
+    color: string;
+};
+
+
 export class GridCell {
     private element: HTMLElement;
     private img: HTMLImageElement;
     private label: HTMLSpanElement;
     private record: DataRecord | null = null;
     private displayPreferences: DisplayPreferences | null = null;
+
+    private taskType: string | null = null;
+    private cachedRawBytes: Uint8Array | null = null;
+    private cachedRawShape: number[] | null = null;
+    private cachedGtStat: any | null = null;
+    private cachedPredStat: any | null = null;
 
     constructor(width: number, height: number) {
         this.element = document.createElement('div');
@@ -247,9 +260,37 @@ export class GridCell {
         return this.element;
     }
 
+    public getWidth(): number {
+        return parseInt(this.element.style.width);
+    }
+
     setDisplayPreferences(displayPreferences: DisplayPreferences): void {
         this.displayPreferences = displayPreferences;
     }
+
+    private redrawSegmentation(): void {
+        if (!this.displayPreferences) return;
+        if (!this.cachedRawBytes) return;
+
+        const base64 = bytesToBase64(this.cachedRawBytes);
+        const baseImageUrl = `data:image/png;base64,${base64}`;
+
+        const showRaw = this.displayPreferences['showRawImage'] as boolean ?? true;
+        const showGt = this.displayPreferences['showGtMask'] as boolean ?? true;
+        const showPred = this.displayPreferences['showPredMask'] as boolean ?? true;
+        const showDiff = this.displayPreferences['showDiffMask'] as boolean ?? false;
+
+        this.applySegmentationVisualization(
+            baseImageUrl,
+            this.cachedGtStat,
+            this.cachedPredStat,
+            showRaw,
+            showGt,
+            showPred,
+            showDiff
+        );
+    }
+
 
     populate(record: DataRecord, displayPreferences: DisplayPreferences): void {
         this.record = record;
@@ -263,6 +304,28 @@ export class GridCell {
             this.element.classList.add('discarded');
         } else {
             this.element.classList.remove('discarded');
+        }
+
+        // --------------------------------------------------------------------
+        // SEGMENTATION: raw image + GT + predicted mask overlays
+        // --------------------------------------------------------------------
+        const taskTypeStat = record.dataStats.find(stat => stat.name === 'task_type');
+        const taskType = taskTypeStat?.valueString || '';
+
+        if (taskType === 'segmentation') {
+            const rawStat = record.dataStats.find(stat => stat.name === 'raw_data' && stat.type === 'bytes');
+            const gtStat = record.dataStats.find(stat => stat.name === 'label' && stat.type === 'array');
+            const predStat = record.dataStats.find(stat => stat.name === 'pred_mask' && stat.type === 'array');
+
+            this.cachedRawBytes = rawStat && rawStat.value ? new Uint8Array(rawStat.value) : null;
+            this.cachedRawShape = rawStat?.shape || null;
+            this.cachedGtStat = gtStat || null;
+            this.cachedPredStat = predStat || null;
+
+            if (this.cachedRawBytes) {
+                this.redrawSegmentation();
+                return; // segmentation path handled
+            }
         }
 
         // Look for the 'image' stat (array type with pixel data)
@@ -360,6 +423,70 @@ export class GridCell {
         }
     }
 
+    private applySegmentationVisualization(
+        baseImageUrl: string,
+        gtStat: any | null,
+        predStat: any | null,
+        showRaw: boolean,
+        showGt: boolean,
+        showPred: boolean,
+        showDiff: boolean
+    ): void {
+        const img = new Image();
+        img.onload = () => {
+            const width = img.width;
+            const height = img.height;
+            if (!width || !height) {
+                this.setImageSrc(baseImageUrl);
+                return;
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                this.setImageSrc(baseImageUrl);
+                return;
+            }
+
+            // 1) Base: raw image or black
+            if (showRaw) {
+                ctx.drawImage(img, 0, 0, width, height);
+            } else {
+                ctx.clearRect(0, 0, width, height);
+                ctx.fillStyle = 'black';
+                ctx.fillRect(0, 0, width, height);
+            }
+
+            const prefs = this.displayPreferences;
+            const classPrefs = prefs?.classPreferences as
+                | Record<number, ClassPreference>
+                | undefined;
+
+            // 2) Use WebGL Renderer for masks
+            const finalUrl = SegmentationRenderer.getInstance().render(
+                img,
+                gtStat ? { value: gtStat.value, shape: gtStat.shape } : null,
+                predStat ? { value: predStat.value, shape: predStat.shape } : null,
+                {
+                    showRaw,
+                    showGt,
+                    showPred,
+                    showDiff,
+                    alpha: 0.45,
+                    classPrefs: classPrefs
+                }
+            );
+
+            this.setImageSrc(finalUrl);
+        };
+
+        img.src = baseImageUrl;
+    }
+
+
+
     private formatFieldValue(value: any): string {
         if (Array.isArray(value)) {
             return value.map(item => this.formatFieldValue(item)).join(',');
@@ -373,7 +500,7 @@ export class GridCell {
         return value?.toString() || '';
     }
 
-    private updateLabel(): void {
+    public updateLabel(): void {
         if (!this.record || !this.displayPreferences) {
             this.label.textContent = '';
             return;
@@ -385,7 +512,37 @@ export class GridCell {
             parts.push(formatted);
         }
 
-        for (const stat of this.record.dataStats) {
+        // Sort stats before displaying (same order as modal)
+        const sortedStats = [...this.record.dataStats].sort((a, b) => {
+            const getCategory = (statName: string): number => {
+                if (statName === 'origin') return 1;
+                if (statName === 'task_type') return 2;
+                if (statName === 'tags') return 3;
+                if (statName === 'num_classes_present') return 10;
+                if (statName === 'dominant_class') return 11;
+                if (statName === 'dominant_class_ratio') return 12;
+                if (statName === 'background_ratio') return 13;
+                if (!statName.includes('loss')) return 100;
+                if (statName === 'mean_loss') return 1000;
+                if (statName === 'median_loss') return 1001;
+                if (statName === 'min_loss') return 1002;
+                if (statName === 'max_loss') return 1003;
+                if (statName === 'std_loss') return 1004;
+                if (statName.startsWith('loss_class_')) {
+                    const classNum = parseInt(statName.replace('loss_class_', ''));
+                    return 2000 + classNum;
+                }
+                if (statName.includes('loss')) return 1500;
+                return 100;
+            };
+
+            const catA = getCategory(a.name);
+            const catB = getCategory(b.name);
+            if (catA !== catB) return catA - catB;
+            return a.name.localeCompare(b.name);
+        });
+
+        for (const stat of sortedStats) {
             if (stat.name === 'raw_data')
                 continue;
             if (!this.displayPreferences[stat.name])
@@ -445,9 +602,75 @@ export class GridCell {
         this.displayPreferences = displayPreferences;
         this.updateLabel();
         this.updateBorderColor();
+
+        if (!this.record) return;
+
+        const taskTypeStat = this.record.dataStats.find(stat => stat.name === 'task_type');
+        const taskType = taskTypeStat?.valueString || '';
+
+        if (taskType === 'segmentation') {
+            const rawStat = this.record.dataStats.find(stat => stat.name === 'raw_data' && stat.type === 'bytes');
+            const gtStat = this.record.dataStats.find(stat => stat.name === 'label' && stat.type === 'array');
+            const predStat = this.record.dataStats.find(stat => stat.name === 'pred_mask' && stat.type === 'array');
+
+            if (rawStat && rawStat.value && rawStat.shape && (gtStat || predStat)) {
+                const base64 = bytesToBase64(new Uint8Array(rawStat.value));
+                const dataUrl = `data:image/png;base64,${base64}`;
+
+                const showRaw = displayPreferences.showRawImage ?? true;
+                const showGt = displayPreferences.showGtMask ?? true;
+                const showPred = displayPreferences.showPredMask ?? true;
+                const showDiff = displayPreferences.showDiffMask ?? false;
+
+                this.applySegmentationVisualization(
+                    dataUrl,
+                    gtStat || null,
+                    predStat || null,
+                    showRaw,
+                    showGt,
+                    showPred,
+                    showDiff
+                );
+                return;
+            }
+        }
     }
 
     public getRecord(): DataRecord | null {
         return this.record;
+    }
+
+    public updateStats(newStats: Record<string, any>): void {
+        if (!this.record) return;
+        for (const [key, value] of Object.entries(newStats)) {
+            const stat = this.record.dataStats.find((s: any) => s.name === key);
+            if (stat) {
+                if (typeof value === 'string') {
+                    stat.valueString = value;
+                } else if (typeof value === 'number') {
+                    stat.value = [value];
+                } else if (Array.isArray(value)) {
+                    stat.value = value;
+                }
+            } else {
+                this.record.dataStats.push({
+                    name: key,
+                    type: typeof value === 'string' ? 'string' : 'scalar',
+                    shape: [],
+                    value: typeof value === 'number' ? [value] : [],
+                    valueString: typeof value === 'string' ? value : ''
+                });
+            }
+
+            // Special handling for deny_listed
+            if (key === 'deny_listed') {
+                if (value === 1 || value === true) {
+                    this.element.classList.add('discarded');
+                } else {
+                    this.element.classList.remove('discarded');
+                }
+            }
+        }
+        this.updateLabel();
     }
 }

@@ -3,105 +3,231 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>gRPC Samples Viewer</title>
+  <title>weights-studio @ Graybx</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="./favicon.png">
   <link rel="stylesheet" href="./style.css">
-
 </head>
 
 <body>
-  <button id="grid-toggle" class="toggle-button expanded">−</button>
-  <button id="dark-mode-toggle" class="toggle-button dark-mode-toggle" title="Toggle Dark Mode">◐</button>
-
   <div id="grid-content" class="grid-content">
     <div class="container">
-      <div class="controls">
-        <div class="controls-row">
-          <button id="options-toggle" class="options-button collapsed">⚙</button>
-
-          <button id="toggle-training" class="control-button" data-state="running">Pause</button>
-
-
-          <div class="control-group">
-            <label for="cell-size">Cell size</label>
-            <input type="number" id="cell-size" value="150" min="10">
-          </div>
-
-          <div class="control-group">
-            <label for="zoom-level">Zoom</label>
-            <select id="zoom-level">
-              <option value="1">1x</option>
-              <option value="2">2x</option>
-              <option value="3">3x</option>
-            </select>
-          </div>
-
-          <div class="control-group image-res-group">
-            <label>
-              <input type="checkbox" id="image-resolution-auto" checked>
-              Auto Res
-            </label>
-            <input type="range" id="image-resolution-percent" min="10" max="100" value="100" step="10" disabled
-              title="Image resolution % of original">
-            <span id="image-resolution-value">100%</span>
-          </div>
-
-          <div class="slider-container">
-            <span id="slider-min-label">0</span>
-            <div class="slider-wrapper">
-              <input type="range" min="0" max="100" value="0" class="slider" id="sample-slider">
-              <span id="slider-tooltip">0</span>
-            </div>
-            <span id="slider-max-label">100</span>
-          </div>
+      <!-- TOP HEADER BAR -->
+      <div class="app-header">
+        <div class="header-controls-left">
+          <button id="grid-toggle" class="toggle-button expanded">−</button>
+          <button id="dark-mode-toggle" class="toggle-button dark-mode-toggle" title="Toggle Dark Mode">◐</button>
+          <button id="toggle-training" class="control-button primary" data-state="paused">Resume</button>
         </div>
 
-        <div class="controls-row">
-          <div class="chat-input-container">
-            <input type="text" id="chat-input" placeholder="drop 50% of the samples with losses between 1.4 and 1.9" />
-            <button id="chat-send" class="chat-send-button">Send</button>
-          </div>
+        <div class="header-branding">
+          <span class="branding-text">weights-studio by</span>
+          <a href="https://www.graybx.com/" target="_blank" class="logo-link">
+            <img src="./logo.png" alt="Graybx Logo" class="logo-img">
+            <span class="logo-text">Graybx</span>
+          </a>
         </div>
+      </div>
 
-        <div id="options-panel" class="options-panel" style="display: none;">
-          <div class="options-section">
-            <div class="options-row details-options-row">
-              <label class="option-label">Details</label>
-              <!-- Checkboxes will be dynamically generated here -->
+
+      <!-- WORKSPACE: LEFT INSPECTOR + GRID -->
+      <div class="workspace-row">
+        <div class="inspector-container open lowered">
+          <div class="card training-card">
+            <div class="card-header">
+              <div class="inspector-title">Training</div>
+              <span id="training-state-pill" class="pill pill-paused">Paused</span>
             </div>
-            
-            <div class="options-section">
-                <div class="options-row">
-                    <label><b>Colors</b></label>
-                    <div class="color-inputs">
-                        <div class="color-picker-wrapper">
-                            <label for="train-color">Train</label>
-                            <input type="color" id="train-color" class="color-picker" value="#4CAF50" />
-                        </div>
-                        <div class="color-picker-wrapper">
-                            <label for="eval-color">Eval</label>
-                            <input type="color" id="eval-color" class="color-picker" value="#2196F3" />
-                        </div>
-                    </div>
+            <div class="card-body">
+              <div id="training-summary" class="training-summary">-</div>
+            </div>
+          </div>
+
+          <div id="options-panel" class="card options-panel">
+            <div class="inspector-header">
+              <div class="inspector-title">Details</div>
+              <button id="details-toggle" class="collapse-btn" aria-label="Toggle details">^</button>
+            </div>
+
+            <div id="details-body">
+              <div class="inspector-section combined">
+                <div class="section-title">Overlays</div>
+                <div class="inspector-group" data-section="segmentation">
+                  <div class="row">
+                    <div class="row-label">Classes</div>
+                    <div class="row-controls list" id="segmentation-classes-slot"></div>
+                  </div>
                 </div>
-                <div class="color-picker-wrapper">
-                  <label for="color-eval">Eval</label>
-                  <input type="color" id="color-eval" class="color-picker" value="#2196F3" />
+                <div class="inspector-group" data-section="segmentation">
+                  <div class="row">
+                    <div class="row-label">Overlays</div>
+                    <div class="row-controls compact-switches">
+                      <label class="switch"><input type="checkbox" id="toggle-raw" checked><span></span>Raw</label>
+                      <label class="switch"><input type="checkbox" id="toggle-gt" checked><span></span>GT</label>
+                      <label class="switch"><input type="checkbox" id="toggle-pred" checked><span></span>Pred</label>
+                      <label class="switch"><input type="checkbox" id="toggle-diff"><span></span>Diff</label>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="inspector-group split-colors">
+                  <div class="row">
+                    <div class="row-label">Split colors</div>
+                    <div class="row-controls">
+                      <div class="color-picker-wrapper">
+                        <span class="chip">Train</span>
+                        <input type="color" id="train-color" class="color-picker" value="#4CAF50" />
+                      </div>
+                      <div class="color-picker-wrapper">
+                        <span class="chip">Test</span>
+                        <input type="color" id="eval-color" class="color-picker" value="#2196F3" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="inspector-section">
+                <div class="section-title">Metadata</div>
+                <div class="inspector-group">
+                  <div class="row-controls list details-options-row">
+                    <!-- Data fields checkboxes injected here -->
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div class="main-content">
-        <div id="cells-grid"></div>
+        <!-- GRID -->
+        <div class="main-content">
+          <!-- Content Header: Chat -->
+          <div class="content-header">
+            <div class="chat-input-container">
+              <input type="text" id="chat-input"
+                placeholder="drop 50% of the samples with losses between 1.4 and 1.9" />
+              <button id="chat-send" class="chat-send-button">Send</button>
+            </div>
+          </div>
+
+          <div class="grid-wrapper">
+            <button class="grid-settings-toggle" id="grid-settings-toggle">
+              <span id="settings-toggle-text">Grid Settings</span>
+            </button>
+
+            <div class="view-controls" id="view-controls">
+              <div class="control-group">
+                <label for="cell-size">Cell size</label>
+                <input type="number" id="cell-size" value="150" min="10">
+              </div>
+
+              <div class="control-group">
+                <label for="zoom-level">Zoom</label>
+                <select id="zoom-level">
+                  <option value="1">1x</option>
+                  <option value="2">2x</option>
+                  <option value="3">3x</option>
+                </select>
+              </div>
+
+              <div class="control-group image-res-group">
+                <label>
+                  <input type="checkbox" id="image-resolution-auto" checked>
+                  Auto Res
+                </label>
+                <input type="range" id="image-resolution-percent" min="5" max="100" value="100" step="5" disabled
+                  title="Image resolution % of original">
+                <span id="image-resolution-value">100%</span>
+              </div>
+            </div>
+
+            <div id="cells-grid"></div>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
 
-  <script type="module" src="/src/data.ts"></script>
-  <!-- <script type="module" src="/src/selection.ts"></script> -->
+    <!-- BOTTOM NAVIGATION BAR -->
+    <div class="bottom-bar">
+      <div class="slider-container">
+        <span id="slider-min-label">0</span>
+        <div class="slider-wrapper">
+          <input type="range" min="0" max="100" value="0" class="slider" id="sample-slider">
+          <span id="slider-tooltip">0</span>
+        </div>
+        <span id="slider-max-label">100</span>
+      </div>
+    </div>
+
+    <div id="context-menu" class="context-menu">
+      <div class="context-menu-item" data-action="add-tag">Manage Tags...</div>
+      <div class="context-menu-item" data-action="remove-tag">Remove All Tags</div>
+      <div class="context-menu-separator"></div>
+      <div class="context-menu-item" data-action="discard">Discard</div>
+    </div>
+
+    <!-- Image Detail Modal -->
+    <div id="image-detail-modal" class="image-detail-modal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-container">
+        <button class="modal-close" id="modal-close-btn">×</button>
+        <div class="modal-content">
+          <!-- Left: Metadata Stats -->
+          <div class="modal-metadata">
+            <h2 class="modal-title">Sample Details</h2>
+            <div id="modal-stats-container" class="modal-stats-container">
+              <!-- Stats will be populated here -->
+            </div>
+          </div>
+          <!-- Right: Large Image -->
+          <div class="modal-image-container">
+            <img id="modal-image" class="modal-image" src="" alt="Sample Image">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tagging Modal -->
+    <div id="tagging-modal" class="image-detail-modal tagging-modal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-container tagging-container">
+        <button class="modal-close" id="tagging-close-btn">×</button>
+        <div class="modal-content tagging-content">
+          <div class="modal-metadata tagging-panel">
+            <h2 class="modal-title">Manage Tags</h2>
+            <div class="tag-input-group">
+              <input type="text" id="tag-input" list="existing-tags" placeholder="Enter or select tag..."
+                class="inspector-search tag-input-field">
+              <datalist id="existing-tags"></datalist>
+            </div>
+
+            <div class="quick-tags-section" id="selection-tags-section" style="display: none; margin-bottom: 1rem;">
+              <div class="section-title">Current Tags</div>
+              <div id="selection-tags-container" class="quick-tags-container">
+                <!-- current tags injected here -->
+              </div>
+            </div>
+
+            <div class="quick-tags-section">
+              <div class="section-title">All Tags</div>
+              <div id="quick-tags-container" class="quick-tags-container">
+                <!-- tags injected here -->
+              </div>
+            </div>
+
+            <div class="tagging-actions">
+              <button id="tag-clear-btn" class="control-button danger" style="margin-right: auto;">Clear All
+                Tags</button>
+              <button id="tag-cancel-btn" class="control-button">Cancel</button>
+              <button id="tag-submit-btn" class="control-button primary">Add Tag</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/data.ts"></script>
+  </div>
 </body>
 
 </html>
