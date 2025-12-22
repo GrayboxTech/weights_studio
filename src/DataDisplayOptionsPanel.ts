@@ -386,6 +386,11 @@ export class DataDisplayOptionsPanel {
         return preferences;
     }
 
+    savePreferences(): void {
+        const preferences = this.getDisplayPreferences();
+        localStorage.setItem('displayPreferences', JSON.stringify(preferences));
+    }
+
     initializeStatsOptions(statsNames: string[]): void {
         this.availableStats = statsNames;
     }

@@ -90,7 +90,7 @@ body.dark-mode {
 .container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 10vh;
 }
 
 /* Top app header - slim and focused */
@@ -741,7 +741,7 @@ body.dark-mode #chat-input:focus {
 
   justify-content: center;
   align-content: start;
-  justify-items: stretch;
+  justify-items: start;
 }
 
 .grid-content {
@@ -1333,6 +1333,25 @@ body.dark-mode .inspector-search {
   height: 1px;
   background-color: var(--border-color);
   margin: 0.4rem 0;
+}
+
+/* Dark mode: context menu */
+body.dark-mode .context-menu {
+  background-color: #111827;
+  border-color: rgba(55, 65, 81, 1);
+  color: #f9fafb;
+}
+body.dark-mode .context-menu-item {
+  color: #f9fafb;
+}
+body.dark-mode .context-menu-item:hover {
+  background-color: #1f2937;
+}
+body.dark-mode .context-menu-item.danger {
+  color: #fca5a5;
+}
+body.dark-mode .context-menu-separator {
+  background-color: rgba(75, 85, 99, 1);
 }
 
 /* Tooltip content */

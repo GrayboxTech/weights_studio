@@ -54,6 +54,206 @@ export class GridCell {
 
         // Store reference for selection.ts to use
         (this.element as any).__gridCell = this;
+        
+        // Add double-click listener to show enlarged image
+        this.element.addEventListener('dblclick', () => this.showEnlargedImage());
+    }
+    
+    private showEnlargedImage(): void {
+        if (!this.img.src || this.img.src === PLACEHOLDER_IMAGE_SRC) {
+            return;
+        }
+        
+        // Create modal overlay
+        const modal = document.createElement('div');
+        modal.style.position = 'fixed';
+        modal.style.top = '0';
+        modal.style.left = '0';
+        modal.style.width = '100%';
+        modal.style.height = '100%';
+        modal.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        modal.style.display = 'flex';
+        modal.style.justifyContent = 'center';
+        modal.style.alignItems = 'center';
+        modal.style.zIndex = '9999';
+        
+        // Create container for left panel and center content
+        const mainContainer = document.createElement('div');
+        mainContainer.style.display = 'flex';
+        mainContainer.style.gap = '20px';
+        mainContainer.style.alignItems = 'stretch';
+        
+        // Create left metadata panel
+        const metadataPanel = document.createElement('div');
+        metadataPanel.style.backgroundColor = 'white';
+        metadataPanel.style.borderRadius = '4px';
+        metadataPanel.style.padding = '16px';
+        metadataPanel.style.minWidth = '280px';
+        metadataPanel.style.maxHeight = '600px';
+        metadataPanel.style.overflowY = 'auto';
+        metadataPanel.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.3)';
+        
+        // Add metadata content
+        if (this.record) {
+            const metadataTitle = document.createElement('h3');
+            metadataTitle.textContent = 'Image Data';
+            metadataTitle.style.marginTop = '0';
+            metadataTitle.style.marginBottom = '16px';
+            metadataTitle.style.color = '#333';
+            metadataPanel.appendChild(metadataTitle);
+            
+            // Sample ID
+            const sampleIdDiv = document.createElement('div');
+            sampleIdDiv.style.marginBottom = '12px';
+            sampleIdDiv.innerHTML = `<strong>Sample ID:</strong> <span>${this.record.sampleId}</span>`;
+            sampleIdDiv.style.color = '#333';
+            sampleIdDiv.style.fontSize = '14px';
+            metadataPanel.appendChild(sampleIdDiv);
+            
+            // Process data stats
+            for (const stat of this.record.dataStats) {
+                if (stat.name === 'raw_data' || stat.name === 'image') {
+                    continue; // Skip binary data fields
+                }
+                
+                const statDiv = document.createElement('div');
+                statDiv.style.marginBottom = '12px';
+                statDiv.style.color = '#333';
+                statDiv.style.fontSize = '14px';
+                statDiv.style.paddingBottom = '8px';
+                statDiv.style.borderBottom = '1px solid #eee';
+                
+                const label = document.createElement('strong');
+                label.textContent = stat.name + ':';
+                statDiv.appendChild(label);
+                
+                const value = document.createElement('div');
+                value.style.marginTop = '4px';
+                value.style.color = '#666';
+                value.style.wordBreak = 'break-word';
+                
+                if (stat.name === 'tags') {
+                    value.textContent = stat.valueString || '(none)';
+                } else if (Array.isArray(stat.value)) {
+                    value.textContent = stat.value.map(v => 
+                        typeof v === 'number' ? (v % 1 !== 0 ? v.toFixed(3) : v) : v
+                    ).join(', ');
+                } else if (typeof stat.value === 'number') {
+                    value.textContent = stat.value % 1 !== 0 ? stat.value.toFixed(3) : stat.value.toString();
+                } else if (typeof stat.value === 'boolean') {
+                    value.textContent = stat.value ? 'True' : 'False';
+                } else {
+                    value.textContent = stat.valueString || (stat.value?.toString() || '(none)');
+                }
+                
+                statDiv.appendChild(value);
+                metadataPanel.appendChild(statDiv);
+            }
+        }
+        
+        // Create container for image and menu
+        const container = document.createElement('div');
+        container.style.display = 'flex';
+        container.style.alignItems = 'center';
+        container.style.gap = '20px';
+        
+        // Create enlarged image with fixed 512x512 size
+        const enlargedImg = document.createElement('img');
+        enlargedImg.src = this.img.src;
+        enlargedImg.style.width = '512px';
+        enlargedImg.style.height = '512px';
+        enlargedImg.style.objectFit = 'contain';
+        enlargedImg.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+        enlargedImg.style.borderRadius = '4px';
+        
+        // Create context menu
+        const menuContainer = document.createElement('div');
+        menuContainer.style.display = 'flex';
+        menuContainer.style.flexDirection = 'column';
+        menuContainer.style.gap = '8px';
+        menuContainer.style.backgroundColor = 'white';
+        menuContainer.style.borderRadius = '4px';
+        menuContainer.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.3)';
+        menuContainer.style.minWidth = '200px';
+        
+        // Menu items matching the right-click context menu
+        const menuItems = [
+            { label: 'Add Tag', action: 'add-tag' },
+            { label: 'Discard', action: 'discard' }
+        ];
+        
+        menuItems.forEach(item => {
+            const menuItem = document.createElement('div');
+            menuItem.style.padding = '10px 16px';
+            menuItem.style.cursor = 'pointer';
+            menuItem.style.borderBottom = '1px solid #eee';
+            menuItem.style.color = '#333';
+            menuItem.style.fontSize = '14px';
+            menuItem.textContent = item.label;
+            menuItem.dataset.action = item.action;
+            
+            menuItem.addEventListener('mouseenter', () => {
+                menuItem.style.backgroundColor = '#f0f0f0';
+            });
+            menuItem.addEventListener('mouseleave', () => {
+                menuItem.style.backgroundColor = 'transparent';
+            });
+            
+            menuContainer.appendChild(menuItem);
+        });
+        
+        // Remove last border
+        const lastItem = menuContainer.lastElementChild as HTMLElement;
+        if (lastItem) {
+            lastItem.style.borderBottom = 'none';
+        }
+        
+        container.appendChild(enlargedImg);
+        container.appendChild(menuContainer);
+        mainContainer.appendChild(metadataPanel);
+        mainContainer.appendChild(container);
+        modal.appendChild(mainContainer);
+        document.body.appendChild(modal);
+        
+        // Handle menu item clicks
+        menuContainer.addEventListener('click', (e) => {
+            const target = e.target as HTMLElement;
+            if (target.dataset.action) {
+                const action = target.dataset.action;
+                
+                // Get origin from record
+                const originStat = this.record?.dataStats.find(stat => stat.name === 'origin');
+                const origin = originStat?.valueString || '';
+                
+                // Dispatch custom event that data.ts can handle
+                const event = new CustomEvent('modalContextMenuAction', {
+                    detail: {
+                        action: action,
+                        sampleId: this.record?.sampleId,
+                        origin: origin
+                    }
+                });
+                document.dispatchEvent(event);
+                
+                modal.remove();
+            }
+        });
+        
+        // Close on click outside menu/image or on modal background
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+        
+        // Close on Escape key
+        const escapeListener = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                modal.remove();
+                document.removeEventListener('keydown', escapeListener);
+            }
+        };
+        document.addEventListener('keydown', escapeListener);
     }
 
     getElement(): HTMLElement {
@@ -213,6 +413,7 @@ export class GridCell {
             }
         }
 
+        // Render byte-based images
         const rawData = record.dataStats.find(stat => stat.name === 'raw_data');
         if (rawData && rawData.value && rawData.value.length > 0) {
             const base64 = bytesToBase64(new Uint8Array(rawData.value));
