@@ -906,7 +906,11 @@ export enum SampleEditType {
     /**
      * @generated from protobuf enum value: EDIT_ACCUMULATE = 1;
      */
-    EDIT_ACCUMULATE = 1
+    EDIT_ACCUMULATE = 1,
+    /**
+     * @generated from protobuf enum value: EDIT_REMOVE = 2;
+     */
+    EDIT_REMOVE = 2
 }
 // @generated message type with reflection information, may provide speed optimized methods
 class Empty$Type extends MessageType<Empty> {

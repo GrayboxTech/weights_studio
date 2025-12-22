@@ -1,6 +1,6 @@
 
 import { GridCell } from "./GridCell";
-import { DataRecord } from "./data_service";
+import { DataRecord } from "./experiment_service";
 import { DataDisplayOptionsPanel } from "./DataDisplayOptionsPanel";
 import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteractionsPanel";
 import { SelectionManager } from "./SelectionManager";
@@ -17,16 +17,16 @@ export class GridManager {
     private selectionManager: SelectionManager | null = null;
 
     constructor(
-            cellsContainer: HTMLElement,
-            traversalPanel: DataTraversalAndInteractionsPanel,
-            displayOptionsPanel: DataDisplayOptionsPanel
-        ) {
+        cellsContainer: HTMLElement,
+        traversalPanel: DataTraversalAndInteractionsPanel,
+        displayOptionsPanel: DataDisplayOptionsPanel
+    ) {
         this.cellsContainer = cellsContainer;
         this.traversalPanel = traversalPanel;
         this.displayOptionsPanel = displayOptionsPanel;
     }
 
-    calculateGridDimensions(): {rows: number; cols: number; gridCount: number; cellSize: number } {
+    calculateGridDimensions(): { rows: number; cols: number; gridCount: number; cellSize: number } {
         const size = this.traversalPanel.getImageWidth();
         const zoom = this.traversalPanel.getMagnification();
 
@@ -44,6 +44,12 @@ export class GridManager {
     updateGridLayout(): { rows: number; cols: number; gridCount: number; cellSize: number } {
         const dimensions = this.calculateGridDimensions();
         const { rows, cols, gridCount, cellSize } = dimensions;
+
+        // Check if we already have the correct number of cells and the correct layout
+        const currentCols = parseInt(this.cellsContainer.style.gridTemplateColumns.match(/\d+/)?.[0] || '0');
+        if (this.cells.length === gridCount && currentCols === cols && this.cells[0]?.getWidth() === cellSize) {
+            return dimensions;
+        }
 
         // Clear existing cells
         this.cellsContainer.innerHTML = '';

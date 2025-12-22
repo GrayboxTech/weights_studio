@@ -908,12 +908,18 @@ contextMenu.addEventListener('click', async (e) => {
             }
         }
 
+        hideContextMenu();
+
         switch (action) {
             case 'add-tag':
                 openTaggingModal(sample_ids, origins);
-                break;
+                // We DON'T clear selection or refresh here. 
+                // The modal will stay on top of the selected items.
+                return;
             case 'remove-tag':
                 removeTag(sample_ids, origins);
+                clearSelection();
+                debouncedFetchAndDisplay();
                 break;
             case 'discard':
                 selectedCells.forEach(cell => {
@@ -932,24 +938,18 @@ contextMenu.addEventListener('click', async (e) => {
                     samplesIds: sample_ids,
                     sampleOrigins: origins
                 }
-                console.log("Sending discard request: ", drequest)
                 try {
                     const dresponse = await dataClient.editDataSample(drequest).response;
-                    console.log("Discard response:", dresponse);
                     if (!dresponse.success) {
                         console.error("Failed to discard:", dresponse.message);
                     }
                 } catch (error) {
                     console.error("Error discarding:", error);
                 }
+                clearSelection();
+                debouncedFetchAndDisplay();
                 break;
         }
-
-        hideContextMenu();
-        clearSelection();
-
-        // Refresh the display to show updated tags/discarded status
-        debouncedFetchAndDisplay();
     }
 });
 
@@ -1329,6 +1329,8 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
     const modal = document.getElementById('tagging-modal');
     const input = document.getElementById('tag-input') as HTMLInputElement;
     const container = document.getElementById('quick-tags-container');
+    const selectionContainer = document.getElementById('selection-tags-container');
+    const selectionSection = document.getElementById('selection-tags-section');
     const submitBtn = document.getElementById('tag-submit-btn');
     const cancelBtn = document.getElementById('tag-cancel-btn');
     const closeBtn = document.getElementById('tagging-close-btn');
@@ -1338,7 +1340,35 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
 
     input.value = '';
 
-    // Fill quick tags
+    // Calculate current tags union
+    const currentTagsSet = new Set<string>();
+    selectedCells.forEach(cell => {
+        const gridCell = getGridCell(cell);
+        const record = gridCell?.getRecord();
+        const tagsStat = record?.dataStats.find((s: any) => s.name === 'tags');
+        const tagsStr = tagsStat?.valueString || "";
+        tagsStr.split(',').map((t: string) => t.trim()).filter((t: string) => t).forEach((t: string) => currentTagsSet.add(t));
+    });
+
+    // Fill current tags
+    if (selectionContainer && selectionSection) {
+        if (currentTagsSet.size > 0) {
+            selectionSection.style.display = 'block';
+            selectionContainer.innerHTML = '';
+            Array.from(currentTagsSet).sort().forEach(tag => {
+                const btn = document.createElement('button');
+                btn.className = 'quick-tag-btn current-tag-chip';
+                btn.innerHTML = `${tag} <span class="remove-x">×</span>`;
+                btn.title = `Remove tag "${tag}"`;
+                btn.onclick = () => handleRemove(tag);
+                selectionContainer.appendChild(btn);
+            });
+        } else {
+            selectionSection.style.display = 'none';
+        }
+    }
+
+    // Fill all tags (historical)
     container.innerHTML = '';
     uniqueTags.forEach(tag => {
         const btn = document.createElement('button');
@@ -1369,6 +1399,39 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
         input.onkeydown = null;
     };
 
+    const handleRemove = async (tag: string) => {
+        const request: DataEditsRequest = {
+            statName: "tags",
+            floatValue: 0,
+            stringValue: tag,
+            boolValue: false,
+            type: SampleEditType.EDIT_REMOVE,
+            samplesIds: sampleIds,
+            sampleOrigins: origins
+        };
+
+        try {
+            const response = await dataClient.editDataSample(request).response;
+            if (response.success) {
+                selectedCells.forEach(cell => {
+                    const gridCell = getGridCell(cell);
+                    if (gridCell) {
+                        const record = gridCell.getRecord();
+                        const existingTagsStat = record?.dataStats.find((s: any) => s.name === 'tags');
+                        const currentTagsStr = existingTagsStat?.valueString || "";
+                        const newTagsStr = currentTagsStr.split(',').map((t: string) => t.trim()).filter((t: string) => t && t !== tag).join(', ');
+                        gridCell.updateStats({ "tags": newTagsStr });
+                    }
+                });
+                cleanup(); // Close modal on success
+            } else {
+                alert(`Failed to remove tag: ${response.message}`);
+            }
+        } catch (error) {
+            alert(`Error removing tag: ${error}`);
+        }
+    };
+
     const handleSubmit = async () => {
         const tag = input.value.trim();
         if (!tag) {
@@ -1381,7 +1444,7 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
             floatValue: 0,
             stringValue: tag,
             boolValue: false,
-            type: SampleEditType.EDIT_OVERRIDE,
+            type: SampleEditType.EDIT_ACCUMULATE,
             samplesIds: sampleIds,
             sampleOrigins: origins
         };
@@ -1389,15 +1452,21 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
         try {
             const response = await dataClient.editDataSample(request).response;
             if (response.success) {
-                // Optionally refresh or add to uniqueTags if new
                 if (!uniqueTags.includes(tag)) {
                     updateUniqueTags([...uniqueTags, tag].sort());
                 }
-                // Update local UI for selected cells
                 selectedCells.forEach(cell => {
                     const gridCell = getGridCell(cell);
                     if (gridCell) {
-                        gridCell.updateStats({ "tags": tag });
+                        const record = gridCell.getRecord();
+                        const existingTagsStat = record?.dataStats.find((s: any) => s.name === 'tags');
+                        const currentTagsStr = existingTagsStat?.valueString || "";
+                        const currentTags = currentTagsStr.split(',').map((t: string) => t.trim()).filter((t: string) => t);
+                        if (!currentTags.includes(tag)) {
+                            currentTags.push(tag);
+                        }
+                        const newTagsStr = currentTags.join(', ');
+                        gridCell.updateStats({ "tags": newTagsStr });
                     }
                 });
             } else {
@@ -1409,9 +1478,11 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
         cleanup();
     };
 
-    const handleClear = () => {
-        input.value = '';
-        handleSubmit();
+    const handleClear = async () => {
+        if (confirm("Are you sure you want to remove all tags from the selected images?")) {
+            await removeTag(sampleIds, origins);
+            cleanup();
+        }
     };
 
     submitBtn?.addEventListener('click', handleSubmit);
@@ -1419,7 +1490,6 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
     closeBtn?.addEventListener('click', cleanup);
     clearBtn?.addEventListener('click', handleClear);
 
-    // Handle keys
     input.onkeydown = (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();

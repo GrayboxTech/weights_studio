@@ -160,8 +160,8 @@
     </div>
 
     <div id="context-menu" class="context-menu">
-      <div class="context-menu-item" data-action="add-tag">Add Tag...</div>
-      <div class="context-menu-item" data-action="remove-tag">Remove Tag</div>
+      <div class="context-menu-item" data-action="add-tag">Manage Tags...</div>
+      <div class="context-menu-item" data-action="remove-tag">Remove All Tags</div>
       <div class="context-menu-separator"></div>
       <div class="context-menu-item" data-action="discard">Discard</div>
     </div>
@@ -194,24 +194,32 @@
         <button class="modal-close" id="tagging-close-btn">×</button>
         <div class="modal-content tagging-content">
           <div class="modal-metadata tagging-panel">
-            <h2 class="modal-title">Add Tag</h2>
+            <h2 class="modal-title">Manage Tags</h2>
             <div class="tag-input-group">
               <input type="text" id="tag-input" list="existing-tags" placeholder="Enter or select tag..."
                 class="inspector-search tag-input-field">
               <datalist id="existing-tags"></datalist>
             </div>
 
+            <div class="quick-tags-section" id="selection-tags-section" style="display: none; margin-bottom: 1rem;">
+              <div class="section-title">Current Tags</div>
+              <div id="selection-tags-container" class="quick-tags-container">
+                <!-- current tags injected here -->
+              </div>
+            </div>
+
             <div class="quick-tags-section">
-              <div class="section-title">Previous Tags</div>
+              <div class="section-title">All Tags</div>
               <div id="quick-tags-container" class="quick-tags-container">
                 <!-- tags injected here -->
               </div>
             </div>
 
             <div class="tagging-actions">
-              <button id="tag-clear-btn" class="control-button danger" style="margin-right: auto;">Clear Tag</button>
+              <button id="tag-clear-btn" class="control-button danger" style="margin-right: auto;">Clear All
+                Tags</button>
               <button id="tag-cancel-btn" class="control-button">Cancel</button>
-              <button id="tag-submit-btn" class="control-button primary">Apply Tag</button>
+              <button id="tag-submit-btn" class="control-button primary">Add Tag</button>
             </div>
           </div>
         </div>

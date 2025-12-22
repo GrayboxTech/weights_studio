@@ -60,6 +60,10 @@ export class GridCell {
         return this.element;
     }
 
+    public getWidth(): number {
+        return parseInt(this.element.style.width);
+    }
+
     setDisplayPreferences(displayPreferences: DisplayPreferences): void {
         this.displayPreferences = displayPreferences;
     }
