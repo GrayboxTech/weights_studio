@@ -5,6 +5,7 @@ import { SelectionManager } from "./SelectionManager";
 export interface ContextMenuOptions {
     onDiscard?: (cells: GridCell[]) => void;
     onAddTag?: (cells: GridCell[], tag: string) => void;
+    onRemoveTag?: (cells: GridCell[]) => void;
 }
 
 export class ContextMenu {
@@ -32,6 +33,7 @@ export class ContextMenu {
             menu.innerHTML = `
                 <div class="context-menu-item" data-action="discard">Discard</div>
                 <div class="context-menu-item" data-action="add-tag">Add Tag</div>
+                <div class="context-menu-item" data-action="remove-tag">Remove Tag</div>
             `;
             document.body.appendChild(menu);
         }
@@ -94,6 +96,11 @@ export class ContextMenu {
                         if (tag) {
                             this.options.onAddTag(this.selectionManager.getSelectedCells(), tag);
                         }
+                    }
+                    break;
+                case 'remove-tag':
+                    if (this.options.onRemoveTag) {
+                        this.options.onRemoveTag(this.selectionManager.getSelectedCells());
                     }
                     break;
             }
