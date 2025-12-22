@@ -11,7 +11,7 @@ type ClassPreference = {
 };
 
 export type DisplayPreferences = {
-    [key: string]: boolean | SplitColors;
+    [key: string]: any; // Allow indexing
     splitColors?: SplitColors;
 
     showRawImage?: boolean;
@@ -74,21 +74,6 @@ export class DataDisplayOptionsPanel {
         this.element.addEventListener("preferencesChange", () => callback());
     }
 
-    private detectSegmentation(firstRecord: DataRecord): boolean {
-        const stats = firstRecord.dataStats || [];
-
-        const taskTypeStat = stats.find(s => s.name === "task_type");
-        if (taskTypeStat?.valueString === "segmentation") {
-            return true;
-        }
-
-        const hasPredMask = stats.some(s => s.name === "pred_mask");
-        const hasNumClasses = stats.some(s => s.name === "num_classes");
-        const hasLabelArray = stats.some(s => s.name === "label" && s.type === "array");
-
-        return hasPredMask || hasNumClasses || hasLabelArray;
-    }
-
     private updateGlobalModeFlags(): void {
         document.body.classList.toggle("segmentation-mode", this.isSegmentationDataset);
         document.body.classList.toggle("classification-mode", !this.isSegmentationDataset);
@@ -101,59 +86,91 @@ export class DataDisplayOptionsPanel {
         }
     }
 
+    private detectSegmentation(records: DataRecord[]): boolean {
+        for (const record of records) {
+            const stats = record.dataStats || [];
+            const taskTypeStat = stats.find((s: any) => s.name === "task_type");
+            if (taskTypeStat?.valueString === "segmentation") return true;
+        }
+
+        const firstRecord = records[0];
+        if (!firstRecord) return false;
+
+        const stats = firstRecord.dataStats || [];
+        const hasPredMask = stats.some((s: any) => s.name === "pred_mask");
+        const hasNumClasses = stats.some((s: any) => s.name === "num_classes");
+        const hasLabelArray = stats.some((s: any) => s.name === "label" && s.type === "array");
+
+        return hasPredMask || hasNumClasses || hasLabelArray;
+    }
+
     populateOptions(dataRecords: DataRecord[]): void {
         if (!dataRecords || dataRecords.length === 0) {
-            console.warn("[DataDisplayOptionsPanel] No data records provided");
             return;
         }
 
-        const firstRecord = dataRecords[0];
+        const currentPrefs = this.getDisplayPreferences();
         const availableFields = new Set<string>();
 
-        // 0) Detect mode
-        this.isSegmentationDataset = this.detectSegmentation(firstRecord);
-        this.updateGlobalModeFlags();
+        // 0) Detect mode (check all records in batch for better detection)
+        const wasSegmentation = this.isSegmentationDataset;
+        this.isSegmentationDataset = this.detectSegmentation(dataRecords);
+        if (this.isSegmentationDataset !== wasSegmentation) {
+            this.updateGlobalModeFlags();
+        }
 
-        // 1) basic details - add sampleId and tags first so they appear at top
+        // 1) Collect all fields seen across all provided records
         availableFields.add("sampleId");
         availableFields.add("tags");
 
-        if (firstRecord.dataStats) {
-            console.log('[DataDisplayOptionsPanel] Total stats received:', firstRecord.dataStats.length);
-            console.log('[DataDisplayOptionsPanel] All stat names:', firstRecord.dataStats.map(s => s.name));
+        dataRecords.forEach(record => {
+            if (record.dataStats) {
+                record.dataStats.forEach((stat: any) => {
+                    if (stat.name === "raw_data" ||
+                        stat.name === "pred_mask" ||
+                        stat.name === "label" ||
+                        stat.name === "task_type" ||
+                        /^class(_\d+)?$/i.test(stat.name) ||
+                        (this.isSegmentationDataset && SEGMENTATION_HIDDEN_FIELDS.has(stat.name))) {
+                        return;
+                    }
+                    availableFields.add(stat.name);
+                });
+            }
+        });
 
-            firstRecord.dataStats.forEach(stat => {
-                if (stat.name === "raw_data") {
-                    console.log('[DataDisplayOptionsPanel] Skipping raw_data');
-                    return;
-                }
-                if (/^class(_\d+)?$/i.test(stat.name)) {
-                    console.log('[DataDisplayOptionsPanel] Skipping class field:', stat.name);
-                    return;
-                }
-
-                if (this.isSegmentationDataset && SEGMENTATION_HIDDEN_FIELDS.has(stat.name)) {
-                    console.log('[DataDisplayOptionsPanel] Hiding segmentation field:', stat.name);
-                    return;
-                }
-
-                console.log('[DataDisplayOptionsPanel] Adding field:', stat.name);
-                availableFields.add(stat.name);
-            });
-
-            console.log('[DataDisplayOptionsPanel] Final available fields:', Array.from(availableFields));
+        // Determine if we actually have new fields to show
+        const existingFields = new Set(this.checkboxes.keys());
+        let hasNewFields = false;
+        for (const field of availableFields) {
+            if (!existingFields.has(field)) {
+                hasNewFields = true;
+                break;
+            }
         }
 
-        // NOTE: showRawImage, showGtMask, showPredMask, showDiffMask are handled 
-        // separately in the Overlays & Appearance section, not in metadata list
+        if (!hasNewFields && this.element.children.length > 0) {
+            return;
+        }
 
-        // 2) rebuild details list
+        // 2) rebuild details list while preserving checkbox states
         this.element.innerHTML = "";
         this.checkboxes.clear();
 
         const defaultCheckedFields = new Set([
             "sampleId",
+            "mean_loss",
+            "tags"
         ]);
+
+        // Restore user preferences
+        for (const field of Array.from(availableFields)) {
+            if (currentPrefs[field] === true) {
+                defaultCheckedFields.add(field);
+            } else if (currentPrefs[field] === false) {
+                defaultCheckedFields.delete(field);
+            }
+        }
 
         // Sort fields for better organization (same order as modal)
         const sortedFields = Array.from(availableFields).sort((a, b) => {
@@ -208,12 +225,10 @@ export class DataDisplayOptionsPanel {
             checkbox.id = `display-${fieldName}`;
             checkbox.value = fieldName;
 
-            checkbox.checked =
-                defaultCheckedFields.has(fieldName);
+            checkbox.checked = defaultCheckedFields.has(fieldName);
 
             const label = document.createElement("label");
             label.htmlFor = checkbox.id;
-
             label.textContent = this.formatFieldName(fieldName);
 
             const wrapper = document.createElement("div");
@@ -222,7 +237,6 @@ export class DataDisplayOptionsPanel {
             wrapper.appendChild(label);
 
             this.element.appendChild(wrapper);
-
             this.checkboxes.set(fieldName, checkbox);
 
             checkbox.addEventListener("change", () => {
@@ -231,7 +245,6 @@ export class DataDisplayOptionsPanel {
         });
 
         if (!this.isSegmentationDataset) {
-            // classification or other; done
             this.classIds = [];
             this.updateCallback?.();
             return;
@@ -239,9 +252,10 @@ export class DataDisplayOptionsPanel {
 
         // 3) segmentation class IDs
         let classIds: number[] = [];
+        const firstRecord = dataRecords[0];
 
-        const numClassesStat = firstRecord.dataStats?.find(
-            stat => stat.name === "num_classes"
+        const numClassesStat = firstRecord?.dataStats?.find(
+            (stat: any) => stat.name === "num_classes"
         );
 
         if (numClassesStat && Array.isArray(numClassesStat.value) && numClassesStat.value.length > 0) {
@@ -249,12 +263,11 @@ export class DataDisplayOptionsPanel {
             classIds = Array.from({ length: num }, (_, i) => i);
         } else {
             const classIdSet = new Set<number>();
-
-            const labelStat = firstRecord.dataStats?.find(
-                stat => stat.name === "label" && stat.type === "array"
+            const labelStat = firstRecord?.dataStats?.find(
+                (stat: any) => stat.name === "label" && stat.type === "array"
             );
-            const predStat = firstRecord.dataStats?.find(
-                stat => stat.name === "pred_mask" && stat.type === "array"
+            const predStat = firstRecord?.dataStats?.find(
+                (stat: any) => stat.name === "pred_mask" && stat.type === "array"
             );
 
             const collectFromStat = (stat: any | undefined) => {
@@ -268,10 +281,8 @@ export class DataDisplayOptionsPanel {
                     if (classIdSet.size > 256) break;
                 }
             };
-
             collectFromStat(labelStat);
             collectFromStat(predStat);
-
             classIds = Array.from(classIdSet).sort((a, b) => a - b);
         }
 
@@ -376,7 +387,6 @@ export class DataDisplayOptionsPanel {
     }
 
     initializeStatsOptions(statsNames: string[]): void {
-        console.log("[DisplayOptionsPanel] Initializing stats options:", statsNames);
         this.availableStats = statsNames;
     }
 

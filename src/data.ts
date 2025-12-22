@@ -305,6 +305,9 @@ async function refreshDynamicStatsOnly() {
                     }
                 }
             });
+
+            // Re-populate options to discover any newly added columns (like loss_class_N)
+            displayOptionsPanel.populateOptions(response.dataRecords);
         } else if (!response.success) {
             console.error("Failed to retrieve samples:", response.message);
             break;
