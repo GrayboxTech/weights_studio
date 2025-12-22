@@ -18,7 +18,8 @@ import { DataDisplayOptionsPanel, SplitColors } from "./DataDisplayOptionsPanel"
 import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteractionsPanel";
 import { GridManager } from "./GridManager";
 import { initializeDarkMode } from "./darkMode";
-import { drawDiffMaskOnContext, drawMultiClassMaskOnContext, ClassPreference } from "./GridCell";
+import { ClassPreference } from "./GridCell";
+import { SegmentationRenderer } from "./SegmentationRenderer";
 
 
 const SERVER_URL = "http://localhost:8080";
@@ -1015,43 +1016,21 @@ function applySegmentationToModal(
             ctx.fillRect(0, 0, width, height);
         }
 
-        // 2) Apply segmentation overlays using the same functions as GridCell
-        if (showDiff && gtStat && predStat) {
-            // Apply diff visualization
-            drawDiffMaskOnContext(
-                ctx,
-                gtStat,
-                predStat,
-                width,
-                height,
-                classPreferences as Record<number, ClassPreference> | undefined
-            );
-        } else {
-            // 3) GT / Pred overlays with per-class toggles & colors
-            if (showGt && gtStat) {
-                drawMultiClassMaskOnContext(
-                    ctx,
-                    gtStat,
-                    width,
-                    height,
-                    classPreferences as Record<number, ClassPreference> | undefined,
-                    0.45  // Alpha for GT overlay
-                );
+        // 2) Use WebGL Renderer for masks
+        const finalUrl = SegmentationRenderer.getInstance().render(
+            img,
+            gtStat ? { value: gtStat.value, shape: gtStat.shape } : null,
+            predStat ? { value: predStat.value, shape: predStat.shape } : null,
+            {
+                showRaw,
+                showGt,
+                showPred,
+                showDiff,
+                alpha: 0.45,
+                classPrefs: classPreferences
             }
-            if (showPred && predStat) {
-                // Slightly different alpha to distinguish from GT
-                drawMultiClassMaskOnContext(
-                    ctx,
-                    predStat,
-                    width,
-                    height,
-                    classPreferences as Record<number, ClassPreference> | undefined,
-                    0.35  // Alpha for Pred overlay
-                );
-            }
-        }
+        );
 
-        const finalUrl = canvas.toDataURL();
         modalImage.src = finalUrl;
 
         console.log('[Modal] Applied segmentation overlays at', width, 'x', height);

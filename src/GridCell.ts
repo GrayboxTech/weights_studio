@@ -1,6 +1,7 @@
 
 import { DataRecord } from "./data_service";
 import { DisplayPreferences } from "./DataDisplayOptionsPanel";
+import { SegmentationRenderer } from "./SegmentationRenderer";
 
 
 const PLACEHOLDER_IMAGE_SRC = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
@@ -14,244 +15,11 @@ function bytesToBase64(bytes: Uint8Array): string {
     return btoa(binary);
 }
 
-function drawMaskOnContext(
-    ctx: CanvasRenderingContext2D,
-    maskStat: any,
-    canvasWidth: number,
-    canvasHeight: number,
-    color: [number, number, number, number]  // RGBA, 0–255
-) {
-    if (!maskStat || !Array.isArray(maskStat.value) || !Array.isArray(maskStat.shape)) {
-        return;
-    }
-
-    const maskValues = maskStat.value as number[];
-    const shape = maskStat.shape as number[];
-
-    // Accept [H, W] or [1, H, W] or [H, W, 1]
-    let maskH: number;
-    let maskW: number;
-    if (shape.length === 2) {
-        maskH = shape[0];
-        maskW = shape[1];
-    } else if (shape.length === 3) {
-        maskH = shape[shape.length - 2];
-        maskW = shape[shape.length - 1];
-    } else {
-        return;
-    }
-
-    const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-    const data = imageData.data;
-
-    const scaleY = maskH / canvasHeight;
-    const scaleX = maskW / canvasWidth;
-
-    const [rOverlay, gOverlay, bOverlay, aOverlay] = color;
-    const alpha = aOverlay / 255;
-
-    for (let y = 0; y < canvasHeight; y++) {
-        for (let x = 0; x < canvasWidth; x++) {
-            const srcY = Math.floor(y * scaleY);
-            const srcX = Math.floor(x * scaleX);
-            const maskIdx = srcY * maskW + srcX;
-
-            const v = maskValues[maskIdx] || 0;
-            // Simple rule: >0 == foreground
-            if (v > 0) {
-                const idx = (y * canvasWidth + x) * 4;
-
-                // Alpha blend overlay color with existing pixel
-                const rBase = data[idx + 0];
-                const gBase = data[idx + 1];
-                const bBase = data[idx + 2];
-
-                data[idx + 0] = (1 - alpha) * rBase + alpha * rOverlay;
-                data[idx + 1] = (1 - alpha) * gBase + alpha * gOverlay;
-                data[idx + 2] = (1 - alpha) * bBase + alpha * bOverlay;
-                // leave data[idx + 3] (alpha) unchanged
-                data[idx + 3] = 255;
-            }
-        }
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-}
-
-export function drawDiffMaskOnContext(
-    ctx: CanvasRenderingContext2D,
-    gtStat: any,
-    predStat: any,
-    canvasWidth: number,
-    canvasHeight: number,
-    classPrefs?: Record<number, ClassPreference>  // ← Add class preferences
-) {
-    if (!gtStat || !predStat) return;
-    if (!Array.isArray(gtStat.value) || !Array.isArray(gtStat.shape)) return;
-    if (!Array.isArray(predStat.value) || !Array.isArray(predStat.shape)) return;
-
-    const gtValues = gtStat.value as number[];
-    const gtShape = gtStat.shape as number[];
-    const predValues = predStat.value as number[];
-    const predShape = predStat.shape as number[];
-
-    // assume same shape, accept [H,W], [1,H,W], [H,W,1]
-    const getHW = (shape: number[]): [number, number] | null => {
-        if (shape.length === 2) return [shape[0], shape[1]];
-        if (shape.length === 3) return [shape[shape.length - 2], shape[shape.length - 1]];
-        return null;
-    };
-
-    const gtHW = getHW(gtShape);
-    const predHW = getHW(predShape);
-    if (!gtHW || !predHW) return;
-
-    const [gtH, gtW] = gtHW;
-    const [predH, predW] = predHW;
-
-    const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-    const data = imageData.data;
-
-    const scaleYgt = gtH / canvasHeight;
-    const scaleXgt = gtW / canvasWidth;
-    const scaleYpred = predH / canvasHeight;
-    const scaleXpred = predW / canvasWidth;
-
-    // Colors for errors:
-    const fnColor: [number, number, number, number] = [0, 0, 255, 200];   // FN = GT=class, Pred=other (blue)
-    const fpColor: [number, number, number, number] = [255, 0, 0, 200];   // FP = GT=other, Pred=class (red)
-
-    for (let y = 0; y < canvasHeight; y++) {
-        for (let x = 0; x < canvasWidth; x++) {
-            const gtY = Math.floor(y * scaleYgt);
-            const gtX = Math.floor(x * scaleXgt);
-            const predY = Math.floor(y * scaleYpred);
-            const predX = Math.floor(x * scaleXpred);
-
-            const gtIdx = gtY * gtW + gtX;
-            const predIdx = predY * predW + predX;
-
-            const gtVal = gtValues[gtIdx] || 0;
-            const predVal = predValues[predIdx] || 0;
-
-            // If class preferences are provided, only show diffs for enabled classes
-            if (classPrefs) {
-                // Check if either GT or Pred class is enabled
-                const gtPref = classPrefs[gtVal];
-                const predPref = classPrefs[predVal];
-
-                // Skip if both classes are disabled
-                if ((!gtPref || !gtPref.enabled) && (!predPref || !predPref.enabled)) {
-                    continue;
-                }
-
-                // Skip if this is a match (no error)
-                if (gtVal === predVal) continue;
-
-                // Skip background (class 0) if not enabled
-                if (gtVal === 0 && (!gtPref || !gtPref.enabled)) continue;
-                if (predVal === 0 && (!predPref || !predPref.enabled)) continue;
-            } else {
-                // Original behavior: simple foreground/background diff
-                const gtFg = gtVal > 0;
-                const predFg = predVal > 0;
-
-                // Only highlight mismatches
-                if (gtFg === predFg) continue;
-            }
-
-            const idx = (y * canvasWidth + x) * 4;
-            const rBase = data[idx + 0];
-            const gBase = data[idx + 1];
-            const bBase = data[idx + 2];
-
-            // FN (False Negative): GT has a class, Pred doesn't (or has wrong class) → Blue
-            // FP (False Positive): Pred has a class, GT doesn't (or has wrong class) → Red
-            const color = gtVal > predVal ? fnColor : fpColor;
-            const [rOverlay, gOverlay, bOverlay, aOverlay] = color;
-            const alpha = aOverlay / 255;
-
-            data[idx + 0] = (1 - alpha) * rBase + alpha * rOverlay;
-            data[idx + 1] = (1 - alpha) * gBase + alpha * gOverlay;
-            data[idx + 2] = (1 - alpha) * bBase + alpha * bOverlay;
-            data[idx + 3] = 255;
-        }
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-}
 
 export type ClassPreference = {
     enabled: boolean;
     color: string;
 };
-
-export function drawMultiClassMaskOnContext(
-    ctx: CanvasRenderingContext2D,
-    maskStat: any,
-    canvasWidth: number,
-    canvasHeight: number,
-    classPrefs: Record<number, ClassPreference> | undefined,
-    alpha: number
-) {
-    if (!maskStat || !Array.isArray(maskStat.value) || !Array.isArray(maskStat.shape)) {
-        return;
-    }
-    if (!classPrefs) return;
-
-    const values = maskStat.value as number[];
-    const shape = maskStat.shape as number[];
-
-    let maskH: number;
-    let maskW: number;
-    if (shape.length === 2) {
-        maskH = shape[0];
-        maskW = shape[1];
-    } else if (shape.length === 3) {
-        maskH = shape[shape.length - 2];
-        maskW = shape[shape.length - 1];
-    } else {
-        return;
-    }
-
-    const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
-    const data = imageData.data;
-
-    const scaleY = maskH / canvasHeight;
-    const scaleX = maskW / canvasWidth;
-
-    for (let y = 0; y < canvasHeight; y++) {
-        for (let x = 0; x < canvasWidth; x++) {
-            const srcY = Math.floor(y * scaleY);
-            const srcX = Math.floor(x * scaleX);
-            const idxMask = srcY * maskW + srcX;
-
-            const clsId = values[idxMask] ?? 0;
-            const pref = classPrefs[clsId];
-            if (!pref || !pref.enabled) continue;
-            if (clsId === 0) continue; // ignore background if it exists
-
-            const hex = pref.color.replace('#', '');
-            if (hex.length !== 6) continue;
-
-            const rOverlay = parseInt(hex.slice(0, 2), 16);
-            const gOverlay = parseInt(hex.slice(2, 4), 16);
-            const bOverlay = parseInt(hex.slice(4, 6), 16);
-
-            const idx = (y * canvasWidth + x) * 4;
-            const rBase = data[idx + 0];
-            const gBase = data[idx + 1];
-            const bBase = data[idx + 2];
-
-            data[idx + 0] = (1 - alpha) * rBase + alpha * rOverlay;
-            data[idx + 1] = (1 - alpha) * gBase + alpha * gOverlay;
-            data[idx + 2] = (1 - alpha) * bBase + alpha * bOverlay;
-            data[idx + 3] = 255;
-        }
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-}
 
 
 export class GridCell {
@@ -491,22 +259,21 @@ export class GridCell {
                 | Record<number, ClassPreference>
                 | undefined;
 
-            // 2) Diff map, if enabled
-            if (showDiff && gtStat && predStat) {
-                // Pass class preferences to filter diff by enabled classes
-                drawDiffMaskOnContext(ctx, gtStat, predStat, width, height, classPrefs);
-            } else {
-                // 3) GT / Pred overlays with per-class toggles & colors
-                if (showGt && gtStat) {
-                    drawMultiClassMaskOnContext(ctx, gtStat, width, height, classPrefs, 0.45);
+            // 2) Use WebGL Renderer for masks
+            const finalUrl = SegmentationRenderer.getInstance().render(
+                img,
+                gtStat ? { value: gtStat.value, shape: gtStat.shape } : null,
+                predStat ? { value: predStat.value, shape: predStat.shape } : null,
+                {
+                    showRaw,
+                    showGt,
+                    showPred,
+                    showDiff,
+                    alpha: 0.45,
+                    classPrefs: classPrefs
                 }
-                if (showPred && predStat) {
-                    // slightly different alpha to distinguish
-                    drawMultiClassMaskOnContext(ctx, predStat, width, height, classPrefs, 0.35);
-                }
-            }
+            );
 
-            const finalUrl = canvas.toDataURL();
             this.setImageSrc(finalUrl);
         };
 
