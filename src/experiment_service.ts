@@ -11,6 +11,7 @@ import { UnknownFieldHandler } from "@protobuf-ts/runtime";
 import type { PartialMessage } from "@protobuf-ts/runtime";
 import { reflectionMergePartial } from "@protobuf-ts/runtime";
 import { MessageType } from "@protobuf-ts/runtime";
+import { MESSAGE_TYPE } from "@protobuf-ts/runtime";
 /**
  * @generated from protobuf message Empty
  */
@@ -839,6 +840,20 @@ export interface DataEditsResponse {
      * @generated from protobuf field: string message = 2
      */
     message: string;
+}
+
+/**
+ * @generated from protobuf message DataSplitsResponse
+ */
+export interface DataSplitsResponse {
+    /**
+     * @generated from protobuf field: bool success = 1;
+     */
+    success: boolean;
+    /**
+     * @generated from protobuf field: repeated string split_names = 2;
+     */
+    splitNames: string[];
 }
 /**
  * @generated from protobuf message AgentHealthResponse
@@ -3674,11 +3689,77 @@ class DataEditsResponse$Type extends MessageType<DataEditsResponse> {
  * @generated MessageType for protobuf message DataEditsResponse
  */
 export const DataEditsResponse = new DataEditsResponse$Type();
-// @generated message type with reflection information, may provide speed optimized methods
+
+class DataSplitsResponse$Type extends MessageType<DataSplitsResponse> {
+    constructor() {
+        super("DataSplitsResponse", [
+            { no: 1, name: "success", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
+            { no: 2, name: "split_names", kind: "scalar", repeat: 1 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ }
+        ]);
+    }
+    create(value?: PartialMessage<DataSplitsResponse>): DataSplitsResponse {
+        const message = { success: false, splitNames: [] };
+        globalThis.Object.defineProperty(message, MESSAGE_TYPE, { enumerable: false, value: this });
+        if (value !== undefined)
+            reflectionMergePartial<DataSplitsResponse>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: DataSplitsResponse): DataSplitsResponse {
+        let message = target ?? this.create();
+        let end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* bool success */ 1:
+                    message.success = reader.bool();
+                    break;
+                case /* repeated string split_names */ 2:
+                    message.splitNames.push(reader.string());
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: DataSplitsResponse, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* bool success = 1; */
+        if (message.success !== false)
+            writer.tag(1, WireType.Varint).bool(message.success);
+        /* repeated string split_names = 2; */
+        for (let i = 0; i < message.splitNames.length; i++)
+            writer.tag(2, WireType.LengthDelimited).string(message.splitNames[i]);
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+
+/**
+ * AgentHealthResponse message for agent health check
+ */
+export interface AgentHealthResponse {
+    /**
+     * True if agent is available
+     */
+    available: boolean;
+    /**
+     * Optional status or message
+     */
+    message?: string;
+}
+
 class AgentHealthResponse$Type extends MessageType<AgentHealthResponse> {
     constructor() {
         super("AgentHealthResponse", [
             { no: 1, name: "available", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
+<<<<<<< Updated upstream
             { no: 2, name: "message", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
         ]);
     }
@@ -3686,6 +3767,14 @@ class AgentHealthResponse$Type extends MessageType<AgentHealthResponse> {
         const message = globalThis.Object.create((this.messagePrototype!));
         message.available = false;
         message.message = "";
+=======
+            { no: 2, name: "message", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ }
+        ]);
+    }
+    create(value?: PartialMessage<AgentHealthResponse>): AgentHealthResponse {
+        const message = { available: false } as AgentHealthResponse;
+        globalThis.Object.defineProperty(message, MESSAGE_TYPE, { enumerable: false, value: this });
+>>>>>>> Stashed changes
         if (value !== undefined)
             reflectionMergePartial<AgentHealthResponse>(this, message, value);
         return message;
@@ -3695,10 +3784,17 @@ class AgentHealthResponse$Type extends MessageType<AgentHealthResponse> {
         while (reader.pos < end) {
             let [fieldNo, wireType] = reader.tag();
             switch (fieldNo) {
+<<<<<<< Updated upstream
                 case /* bool available */ 1:
                     message.available = reader.bool();
                     break;
                 case /* string message */ 2:
+=======
+                case 1:
+                    message.available = reader.bool();
+                    break;
+                case 2:
+>>>>>>> Stashed changes
                     message.message = reader.string();
                     break;
                 default:
@@ -3713,11 +3809,17 @@ class AgentHealthResponse$Type extends MessageType<AgentHealthResponse> {
         return message;
     }
     internalBinaryWrite(message: AgentHealthResponse, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+<<<<<<< Updated upstream
         /* bool available = 1; */
         if (message.available !== false)
             writer.tag(1, WireType.Varint).bool(message.available);
         /* string message = 2; */
         if (message.message !== "")
+=======
+        if (message.available !== false)
+            writer.tag(1, WireType.Varint).bool(message.available);
+        if (message.message !== undefined)
+>>>>>>> Stashed changes
             writer.tag(2, WireType.LengthDelimited).string(message.message);
         let u = options.writeUnknownFields;
         if (u !== false)
@@ -3725,10 +3827,22 @@ class AgentHealthResponse$Type extends MessageType<AgentHealthResponse> {
         return writer;
     }
 }
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
 /**
  * @generated MessageType for protobuf message AgentHealthResponse
  */
 export const AgentHealthResponse = new AgentHealthResponse$Type();
+<<<<<<< Updated upstream
+=======
+
+/**
+ * @generated MessageType for protobuf message DataSplitsResponse
+ */
+export const DataSplitsResponse = new DataSplitsResponse$Type();
+>>>>>>> Stashed changes
 /**
  * @generated ServiceType for protobuf service ExperimentService
  */
@@ -3741,6 +3855,10 @@ export const ExperimentService = new ServiceType("ExperimentService", [
     { name: "GetSamples", options: {}, I: BatchSampleRequest, O: BatchSampleResponse },
     { name: "ApplyDataQuery", options: {}, I: DataQueryRequest, O: DataQueryResponse },
     { name: "GetDataSamples", options: {}, I: DataSamplesRequest, O: DataSamplesResponse },
+<<<<<<< Updated upstream
+=======
+    { name: "GetDataSplits", options: {}, I: Empty, O: DataSplitsResponse },
+>>>>>>> Stashed changes
     { name: "EditDataSample", options: {}, I: DataEditsRequest, O: DataEditsResponse },
     { name: "CheckAgentHealth", options: {}, I: Empty, O: AgentHealthResponse }
 ]);

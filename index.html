@@ -10,24 +10,25 @@
 </head>
 
 <body>
-  <div id="grid-content" class="grid-content">
+  <div id="grid-content" class="grid-content main-ui">
     <div class="container">
       <!-- TOP HEADER BAR -->
       <div class="app-header">
         <div class="header-controls-left">
           <button id="grid-toggle" class="toggle-button expanded">−</button>
           <button id="dark-mode-toggle" class="toggle-button dark-mode-toggle" title="Toggle Dark Mode">◐</button>
+          <button id="cache-reset" class="toggle-button" title="Reset UI Cache">↻</button>
           <button id="toggle-training" class="control-button primary" data-state="paused">Resume</button>
         </div>
 
         <div class="header-branding">
-          <span class="branding-text">weights-studio by</span>
+          <span class="branding-text">Weights-Studio by</span>
           <a href="https://www.graybx.com/" target="_blank" class="logo-link">
             <img src="./logo.png" alt="Graybx Logo" class="logo-img">
             <span class="logo-text">Graybx</span>
           </a>
+          </div>
         </div>
-      </div>
 
 
       <!-- WORKSPACE: LEFT INSPECTOR + GRID -->
@@ -72,19 +73,14 @@
 
                 <div class="inspector-group split-colors">
                   <div class="row">
-                    <div class="row-label">Split colors</div>
-                    <div class="row-controls">
-                      <div class="color-picker-wrapper">
-                        <span class="chip">Train</span>
-                        <input type="color" id="train-color" class="color-picker" value="#4CAF50" />
-                      </div>
-                      <div class="color-picker-wrapper">
-                        <span class="chip">Test</span>
-                        <input type="color" id="eval-color" class="color-picker" value="#2196F3" />
-                      </div>
+                    <div class="row-label">Splits</div>
+                    <div class="row-controls split-scroll-container" id="split-checkboxes-slot">
+                      <!-- Split checkboxes and color pickers will be injected here by JS -->
                     </div>
                   </div>
                 </div>
+
+                <!-- Loader section removed as per request -->
               </div>
 
               <div class="inspector-section">
@@ -156,6 +152,10 @@
           <span id="slider-tooltip">0</span>
         </div>
         <span id="slider-max-label">100</span>
+        <label id="auto-refresh-label" style="margin-left: 12px; vertical-align: middle; cursor: pointer;">
+          <input type="checkbox" id="auto-refresh-checkbox" style="vertical-align: middle; margin-right: 4px;" checked>↻ Auto
+        </label>
+
       </div>
     </div>
 

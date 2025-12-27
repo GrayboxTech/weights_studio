@@ -5,8 +5,7 @@ import { SegmentationRenderer } from "./SegmentationRenderer";
 
 
 const PLACEHOLDER_IMAGE_SRC = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
-const EVAL_BORDER_COLOR = '#16bb07db'; // Red for eval
-const TRAIN_BORDER_COLOR = '#c57a09ff'; // Teal for train
+const DEFAULT_BORDER_COLOR = '#808080'; // Gray fallback
 
 function bytesToBase64(bytes: Uint8Array): string {
     let binary = '';
@@ -348,7 +347,7 @@ export class GridCell {
                 const imageData = ctx.createImageData(width, height);
                 const data = imageData.data;
 
-                // Handle flattened data. 
+                // Handle flattened data.
                 // If shape is [28, 28], length is 784.
                 // If shape is [1, 28, 28], length is 784.
 
@@ -566,18 +565,18 @@ export class GridCell {
             return;
         }
 
-        console.log('Updating border color for sample ID:', this.record.sampleId, this.record);
         const originStat = this.record.dataStats.find(stat => stat.name === 'origin');
-        console.log('Origin Stat Value:', originStat);
-        const isEval = originStat?.valueString === 'eval';
-        const splitColors = this.displayPreferences.splitColors;
-        console.log(`Sample ID: ${this.record.sampleId}, Origin Stat:`, originStat, `Is Eval: ${isEval}`, `Split Colors:`, splitColors);
+        const originRaw = originStat?.valueString || 'unknown';
+        const origin = originRaw.toLowerCase();
+        const splitColors = this.displayPreferences.splitColors as Record<string, string> | undefined;
 
-        if (splitColors?.eval && splitColors?.train) {
-            this.element.style.border = `3px solid ${isEval ? splitColors.eval : splitColors.train}`;
-        } else {
-            this.element.style.border = `3px solid ${isEval ? EVAL_BORDER_COLOR : TRAIN_BORDER_COLOR}`;
+        // Get color for this specific split
+        let borderColor = DEFAULT_BORDER_COLOR;
+        if (splitColors && origin in splitColors) {
+            borderColor = splitColors[origin];
         }
+
+        this.element.style.border = `3px solid ${borderColor}`;
     }
 
     getImage(): HTMLImageElement {

@@ -1,9 +1,6 @@
 import { DataRecord } from "./data_service";
 
-export type SplitColors = {
-    train: string;
-    eval: string;
-};
+export type SplitColors = Record<string, string>;
 
 type ClassPreference = {
     enabled: boolean;
@@ -149,9 +146,8 @@ export class DataDisplayOptionsPanel {
             }
         }
 
-        if (!hasNewFields && this.element.children.length > 0) {
-            return;
-        }
+        // NOTE: showRawImage, showGtMask, showPredMask, showDiffMask are handled
+        // separately in the Overlays & Appearance section, not in metadata list
 
         // 2) rebuild details list while preserving checkbox states
         this.element.innerHTML = "";
@@ -298,7 +294,12 @@ export class DataDisplayOptionsPanel {
         if (classesSlot) {
             classesSlot.innerHTML = "";
             const container = document.createElement("div");
-            container.className = "checkbox-inputs";
+            container.className = "checkbox-inputs class-scroll-container";
+            container.style.maxHeight = "320px";
+            container.style.overflowY = "auto";
+            container.style.display = "flex";
+            container.style.flexDirection = "column";
+            container.style.gap = "6px";
             const totalClasses = classIds.length;
 
             const makeColorForIndex = (idx: number): string => {
@@ -308,16 +309,15 @@ export class DataDisplayOptionsPanel {
                 return hslToHex(hue, saturation, lightness);
             };
 
+            // Only show a window of 9 classes at a time, with scroll
             classIds.forEach((id, idx) => {
                 const wrapper = document.createElement("div");
-                wrapper.style.display = "flex";
-                wrapper.style.alignItems = "center";
-                wrapper.style.gap = "0.25rem";
+                wrapper.className = "class-color-picker-wrapper";
 
                 const cb = document.createElement("input");
                 cb.type = "checkbox";
                 cb.id = `seg-class-enabled-${id}`;
-                cb.checked = id !== 0;
+                cb.checked = true;
 
                 const nameSpan = document.createElement("span");
                 nameSpan.textContent = `${id}`;
@@ -327,10 +327,15 @@ export class DataDisplayOptionsPanel {
                 colorInput.type = "color";
                 colorInput.id = `seg-class-color-${id}`;
                 colorInput.value = makeColorForIndex(idx);
-                colorInput.style.width = "20px";
-                colorInput.style.height = "20px";
+                colorInput.style.width = "22px";
+                colorInput.style.height = "22px";
                 colorInput.style.border = "none";
                 colorInput.style.padding = "0";
+                colorInput.style.borderRadius = "50%";
+                colorInput.style.background = "transparent";
+                colorInput.style.appearance = "none";
+                colorInput.style.webkitAppearance = "none";
+                colorInput.style.mozAppearance = "none";
 
                 cb.addEventListener("change", () => this.updateCallback?.());
                 colorInput.addEventListener("input", () => this.updateCallback?.());
