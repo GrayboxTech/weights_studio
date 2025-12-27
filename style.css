@@ -250,13 +250,9 @@ body.dark-mode {
 .container {
   display: flex;
   flex-direction: column;
-<<<<<<< Updated upstream
-  height: 10vh;
-=======
   min-height: 100vh;
   height: 100dvh;
   box-sizing: border-box;
->>>>>>> Stashed changes
 }
 
 /* Top app header - slim and focused */

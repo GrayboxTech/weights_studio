@@ -125,7 +125,6 @@ export class DataDisplayOptionsPanel {
                 record.dataStats.forEach((stat: any) => {
                     if (stat.name === "raw_data" ||
                         stat.name === "pred_mask" ||
-                        stat.name === "label" ||
                         stat.name === "task_type" ||
                         /^class(_\d+)?$/i.test(stat.name) ||
                         (this.isSegmentationDataset && SEGMENTATION_HIDDEN_FIELDS.has(stat.name))) {

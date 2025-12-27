@@ -875,14 +875,12 @@ export async function initializeUIElements() {
             // Close options panel when clicking outside
             document.addEventListener('click', (e) => {
                 const target = e.target as HTMLElement;
-                const isVisible = optionsPanel.style.display !== 'none';
+                // const isVisible = displayOptionsPanel.style.display !== 'none';
 
-                // Close if panel is visible and click is outside both panel and toggle button
-                if (isVisible && !optionsPanel.contains(target) && !optionsToggle.contains(target)) {
-                    optionsPanel.style.display = 'none';
-                    optionsToggle.classList.add('collapsed');
-                    optionsToggle.classList.remove('expanded');
-                }
+                // // Close if panel is visible and click is outside both panel and toggle button
+                // if (isVisible && !displayOptionsPanel.contains(target) && !optionsToggle.contains(target)) {
+                //     displayOptionsPanel.style.display = 'none';
+                // }
             });
         }
 
@@ -1262,76 +1260,6 @@ document.addEventListener('modalContextMenuAction', async (e: any) => {
     if (!sampleId) {
         console.error('No sampleId provided in modal action');
         return;
-    }
-});
-
-contextMenu.addEventListener('click', async (e) => {
-    const action = (e.target as HTMLElement).dataset.action;
-    if (action) {
-        console.log(
-            `Action: ${action}, selected cells:`,
-            Array.from(selectedCells)
-                .map(c => getGridCell(c)?.getRecord()?.sampleId)
-                .filter(id => id !== undefined)
-        );
-
-        const sample_ids = Array.from(selectedCells)
-            .map(c => getGridCell(c)?.getRecord()?.sampleId)
-            .filter(id => id !== undefined)
-
-        let origins = []
-        for (const c of Array.from(selectedCells)) {
-            const gridCell = getGridCell(c);
-            const record = gridCell?.getRecord();
-            // console.log("record: ", record)
-            const originStat = record.dataStats.find((stat: any) => stat.name === 'origin');
-            if (originStat) {
-                origins.push(originStat.valueString as string);
-            }
-        }
-
-        hideContextMenu();
-
-        switch (action) {
-            case 'add-tag':
-                openTaggingModal(sample_ids, origins);
-                // We DON'T clear selection or refresh here.
-                // The modal will stay on top of the selected items.
-                return;
-            case 'remove-tag':
-                removeTag(sample_ids, origins);
-                clearSelection();
-                debouncedFetchAndDisplay();
-                break;
-            case 'discard':
-                selectedCells.forEach(cell => {
-                    const gridCell = getGridCell(cell);
-                    if (gridCell) {
-                        cell.classList.add('discarded');
-                    }
-                });
-
-                const drequest: DataEditsRequest = {
-                    statName: "deny_listed",
-                    floatValue: 0,
-                    stringValue: '',
-                    boolValue: true,
-                    type: SampleEditType.EDIT_OVERRIDE,
-                    samplesIds: sample_ids,
-                    sampleOrigins: origins
-                }
-                try {
-                    const dresponse = await dataClient.editDataSample(drequest).response;
-                    if (!dresponse.success) {
-                        console.error("Failed to discard:", dresponse.message);
-                    }
-                } catch (error) {
-                    console.error("Error discarding:", error);
-                }
-                clearSelection();
-                debouncedFetchAndDisplay();
-                break;
-        }
     }
 });
 
@@ -1842,15 +1770,15 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-// Add double-click event listener to grid cells
-grid.addEventListener('dblclick', (e) => {
-    const target = e.target as HTMLElement;
-    const cell = target.closest('.cell') as HTMLElement | null;
+// // Add double-click event listener to grid cells
+// grid.addEventListener('dblclick', (e) => {
+//     const target = e.target as HTMLElement;
+//     const cell = target.closest('.cell') as HTMLElement | null;
 
-    if (cell) {
-        openImageDetailModal(cell);
-    }
-});
+//     if (cell) {
+//         openImageDetailModal(cell);
+//     }
+// });
 
 // =============================================================================
 
