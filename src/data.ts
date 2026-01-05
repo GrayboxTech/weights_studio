@@ -46,6 +46,12 @@ let uniqueTags: string[] = [];
 let fetchTimeout: any = null;
 let currentFetchRequestId = 0;
 
+// Painter Mode State
+let isPainterMode = false;
+let isPainterRemoveMode = false;
+let activeBrushTags = new Set<string>();
+
+
 
 function getSplitColors(): SplitColors {
     const trainColor = (document.getElementById('train-color') as HTMLInputElement)?.value || '#4CAF50';
@@ -663,7 +669,81 @@ export async function initializeUIElements() {
     }, 10000);
 
     setTimeout(updateLayout, 0);
+
+    // Painter Mode UI Initialization
+    const painterToggle = document.getElementById('painter-toggle') as HTMLInputElement;
+    const painterTagsList = document.getElementById('painter-tags-list') as HTMLElement;
+    const painterNewTagBtn = document.getElementById('painter-new-tag') as HTMLButtonElement;
+    const newTagInput = document.getElementById('new-tag-input') as HTMLInputElement;
+
+    if (painterToggle) {
+        painterToggle.addEventListener('change', () => {
+            isPainterMode = painterToggle.checked;
+
+            // Enable/disable tag interactions based on mode
+            if (isPainterMode) {
+                cellsContainer?.classList.add('painter-active');
+                clearSelection();
+
+                // If no brush active, auto-select first one 
+                if (activeBrushTags.size === 0 && uniqueTags.length > 0) {
+                    setActiveBrush(uniqueTags[0]);
+                }
+            } else {
+                cellsContainer?.classList.remove('painter-active');
+            }
+        });
+    }
+
+    const addNewTag = () => {
+        if (!newTagInput) return;
+
+        const newTag = newTagInput.value.trim();
+        if (newTag) {
+            // Add to list and select it
+            if (!uniqueTags.includes(newTag)) {
+                updateUniqueTags([...uniqueTags, newTag].sort());
+            }
+            setActiveBrush(newTag);
+
+            // Clear input
+            newTagInput.value = '';
+        }
+    };
+
+    if (painterNewTagBtn) {
+        painterNewTagBtn.addEventListener('click', addNewTag);
+    }
+
+    if (newTagInput) {
+        newTagInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addNewTag();
+            }
+        });
+    }
+
+    // Mode switcher (Add/Remove)
+    const modeAddBtn = document.getElementById('mode-add') as HTMLButtonElement;
+    const modeRemoveBtn = document.getElementById('mode-remove') as HTMLButtonElement;
+
+    if (modeAddBtn && modeRemoveBtn) {
+        modeAddBtn.addEventListener('click', () => {
+            isPainterRemoveMode = false;
+            modeAddBtn.classList.add('active');
+            modeAddBtn.classList.remove('remove-mode');
+            modeRemoveBtn.classList.remove('active', 'remove-mode');
+        });
+
+        modeRemoveBtn.addEventListener('click', () => {
+            isPainterRemoveMode = true;
+            modeRemoveBtn.classList.add('active', 'remove-mode');
+            modeAddBtn.classList.remove('active');
+        });
+    }
 }
+
 
 // =============================================================================
 
@@ -709,27 +789,47 @@ grid.addEventListener('mousedown', (e) => {
 
     // On a mousedown without Ctrl, if the click is not on an already selected cell,
     // clear the existing selection. This prepares for a new selection (either click or drag).
-    if (!e.ctrlKey && !e.metaKey) {
+    if (!isPainterMode && !e.ctrlKey && !e.metaKey) {
         if (!cell || !selectedCells.has(cell)) {
             clearSelection();
         }
     }
 
-    // Start dragging to select
+    // Start dragging
     isDragging = true;
     startX = e.clientX;
     startY = e.clientY;
 
-    createSelectionBox();
-    selectionBox!.style.left = `${startX}px`;
-    selectionBox!.style.top = `${startY}px`;
-    selectionBox!.style.width = '0px';
-    selectionBox!.style.height = '0px';
-    selectionBox!.style.display = 'block';
+    if (isPainterMode) {
+        // Painter Mode: Apply tag immediately on click/down
+        if (cell) {
+            paintCell(cell);
+        }
+    } else {
+        // Normal Mode: Start selection box
+        createSelectionBox();
+        selectionBox!.style.left = `${startX}px`;
+        selectionBox!.style.top = `${startY}px`;
+        selectionBox!.style.width = '0px';
+        selectionBox!.style.height = '0px';
+        selectionBox!.style.display = 'block';
+    }
 });
 
 document.addEventListener('mousemove', (e) => {
-    if (!isDragging || !selectionBox) return;
+    if (!isDragging) return;
+
+    if (isPainterMode) {
+        // Painter Mode: Paint cells as we drag over them
+        const target = e.target as HTMLElement;
+        const cell = target.closest('.cell') as HTMLElement | null;
+        if (cell) {
+            paintCell(cell);
+        }
+        return;
+    }
+
+    if (!selectionBox) return;
 
     const currentX = e.clientX;
     const currentY = e.clientY;
@@ -768,6 +868,8 @@ document.addEventListener('mousemove', (e) => {
 document.addEventListener('mouseup', (e) => {
     if (!isDragging) return;
     isDragging = false;
+
+    if (isPainterMode) return; // Painter mode doesn't do selection on mouseup
 
     // Store the mouse up position for context menu
     lastMouseUpX = e.clientX;
@@ -1320,11 +1422,58 @@ if (document.readyState === 'loading') {
     initializeUIElements();
 }
 
+// Helper to manage visual state of active brush
+function setActiveBrush(tag: string) {
+    if (activeBrushTags.has(tag)) {
+        activeBrushTags.delete(tag);
+    } else {
+        activeBrushTags.add(tag);
+    }
+
+    // Update visual state of chips
+    const chips = document.querySelectorAll('.tag-chip');
+    chips.forEach(chip => {
+        const t = (chip as HTMLElement).dataset.tag;
+        if (t && activeBrushTags.has(t)) {
+            chip.classList.add('active');
+        } else {
+            chip.classList.remove('active');
+        }
+    });
+
+}
+
 function updateUniqueTags(tags: string[]) {
-    uniqueTags = tags || [];
+    // Filter out None, null, undefined, empty strings, and whitespace-only strings
+    uniqueTags = (tags || []).filter(t => t && t.trim() !== '' && t !== 'None');
+
+    // 1. Update existing tags datalist (for tagging modal)
     const datalist = document.getElementById('existing-tags');
     if (datalist) {
         datalist.innerHTML = uniqueTags.map(t => `<option value="${t}">`).join('');
+    }
+
+    // 2. Update Painter Mode Tag List (Chips)
+    const tagsContainer = document.getElementById('painter-tags-list');
+    if (tagsContainer) {
+        if (uniqueTags.length === 0) {
+            tagsContainer.innerHTML = '<div class="empty-state">No tags found</div>';
+        } else {
+            tagsContainer.innerHTML = '';
+            uniqueTags.forEach(tag => {
+                const chip = document.createElement('div');
+                chip.className = 'tag-chip';
+                if (activeBrushTags.has(tag)) chip.classList.add('active');
+                chip.dataset.tag = tag;
+                chip.textContent = tag;
+
+                chip.onclick = (e) => {
+                    setActiveBrush(tag);
+                };
+
+                tagsContainer.appendChild(chip);
+            });
+        }
     }
 }
 
@@ -1530,5 +1679,89 @@ async function removeTag(sampleIds: number[], origins: string[]) {
         }
     } catch (error) {
         alert(`Error removing tag: ${error}`);
+    }
+}
+// Helper to get origin string
+function getRecordOrigin(record: any): string {
+    const originStat = record.dataStats.find((s: any) => s.name === 'origin');
+    return originStat?.valueString || 'train'; // default
+}
+
+async function paintCell(cell: HTMLElement) {
+    if (activeBrushTags.size === 0) return;
+
+    const gridCell = getGridCell(cell);
+    if (!gridCell) return;
+
+    const record = gridCell.getRecord();
+    if (!record) return;
+
+    // Check current tags
+    const tagsStat = record.dataStats.find((s: any) => s.name === 'tags');
+    const currentTagsStr = tagsStat?.valueString || "";
+    // Filter out None, empty strings, and whitespace-only strings
+    const currentTags = currentTagsStr
+        .split(',')
+        .map((t: string) => t.trim())
+        .filter((t: string) => t && t !== 'None');
+
+    if (isPainterRemoveMode) {
+        // REMOVE MODE: Remove any selected tags that exist
+        const tagsToRemove = Array.from(activeBrushTags).filter(t => currentTags.includes(t));
+        if (tagsToRemove.length === 0) return;
+
+        const newTags = currentTags.filter(t => !tagsToRemove.includes(t));
+        const newTagsStr = newTags.join(', ');
+
+        // Optimistic update
+        gridCell.updateStats({ "tags": newTagsStr });
+
+        // Send remove requests
+        tagsToRemove.forEach(tag => {
+            const request: DataEditsRequest = {
+                statName: "tags",
+                floatValue: 0,
+                stringValue: tag,
+                boolValue: false,
+                type: SampleEditType.EDIT_REMOVE,
+                samplesIds: [record.sampleId],
+                sampleOrigins: [getRecordOrigin(record)]
+            };
+
+            dataClient.editDataSample(request).response.then(r => {
+                if (!r.success) {
+                    console.error(`Remove failed for tag ${tag}:`, r.message);
+                }
+            });
+        });
+    } else {
+        // ADD MODE: Add selected tags that don't exist
+        const tagsToAdd = Array.from(activeBrushTags).filter(t => !currentTags.includes(t));
+        if (tagsToAdd.length === 0) return;
+
+        const newTags = [...currentTags, ...tagsToAdd];
+        const newTagsStr = newTags.join(', ');
+
+        // Optimistic update
+        gridCell.updateStats({ "tags": newTagsStr });
+
+        // Send add requests
+        tagsToAdd.forEach(tag => {
+            const request: DataEditsRequest = {
+                statName: "tags",
+                floatValue: 0,
+                stringValue: tag,
+                boolValue: false,
+                type: SampleEditType.EDIT_ACCUMULATE,
+                samplesIds: [record.sampleId],
+                sampleOrigins: [getRecordOrigin(record)]
+            };
+
+            dataClient.editDataSample(request).response.then(r => {
+                if (!r.success) {
+                    console.error(`Paint failed for tag ${tag}:`, r.message);
+                }
+            });
+        });
     }
 }

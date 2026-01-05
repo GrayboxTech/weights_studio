@@ -349,7 +349,18 @@ export class GridCell {
 
             let formatted = ""
             if (stat.name === "tags") {
-                formatted = this.formatFieldValue(stat.valueString);
+                // Parse comma-separated tags and filter out None, empty strings
+                const tagValue = stat.valueString || '';
+                const cleanTags = tagValue
+                    .split(',')
+                    .map(t => t.trim())
+                    .filter(t => t && t !== 'None');
+
+                if (cleanTags.length > 0) {
+                    formatted = cleanTags.join(', ');
+                } else {
+                    continue; // Skip displaying if no valid tags
+                }
             } else {
                 formatted = this.formatFieldValue(stat.value);
             }
