@@ -705,6 +705,14 @@ export interface DataQueryResponse {
      * @generated from protobuf field: repeated string unique_tags = 6
      */
     uniqueTags: string[];
+    /**
+     * @generated from protobuf field: AgentIntentType agent_intent_type = 7
+     */
+    agentIntentType: AgentIntentType;
+    /**
+     * @generated from protobuf field: string analysis_result = 8
+     */
+    analysisResult: string;
 }
 /**
  * @generated from protobuf message DataSamplesRequest
@@ -894,6 +902,23 @@ export enum ZerofyPredicate {
      * @generated from protobuf enum value: ZEROFY_PREDICATE_WITH_OLDER = 2;
      */
     WITH_OLDER = 2
+}
+/**
+ * @generated from protobuf enum AgentIntentType
+ */
+export enum AgentIntentType {
+    /**
+     * @generated from protobuf enum value: INTENT_UNKNOWN = 0;
+     */
+    INTENT_UNKNOWN = 0,
+    /**
+     * @generated from protobuf enum value: INTENT_FILTER = 1;
+     */
+    INTENT_FILTER = 1,
+    /**
+     * @generated from protobuf enum value: INTENT_ANALYSIS = 2;
+     */
+    INTENT_ANALYSIS = 2
 }
 /**
  * @generated from protobuf enum SampleEditType
@@ -3130,7 +3155,9 @@ class DataQueryResponse$Type extends MessageType<DataQueryResponse> {
             { no: 3, name: "number_of_all_samples", kind: "scalar", T: 5 /*ScalarType.INT32*/ },
             { no: 4, name: "number_of_samples_in_the_loop", kind: "scalar", T: 5 /*ScalarType.INT32*/ },
             { no: 5, name: "number_of_discarded_samples", kind: "scalar", T: 5 /*ScalarType.INT32*/ },
-            { no: 6, name: "unique_tags", kind: "scalar", repeat: 2 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ }
+            { no: 6, name: "unique_tags", kind: "scalar", repeat: 2 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ },
+            { no: 7, name: "agent_intent_type", kind: "enum", T: () => ["AgentIntentType", AgentIntentType] },
+            { no: 8, name: "analysis_result", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
         ]);
     }
     create(value?: PartialMessage<DataQueryResponse>): DataQueryResponse {
@@ -3141,6 +3168,8 @@ class DataQueryResponse$Type extends MessageType<DataQueryResponse> {
         message.numberOfSamplesInTheLoop = 0;
         message.numberOfDiscardedSamples = 0;
         message.uniqueTags = [];
+        message.agentIntentType = 0;
+        message.analysisResult = "";
         if (value !== undefined)
             reflectionMergePartial<DataQueryResponse>(this, message, value);
         return message;
@@ -3167,6 +3196,12 @@ class DataQueryResponse$Type extends MessageType<DataQueryResponse> {
                     break;
                 case /* repeated string unique_tags */ 6:
                     message.uniqueTags.push(reader.string());
+                    break;
+                case /* AgentIntentType agent_intent_type */ 7:
+                    message.agentIntentType = reader.int32();
+                    break;
+                case /* string analysis_result */ 8:
+                    message.analysisResult = reader.string();
                     break;
                 default:
                     let u = options.readUnknownField;
@@ -3198,6 +3233,12 @@ class DataQueryResponse$Type extends MessageType<DataQueryResponse> {
         /* repeated string unique_tags = 6; */
         for (let i = 0; i < message.uniqueTags.length; i++)
             writer.tag(6, WireType.LengthDelimited).string(message.uniqueTags[i]);
+        /* AgentIntentType agent_intent_type = 7; */
+        if (message.agentIntentType !== 0)
+            writer.tag(7, WireType.Varint).int32(message.agentIntentType);
+        /* string analysis_result = 8; */
+        if (message.analysisResult !== "")
+            writer.tag(8, WireType.LengthDelimited).string(message.analysisResult);
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);

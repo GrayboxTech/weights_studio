@@ -3245,115 +3245,410 @@ body.dark-mode .compact-input {
   background: rgba(255, 255, 255, 0.05) !important;
   border-color: var(--border-color) !important;
 }
+
 /* Mode Switcher (Add/Remove) */
 .mode-switcher {
-    display: flex;
-    background: var(--surface-color);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    overflow: hidden;
-    margin-right: 8px;
+  display: flex;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-right: 8px;
 }
 
 .mode-btn {
-    padding: 3px 10px;
-    font-size: 0.85rem;
-    font-weight: 600;
-    border: none;
-    background: transparent;
-    color: var(--secondary-text-color);
-    cursor: pointer;
-    transition: all 0.15s ease;
-    border-right: 1px solid var(--border-color);
+  padding: 3px 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: var(--secondary-text-color);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-right: 1px solid var(--border-color);
 }
 
 .mode-btn:last-child {
-    border-right: none;
+  border-right: none;
 }
 
 .mode-btn:hover {
-    background: var(--accent-soft);
-    color: var(--accent-color);
+  background: var(--accent-soft);
+  color: var(--accent-color);
 }
 
 .mode-btn.active {
-    background: var(--accent-color);
-    color: white;
+  background: var(--accent-color);
+  color: white;
 }
 
 .mode-btn.remove-mode {
-    background: #ef4444;
-    color: white;
+  background: #ef4444;
+  color: white;
 }
 
 .mode-btn.remove-mode:hover {
-    background: #dc2626;
+  background: #dc2626;
 }
 
 /* Dark mode */
 body.dark-mode .mode-switcher {
-    background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 /* Tag Chip Delete Button */
 .tag-chip {
-    position: relative;
-    padding-right: 24px; /* Make room for delete button */
+  position: relative;
+  padding-right: 24px;
+  /* Make room for delete button */
 }
 
 .tag-chip .delete-tag {
-    position: absolute;
-    right: 4px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.15);
-    border: none;
-    color: var(--primary-text-color);
-    font-size: 10px;
-    line-height: 1;
-    cursor: pointer;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.15s ease;
-    padding: 0;
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.15);
+  border: none;
+  color: var(--primary-text-color);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  padding: 0;
 }
 
 .tag-chip:hover .delete-tag {
-    display: flex;
+  display: flex;
 }
 
 .tag-chip .delete-tag:hover {
-    background: #ef4444;
-    color: white;
-    transform: translateY(-50%) scale(1.1);
+  background: #ef4444;
+  color: white;
+  transform: translateY(-50%) scale(1.1);
 }
 
 body.dark-mode .tag-chip .delete-tag {
-    background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 body.dark-mode .tag-chip .delete-tag:hover {
-    background: #ef4444;
+  background: #ef4444;
 }
 
 /* Fix layout shift when painter mode activates */
 .mode-label {
-    position: relative;
-    padding-left: 14px; /* Reserve space for the dot */
+  position: relative;
+  padding-left: 14px;
+  /* Reserve space for the dot */
 }
 
 .mode-label::before {
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 /* Only show the dot when painter is active */
 body:not(:has(#painter-toggle:checked)) .mode-label::before {
-    display: none;
+  display: none;
+}
+
+/* Chat Result Panel */
+.chat-result-panel {
+  display: flex;
+  /* controlled by JS */
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  max-width: 1400px;
+  /* match chat-input-container */
+  margin: 0 auto;
+  background-color: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--accent-color);
+  border-left: 4px solid var(--accent-color);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.15);
+  box-sizing: border-box;
+  animation: slideDown 0.3s ease-out;
+  backdrop-filter: blur(10px);
+  z-index: 20;
+}
+
+body.dark-mode .chat-result-panel {
+  background-color: rgba(30, 30, 30, 0.95);
+  border-top-color: var(--border-subtle);
+  border-right-color: var(--border-subtle);
+  border-bottom-color: var(--border-subtle);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chat-result-content {
+  flex-grow: 1;
+  font-family: 'SF Mono', 'Roboto Mono', monospace;
+  font-size: 0.95rem;
+  color: var(--primary-text-color);
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.chat-result-close {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  color: var(--muted-text-color);
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.chat-result-close:hover {
+  color: var(--primary-text-color);
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+body.dark-mode .chat-result-close:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* --- Chat History Floating Panel (Apple Style) --- */
+.content-header {
+  position: relative;
+  /* Anchor for absolute positioning */
+  z-index: 100;
+}
+
+.chat-history-panel {
+  display: none;
+  /* JS toggles 'flex' */
+  flex-direction: column;
+  position: absolute;
+  top: calc(100% + 12px);
+  /* Floating gap */
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: 50%;
+  /* Only half width, centered */
+  max-width: none;
+  max-height: 50vh;
+  background: rgba(255, 255, 255, 0.85);
+  /* Light mode glass */
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+  z-index: 1000;
+  overflow: hidden;
+  animation: popIn 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: top center;
+}
+
+body.dark-mode .chat-history-panel {
+  background: rgba(28, 28, 30, 0.85);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+}
+
+/* Chat Messages List */
+.chat-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  overflow-y: auto;
+  max-height: 400px;
+  scroll-behavior: smooth;
+}
+
+/* Message Item */
+.history-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: slideUpFade 0.3s ease-out;
+}
+
+.history-item.user {
+  align-items: flex-end;
+}
+
+.history-item.agent {
+  align-items: flex-start;
+}
+
+/* Bubbles */
+.msg-bubble {
+  padding: 10px 16px;
+  border-radius: 18px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  max-width: 80%;
+  position: relative;
+  word-wrap: break-word;
+}
+
+/* User Bubble (Blue default like iMessage) */
+.history-item.user .msg-bubble {
+  background-color: #007AFF;
+  color: white;
+  border-bottom-right-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Agent Bubble (Gray/Glass) */
+.history-item.agent .msg-bubble {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: var(--primary-text-color);
+  border-bottom-left-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+body.dark-mode .history-item.agent .msg-bubble {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.05);
+  color: var(--primary-text-color);
+}
+
+/* Timestamp / Meta */
+.msg-meta {
+  font-size: 0.75rem;
+  color: var(--muted-text-color);
+  margin: 0 4px;
+  opacity: 0.7;
+}
+
+/* Footer (Clear button) */
+.chat-history-footer {
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  padding: 10px 20px;
+  display: flex;
+  justify-content: flex-end;
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+body.dark-mode .chat-history-footer {
+  border-top-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+.chat-history-clear {
+  background: none;
+  border: none;
+  font-size: 0.85rem;
+  color: var(--muted-text-color);
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.chat-history-clear:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+/* Animations */
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Highlight for code/numbers in agent response */
+.msg-bubble code {
+  font-family: 'SF Mono', 'Menlo', monospace;
+  background: rgba(0, 0, 0, 0.08);
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+body.dark-mode .msg-bubble code {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Typing Animation */
+@keyframes typingDot {
+
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.typing-dots {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  height: 20px;
+  padding: 4px 0;
+}
+
+.typing-dots span {
+  width: 6px;
+  height: 6px;
+  background-color: currentColor;
+  border-radius: 50%;
+  animation: typingDot 1.4s infinite;
+}
+
+.typing-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dots span:nth-child(3) {
+  animation-delay: 0.4s;
 }

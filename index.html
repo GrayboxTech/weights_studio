@@ -142,9 +142,17 @@
           <!-- Content Header: Chat -->
           <div class="content-header">
             <div class="chat-input-container">
-              <input type="text" id="chat-input"
-                placeholder="drop 50% of the samples with losses between 1.4 and 1.9" />
+              <input type="text" id="chat-input" placeholder="Ask a question or describe a filter..." />
               <button id="chat-send" class="chat-send-button">Send</button>
+            </div>
+            <!-- Chat History Panel (Floating) -->
+            <div id="chat-history-panel" class="chat-history-panel">
+              <div class="chat-history-list" id="chat-history-list">
+                <!-- Messages injected here -->
+              </div>
+              <div class="chat-history-footer">
+                <button class="chat-history-clear" id="chat-history-clear">Clear History</button>
+              </div>
             </div>
           </div>
 

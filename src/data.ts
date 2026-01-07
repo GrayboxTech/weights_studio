@@ -13,6 +13,7 @@ import {
     TrainerCommand,
     HyperParameterCommand,
     HyperParameters,
+    AgentIntentType,
 } from "./experiment_service";
 import { DataDisplayOptionsPanel, SplitColors } from "./DataDisplayOptionsPanel";
 import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteractionsPanel";
@@ -51,6 +52,49 @@ let isPainterMode = false;
 let isPainterRemoveMode = false;
 let activeBrushTags = new Set<string>();
 
+
+
+// --- Chat History Helper ---
+function addChatMessage(text: string, type: 'user' | 'agent', isTyping: boolean = false): HTMLElement | null {
+    const list = document.getElementById('chat-history-list');
+    const panel = document.getElementById('chat-history-panel');
+    if (!list || !panel) return null;
+
+    // Ensure panel is visible
+    panel.style.display = 'flex';
+
+    const item = document.createElement('div');
+    item.className = `history-item ${type}`;
+    if (isTyping) item.classList.add('is-typing');
+
+    // Timestamp
+    const meta = document.createElement('span');
+    meta.className = 'msg-meta';
+    const now = new Date();
+    meta.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Bubble
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+
+    if (isTyping) {
+        bubble.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+    } else if (type === 'agent') {
+        // Simple heuristic to highlight numbers or code-like tokens
+        bubble.innerHTML = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+    } else {
+        bubble.textContent = text;
+    }
+
+    item.appendChild(meta);
+    item.appendChild(bubble);
+    list.appendChild(item);
+
+    // Scroll to bottom
+    list.scrollTop = list.scrollHeight;
+
+    return item;
+}
 
 
 function getSplitColors(): SplitColors {
@@ -237,6 +281,21 @@ async function handleQuerySubmit(query: string): Promise<void> {
     try {
         const request: DataQueryRequest = { query, accumulate: false, isNaturalLanguage: true };
         const response: DataQueryResponse = await dataClient.applyDataQuery(request).response;
+
+        // Handle Analysis Intent (Chat Mode)
+        if (response.agentIntentType === AgentIntentType.INTENT_ANALYSIS) {
+            addChatMessage(response.analysisResult || "Analysis complete.", 'agent');
+            return; // Do not refresh grid for analysis queries
+        }
+
+        // Handle Filter Intent (Grid Mode)
+        // If there is a meaningful message, log it to chat
+        if (response.message && response.message !== "Reset view to base dataset") {
+            addChatMessage(response.message, 'agent');
+        } else if (response.message === "Reset view to base dataset") {
+            addChatMessage("Reset view to full dataset.", 'agent');
+        }
+
         updateUniqueTags(response.uniqueTags);
         const sampleCount = response.numberOfAllSamples;
 
@@ -251,7 +310,6 @@ async function handleQuerySubmit(query: string): Promise<void> {
             currentStartIndex = Math.max(0, sampleCount - gridCount);
         }
 
-        // traversalPanel.setMaxSampleId(sampleCount > 0 ? sampleCount - 1 : 0);
         traversalPanel.updateSampleCounts(
             response.numberOfAllSamples,
             response.numberOfSamplesInTheLoop
@@ -261,6 +319,7 @@ async function handleQuerySubmit(query: string): Promise<void> {
         fetchAndDisplaySamples();
     } catch (error) {
         console.error('Error applying query:', error);
+        throw error;
     }
 }
 
@@ -343,10 +402,22 @@ export async function initializeUIElements() {
             chatSendBtn.textContent = 'Working...';
             chatInput.disabled = true;
 
+            // 1. Add User Message immediately
+            addChatMessage(query, 'user');
+            chatInput.value = '';
+
+            // 2. Add Typing indicator
+            const typingMsg = addChatMessage('', 'agent', true);
+
             try {
                 await handleQuerySubmit(query);
-                chatInput.value = '';
+            } catch (error: any) {
+                console.error("Query failed:", error);
+                // 3. Add Error Message to history
+                addChatMessage(`Error: ${error.message || "Unknown error"}`, 'agent');
             } finally {
+                // Remove typing indicator if it exists
+                if (typingMsg) typingMsg.remove();
                 // Reset state
                 chatSendBtn.disabled = false;
                 chatSendBtn.classList.remove('loading');
@@ -364,6 +435,15 @@ export async function initializeUIElements() {
                 await submitQuery();
             }
         });
+
+        // Auto-show history on focus if not empty
+        chatInput.addEventListener('focus', () => {
+            const list = document.getElementById('chat-history-list');
+            const panel = document.getElementById('chat-history-panel');
+            if (list && list.children.length > 0 && panel) {
+                panel.style.display = 'flex';
+            }
+        });
     }
 
     if (chatSendBtn) {
@@ -371,6 +451,32 @@ export async function initializeUIElements() {
             await submitQuery();
         });
     }
+
+    // Clear History Button
+    const clearBtn = document.getElementById('chat-history-clear');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            const list = document.getElementById('chat-history-list');
+            const panel = document.getElementById('chat-history-panel');
+            if (list) list.innerHTML = '';
+            if (panel) panel.style.display = 'none';
+        });
+    }
+
+    // Close history when clicking outside
+    document.addEventListener('click', (e) => {
+        const panel = document.getElementById('chat-history-panel');
+        const inputContainer = document.querySelector('.chat-input-container');
+        if (panel && panel.style.display === 'flex' && inputContainer) {
+            const target = e.target as HTMLElement;
+            // If click is NOT inside panel AND NOT inside input, close it
+            if (!panel.contains(target) && !inputContainer.contains(target)) {
+                panel.style.display = 'none';
+            }
+        }
+    });
+
+
 
 
     inspectorContainer = document.querySelector('.inspector-container') as HTMLElement | null;
@@ -1707,17 +1813,17 @@ async function paintCell(cell: HTMLElement) {
 
     if (isPainterRemoveMode) {
         // REMOVE MODE: Remove any selected tags that exist
-        const tagsToRemove = Array.from(activeBrushTags).filter(t => currentTags.includes(t));
+        const tagsToRemove = Array.from(activeBrushTags).filter((t: string) => currentTags.includes(t));
         if (tagsToRemove.length === 0) return;
 
-        const newTags = currentTags.filter(t => !tagsToRemove.includes(t));
+        const newTags = currentTags.filter((t: string) => !tagsToRemove.includes(t));
         const newTagsStr = newTags.join(', ');
 
         // Optimistic update
         gridCell.updateStats({ "tags": newTagsStr });
 
         // Send remove requests
-        tagsToRemove.forEach(tag => {
+        tagsToRemove.forEach((tag: string) => {
             const request: DataEditsRequest = {
                 statName: "tags",
                 floatValue: 0,
@@ -1728,7 +1834,7 @@ async function paintCell(cell: HTMLElement) {
                 sampleOrigins: [getRecordOrigin(record)]
             };
 
-            dataClient.editDataSample(request).response.then(r => {
+            dataClient.editDataSample(request).response.then((r: any) => {
                 if (!r.success) {
                     console.error(`Remove failed for tag ${tag}:`, r.message);
                 }
@@ -1736,7 +1842,7 @@ async function paintCell(cell: HTMLElement) {
         });
     } else {
         // ADD MODE: Add selected tags that don't exist
-        const tagsToAdd = Array.from(activeBrushTags).filter(t => !currentTags.includes(t));
+        const tagsToAdd = Array.from(activeBrushTags).filter((t: string) => !currentTags.includes(t));
         if (tagsToAdd.length === 0) return;
 
         const newTags = [...currentTags, ...tagsToAdd];
@@ -1746,7 +1852,7 @@ async function paintCell(cell: HTMLElement) {
         gridCell.updateStats({ "tags": newTagsStr });
 
         // Send add requests
-        tagsToAdd.forEach(tag => {
+        tagsToAdd.forEach((tag: string) => {
             const request: DataEditsRequest = {
                 statName: "tags",
                 floatValue: 0,
@@ -1757,7 +1863,7 @@ async function paintCell(cell: HTMLElement) {
                 sampleOrigins: [getRecordOrigin(record)]
             };
 
-            dataClient.editDataSample(request).response.then(r => {
+            dataClient.editDataSample(request).response.then((r: any) => {
                 if (!r.success) {
                     console.error(`Paint failed for tag ${tag}:`, r.message);
                 }
