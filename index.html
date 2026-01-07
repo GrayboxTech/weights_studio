@@ -143,10 +143,14 @@
           <div class="content-header">
             <div class="chat-input-container">
               <input type="text" id="chat-input" placeholder="Ask a question or describe a filter..." />
+              <button id="toggle-history" class="toggle-history-button" title="Toggle chat history (Ctrl+H)">💬</button>
               <button id="chat-send" class="chat-send-button">Send</button>
             </div>
             <!-- Chat History Panel (Floating) -->
             <div id="chat-history-panel" class="chat-history-panel">
+              <div class="resize-handle resize-left"></div>
+              <div class="resize-handle resize-bottom"></div>
+              <div class="resize-handle resize-bottom-left"></div>
               <div class="chat-history-list" id="chat-history-list">
                 <!-- Messages injected here -->
               </div>

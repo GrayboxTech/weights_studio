@@ -107,7 +107,7 @@ body.dark-mode {
       rgba(243, 244, 246, 0.92));
   border-bottom: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-subtle);
-  z-index: 10;
+  z-index: 100;
   backdrop-filter: blur(18px);
 }
 
@@ -722,6 +722,47 @@ body.dark-mode #chat-input:focus {
   transform: none;
   box-shadow: 0 4px 12px rgba(0, 122, 255, 0.2);
   filter: grayscale(30%);
+}
+
+/* Toggle History Button */
+#toggle-history {
+  background: rgba(0, 122, 255, 0.08);
+  color: var(--accent-color);
+  border: 1px solid rgba(0, 122, 255, 0.2);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.75rem;
+  font-size: 1.1rem;
+  cursor: pointer;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-speed);
+  margin-left: 0.5rem;
+}
+
+#toggle-history:hover {
+  background: rgba(0, 122, 255, 0.12);
+  border-color: rgba(0, 122, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+#toggle-history.active {
+  background: var(--accent-color);
+  color: #ffffff;
+  border-color: var(--accent-color);
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.25);
+}
+
+body.dark-mode #toggle-history {
+  background: rgba(0, 122, 255, 0.12);
+  border-color: rgba(0, 122, 255, 0.25);
+  color: var(--accent-color);
+}
+
+body.dark-mode #toggle-history.active {
+  background: var(--accent-color);
+  color: #ffffff;
 }
 
 /* Grid and cells */
@@ -3442,23 +3483,31 @@ body.dark-mode .chat-result-close:hover {
 .content-header {
   position: relative;
   /* Anchor for absolute positioning */
-  z-index: 100;
+  z-index: 50;
 }
 
 .chat-history-panel {
   display: none;
   /* JS toggles 'flex' */
   flex-direction: column;
-  position: absolute;
-  top: calc(100% + 12px);
-  /* Floating gap */
-  left: 0;
-  right: 0;
-  margin: 0 auto;
-  width: 50%;
-  /* Only half width, centered */
-  max-width: none;
-  max-height: 50vh;
+
+  /* Fixed positioning on the right side */
+  position: fixed;
+  top: 140px;
+  /* Below the chat input bar */
+  right: 20px;
+
+  /* Default size - user can resize with custom handles */
+  width: 350px;
+  height: 350px;
+  max-width: 50vw;
+  max-height: 60vh;
+  min-width: 300px;
+  min-height: 200px;
+
+  /* No native resize */
+  overflow: auto;
+
   background: rgba(255, 255, 255, 0.85);
   /* Light mode glass */
   backdrop-filter: blur(20px);
@@ -3466,16 +3515,72 @@ body.dark-mode .chat-result-close:hover {
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 16px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
-  z-index: 1000;
-  overflow: hidden;
-  animation: popIn 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
-  transform-origin: top center;
+  z-index: 90;
+  animation: slideInRight 0.3s ease-out;
 }
 
 body.dark-mode .chat-history-panel {
   background: rgba(28, 28, 30, 0.85);
   border-color: rgba(255, 255, 255, 0.1);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Custom Resize Handles */
+.resize-handle {
+  position: absolute;
+  z-index: 10;
+}
+
+.resize-left {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+  background: transparent;
+}
+
+.resize-left:hover {
+  background: rgba(0, 122, 255, 0.15);
+}
+
+.resize-bottom {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 8px;
+  cursor: ns-resize;
+  background: transparent;
+}
+
+.resize-bottom:hover {
+  background: rgba(0, 122, 255, 0.15);
+}
+
+.resize-bottom-left {
+  left: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nesw-resize;
+  background: linear-gradient(225deg, transparent 40%, rgba(0, 122, 255, 0.3) 40%);
+  border-radius: 0 0 0 16px;
+}
+
+.resize-bottom-left:hover {
+  background: linear-gradient(225deg, transparent 40%, rgba(0, 122, 255, 0.5) 40%);
 }
 
 /* Chat Messages List */
@@ -3548,16 +3653,21 @@ body.dark-mode .history-item.agent .msg-bubble {
 
 /* Footer (Clear button) */
 .chat-history-footer {
+  position: sticky;
+  bottom: 0;
   border-top: 1px solid rgba(0, 0, 0, 0.05);
-  padding: 10px 20px;
+  padding: 8px 16px;
   display: flex;
   justify-content: flex-end;
-  background-color: rgba(255, 255, 255, 0.3);
+  background-color: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  margin-top: auto;
+  /* Push to bottom */
 }
 
 body.dark-mode .chat-history-footer {
   border-top-color: rgba(255, 255, 255, 0.1);
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: rgba(28, 28, 30, 0.95);
 }
 
 .chat-history-clear {

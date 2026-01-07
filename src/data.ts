@@ -460,21 +460,162 @@ export async function initializeUIElements() {
             const panel = document.getElementById('chat-history-panel');
             if (list) list.innerHTML = '';
             if (panel) panel.style.display = 'none';
+
+            // Also deactivate toggle button
+            const toggleBtn = document.getElementById('toggle-history');
+            if (toggleBtn) toggleBtn.classList.remove('active');
         });
     }
+
+    // Toggle History Button
+    const toggleHistoryBtn = document.getElementById('toggle-history');
+    if (toggleHistoryBtn) {
+        toggleHistoryBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const panel = document.getElementById('chat-history-panel');
+            if (!panel) return;
+
+            const isVisible = panel.style.display === 'flex';
+            panel.style.display = isVisible ? 'none' : 'flex';
+            toggleHistoryBtn.classList.toggle('active', !isVisible);
+        });
+    }
+
+    // Keyboard shortcut: Ctrl+H to toggle history
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'h') {
+            e.preventDefault();
+            const toggleBtn = document.getElementById('toggle-history');
+            if (toggleBtn) toggleBtn.click();
+        }
+
+        // Escape to close
+        if (e.key === 'Escape') {
+            const panel = document.getElementById('chat-history-panel');
+            const toggleBtn = document.getElementById('toggle-history');
+            if (panel && panel.style.display === 'flex') {
+                panel.style.display = 'none';
+                if (toggleBtn) toggleBtn.classList.remove('active');
+            }
+        }
+    });
 
     // Close history when clicking outside
     document.addEventListener('click', (e) => {
         const panel = document.getElementById('chat-history-panel');
         const inputContainer = document.querySelector('.chat-input-container');
+        const toggleBtn = document.getElementById('toggle-history');
         if (panel && panel.style.display === 'flex' && inputContainer) {
             const target = e.target as HTMLElement;
             // If click is NOT inside panel AND NOT inside input, close it
             if (!panel.contains(target) && !inputContainer.contains(target)) {
                 panel.style.display = 'none';
+                if (toggleBtn) toggleBtn.classList.remove('active');
             }
         }
     });
+
+    // Custom Resize Handles for Chat History Panel
+    const panel = document.getElementById('chat-history-panel');
+    const resizeLeft = document.querySelector('.resize-left') as HTMLElement;
+    const resizeBottom = document.querySelector('.resize-bottom') as HTMLElement;
+    const resizeBottomLeft = document.querySelector('.resize-bottom-left') as HTMLElement;
+
+    if (panel && resizeLeft) {
+        let isResizing = false;
+        let startX = 0;
+        let startWidth = 0;
+        let startRight = 0;
+
+        resizeLeft.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startX = e.clientX;
+            startWidth = panel.offsetWidth;
+            startRight = window.innerWidth - panel.getBoundingClientRect().right;
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            const dx = startX - e.clientX;
+            const newWidth = startWidth + dx;
+            if (newWidth >= 300 && newWidth <= window.innerWidth * 0.5) {
+                panel.style.width = newWidth + 'px';
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isResizing = false;
+        });
+    }
+
+    if (panel && resizeBottom) {
+        let isResizing = false;
+        let startY = 0;
+        let startHeight = 0;
+
+        resizeBottom.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startY = e.clientY;
+            startHeight = panel.offsetHeight;
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            const dy = e.clientY - startY;
+            const newHeight = startHeight + dy;
+            const minHeight = 200;
+            const maxHeight = window.innerHeight - 160;
+            if (newHeight >= minHeight && newHeight <= maxHeight) {
+                panel.style.height = newHeight + 'px';
+                panel.style.bottom = 'auto';
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isResizing = false;
+        });
+    }
+
+    if (panel && resizeBottomLeft) {
+        let isResizing = false;
+        let startX = 0;
+        let startY = 0;
+        let startWidth = 0;
+        let startHeight = 0;
+
+        resizeBottomLeft.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            startWidth = panel.offsetWidth;
+            startHeight = panel.offsetHeight;
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            const dx = startX - e.clientX;
+            const dy = e.clientY - startY;
+            const newWidth = startWidth + dx;
+            const newHeight = startHeight + dy;
+
+            if (newWidth >= 300 && newWidth <= window.innerWidth * 0.5) {
+                panel.style.width = newWidth + 'px';
+            }
+            const minHeight = 200;
+            const maxHeight = window.innerHeight - 160;
+            if (newHeight >= minHeight && newHeight <= maxHeight) {
+                panel.style.height = newHeight + 'px';
+                panel.style.bottom = 'auto';
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isResizing = false;
+        });
+    }
 
 
 
