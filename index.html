@@ -39,7 +39,24 @@
               <span id="training-state-pill" class="pill pill-paused">Paused</span>
             </div>
             <div class="card-body">
-              <div id="training-summary" class="training-summary">-</div>
+              <div id="training-summary" class="training-summary">
+                <div id="training-metrics" class="training-metrics">
+                  <!-- Metrics will be populated here -->
+                </div>
+                <div class="training-progress-container">
+                  <div class="progress-info-row">
+                    <div class="training-steps">
+                      <span id="training-current-step">0</span> / <span id="training-total-steps">---</span> epochs
+                    </div>
+                    <div class="training-percentage">
+                      <span id="training-percentage-text">0%</span>
+                    </div>
+                  </div>
+                  <div class="progress-bar-container">
+                    <div id="training-progress-bar" class="progress-bar-fill" style="width: 0%"></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 

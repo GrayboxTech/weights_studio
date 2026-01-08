@@ -629,7 +629,7 @@ export async function initializeUIElements() {
 
     const toggleBtn = document.getElementById('toggle-training') as HTMLButtonElement | null;
     if (toggleBtn) {
-        const syncTrainingUI = () => {
+        const syncTrainingUI = async () => {
             if (toggleBtn) {
                 toggleBtn.textContent = isTraining ? 'Pause' : 'Resume';
                 toggleBtn.classList.toggle('running', isTraining);
@@ -640,11 +640,44 @@ export async function initializeUIElements() {
                 trainingStatePill.classList.toggle('pill-running', isTraining);
                 trainingStatePill.classList.toggle('pill-paused', !isTraining);
             }
-            if (trainingSummary) {
-                const gridCount = gridManager ? gridManager.getCells().length : traversalPanel.getLeftSamples();
-                const start = traversalPanel.getStartIndex();
-                const end = Math.max(start, start + gridCount - 1);
-                trainingSummary.textContent = `TBD: add training stats`;
+
+            // Fetch training_steps_to_do from hyperparameters
+            try {
+                const cmd = {
+                    getHyperParameters: true,
+                    getInteractiveLayers: false,
+                };
+                const resp = await dataClient.experimentCommand(cmd).response;
+                const params = resp.hyperParametersDescs || [];
+
+                // Prioritize 'total_training_steps' for the progress bar denominator.
+                // Fall back to 'training_left'/'training_steps_to_do' only if total is missing.
+                const stepsParam = params.find((p: any) => p.name === 'total_training_steps') ||
+                    params.find((p: any) =>
+                        p.name === 'training_left' ||
+                        p.name === 'training_steps_to_do' ||
+                        p.label === 'Left Training Steps' ||
+                        p.label === 'training_steps_to_do'
+                    );
+
+                if (stepsParam && stepsParam.numericalValue) {
+                    const newTotal = stepsParam.numericalValue;
+
+                    // Update if changed or not set
+                    if ((window as any).trainingTotalSteps !== newTotal) {
+                        console.log(`📊 Training total steps updated: ${(window as any).trainingTotalSteps} -> ${newTotal}`);
+                        (window as any).trainingTotalSteps = newTotal;
+
+                        const totalStepsEl = document.getElementById('training-total-steps');
+                        if (totalStepsEl) {
+                            totalStepsEl.textContent = Math.round(newTotal).toString();
+                        }
+                    }
+                } else {
+                    console.warn('Total steps hyperparameter not found in:', params.map((p: any) => p.name));
+                }
+            } catch (err) {
+                console.warn('Could not fetch training parameters:', err);
             }
         };
 
@@ -991,6 +1024,135 @@ export async function initializeUIElements() {
     }
 }
 
+// ===== TRAINING PROGRESS STREAM =====
+let isStreamRunning = false;
+let trainingStreamAbortController: AbortController | null = null;
+
+async function startTrainingStatusStream() {
+    // Prevent multiple concurrent streams
+    if (isStreamRunning) {
+        console.log('Training status stream is already running');
+        return;
+    }
+
+    const currentStepEl = document.getElementById('training-current-step');
+    const progressBarEl = document.getElementById('training-progress-bar');
+    const percentageEl = document.getElementById('training-percentage-text');
+    const metricsEl = document.getElementById('training-metrics');
+
+    if (!currentStepEl || !progressBarEl || !percentageEl || !metricsEl) {
+        console.warn('One or more progress UI elements not found, delay starting stream');
+        setTimeout(startTrainingStatusStream, 1000);
+        return;
+    }
+
+    isStreamRunning = true;
+    trainingStreamAbortController = new AbortController();
+
+    // Track latest metrics (keep only last 5 unique names)
+    const latestMetrics = new Map<string, number>();
+
+    function updateProgress(currentStep: number) {
+        currentStepEl!.textContent = currentStep.toString();
+
+        const totalSteps = (window as any).trainingTotalSteps;
+        if (totalSteps && totalSteps > 0) {
+            const stepsContainer = currentStepEl!.parentElement;
+
+            // Check for evaluation state (current > total)
+            if (currentStep > totalSteps) {
+                progressBarEl!.classList.add('eval-mode');
+                // Don't force width to 100%, keep it at last valid progress
+                // progressBarEl!.style.width = '100%'; 
+                if (stepsContainer) stepsContainer.classList.add('eval-mode');
+                // percentageEl!.textContent = ""; // Keep previous percent
+            } else {
+                // Normal Training State
+                progressBarEl!.classList.remove('eval-mode');
+                if (stepsContainer) stepsContainer.classList.remove('eval-mode');
+
+                const percentage = Math.min(100, (currentStep / totalSteps) * 100);
+                progressBarEl!.style.width = `${percentage}%`;
+                percentageEl!.textContent = `${percentage.toFixed(1)}%`;
+            }
+        }
+    }
+
+    function updateMetrics() {
+        if (!metricsEl) return;
+        // Keep order of metrics as they come, but only the last 5 unique ones
+        const metricsArray = Array.from(latestMetrics.entries()).slice(-5);
+        metricsEl.innerHTML = metricsArray.map(([name, value]) => `
+            <div class="training-metric-item">
+                <span class="training-metric-name">${name}:</span>
+                <span class="training-metric-value">${value.toFixed(4)}</span>
+            </div>
+        `).join('');
+    }
+
+    async function ensureTotalSteps() {
+        if ((window as any).trainingTotalSteps) return true;
+        try {
+            const resp = await dataClient.experimentCommand({ getHyperParameters: true, getInteractiveLayers: false }).response;
+            const params = resp.hyperParametersDescs || [];
+            const stepsParam = params.find((p: any) => p.name === 'total_training_steps') ||
+                params.find((p: any) =>
+                    p.name === 'training_left' ||
+                    p.name === 'training_steps_to_do' ||
+                    p.label === 'Left Training Steps' ||
+                    p.label === 'training_steps_to_do'
+                );
+
+            if (stepsParam && stepsParam.numericalValue) {
+                const total = stepsParam.numericalValue;
+                (window as any).trainingTotalSteps = total;
+                const totalStepsEl = document.getElementById('training-total-steps');
+                if (totalStepsEl) {
+                    totalStepsEl.textContent = Math.round(total).toString();
+                }
+                return true;
+            }
+        } catch (err) {
+            console.warn('Could not fetch total steps for stream:', err);
+        }
+        return false;
+    }
+
+    console.log('🚀 Starting training status stream...');
+
+    while (isStreamRunning) {
+        try {
+            await ensureTotalSteps();
+            const stream = dataClient.streamStatus({});
+
+            for await (const status of stream.responses) {
+                if (!isStreamRunning) break;
+
+                // Update current step (model_age)
+                if (status.modelAge !== undefined && status.modelAge !== null) {
+                    updateProgress(status.modelAge);
+                }
+
+                // Update metrics
+                if (status.metricsStatus && status.metricsStatus.name) {
+                    latestMetrics.set(status.metricsStatus.name, status.metricsStatus.value);
+                    updateMetrics();
+                }
+            }
+        } catch (streamError) {
+            console.warn('📡 Training status stream interrupted:', streamError);
+            if (!isStreamRunning) break;
+            // Wait before reconnecting
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            console.log('🔄 Attempting to reconnect training status stream...');
+        }
+
+        if (isStreamRunning) {
+            console.log('📡 Training status stream ended, reconnecting...');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+    }
+}
 
 // =============================================================================
 
@@ -1663,10 +1825,12 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         initializeDarkMode();
         initializeUIElements();
+        startTrainingStatusStream();
     });
 } else {
     initializeDarkMode();
     initializeUIElements();
+    startTrainingStatusStream();
 }
 
 // Helper to manage visual state of active brush

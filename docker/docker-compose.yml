@@ -61,7 +61,7 @@ services:
       - |
         ollama serve &
         sleep 5
-        ollama pull ${OLLAMA_MODEL:-llama3.2:1b}
+        ollama pull ${OLLAMA_MODEL:-qwen2.5:3b-instruct}
         wait
 
 networks:

@@ -1588,14 +1588,26 @@ body.dark-mode .inspector-search {
 .training-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
+  /* Tighten up */
   border: 1px solid var(--border-color, #d7dce8);
   background: var(--panel-bg, #f7f9fc);
   border-radius: 12px;
-  padding: 14px 16px 24px;
+  padding: 14px 16px 16px;
+  /* Reduced bottom padding */
   margin-bottom: 16px;
-  min-height: 120px;
+  min-height: 140px;
+  /* Slightly taller to accommodate content with spacing */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.training-card .card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding-top: 12px;
 }
 
 body.dark-mode .training-card {
@@ -1627,8 +1639,116 @@ body.dark-mode .training-card {
 }
 
 .training-summary {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-secondary, #4a5568);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  /* Grow to fill card body */
+  width: 100%;
+}
+
+.training-progress-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin-top: auto;
+}
+
+.progress-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  width: 100%;
+  padding: 0 2px;
+}
+
+.training-steps {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--primary-text-color);
+  letter-spacing: 0.01em;
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 4px;
+  background: var(--border-color);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #10b981);
+  transition: width 0.3s ease;
+}
+
+.progress-bar-fill.eval-mode {
+  background: #f97316;
+  /* Orange gradient */
+}
+
+/* Pause symbol removed */
+/* Pause symbol removed */
+.progress-bar-fill.eval-mode::after {
+  content: none;
+}
+
+/* Hide original steps text but show "Evaluation" label */
+.training-steps.eval-mode {
+  visibility: hidden;
+  position: relative;
+}
+
+.training-steps.eval-mode::after {
+  content: "Evaluation";
+  visibility: visible;
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--primary-text-color);
+  font-weight: 500;
+  /* Match normal training steps weight */
+}
+
+.training-percentage {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--secondary-text-color);
+}
+
+.training-metrics {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* Vertically center the metrics group */
+  flex: 1;
+  gap: 6px;
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.training-metric-item {
+  display: flex;
+  justify-content: space-between;
+  /* Full width */
+  align-items: center;
+  padding: 2px 2px;
+}
+
+.training-metric-name {
+  font-weight: 400;
+  color: #718096;
+  font-size: 11px;
+}
+
+.training-metric-value {
+  font-weight: 600;
+  color: var(--primary-text-color, #2d3748);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .training-stats-small {
