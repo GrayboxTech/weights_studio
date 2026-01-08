@@ -282,7 +282,7 @@ async function fetchAndCreateSplitColorPickers(): Promise<void> {
                 // Save to localStorage on change and update display
                 input.addEventListener('input', () => {
                     localStorage.setItem(`${split}-color`, input.value);
-                    updateDisplayOnly();
+                    updateDisplayOnlyDebounced();
                 });
 
                 wrapper.appendChild(label);
@@ -529,6 +529,9 @@ async function updateLayout() {
     await fetchAndDisplaySamples();
 }
 
+// Debounce timer for updateDisplayOnly
+let updateDisplayDebounceTimer: number | null = null;
+
 async function updateDisplayOnly() {
     if (!cellsContainer || !displayOptionsPanel) {
         return;
@@ -544,6 +547,17 @@ async function updateDisplayOnly() {
             cell.updateDisplay(preferences);
         }
     }
+}
+
+// Debounced version to prevent excessive re-renders during rapid changes
+function updateDisplayOnlyDebounced() {
+    if (updateDisplayDebounceTimer !== null) {
+        clearTimeout(updateDisplayDebounceTimer);
+    }
+    updateDisplayDebounceTimer = window.setTimeout(() => {
+        updateDisplayOnly();
+        updateDisplayDebounceTimer = null;
+    }, 50); // 50ms debounce
 }
 
 async function handleQuerySubmit(query: string): Promise<void> {
@@ -1107,7 +1121,17 @@ export async function initializeUIElements() {
         debouncedFetchAndDisplay();
     });
 
-    window.addEventListener('resize', updateLayout);
+    // Throttle resize events to avoid excessive re-layouts
+    let resizeThrottleTimer: number | null = null;
+    const throttledUpdateLayout = () => {
+        if (resizeThrottleTimer === null) {
+            resizeThrottleTimer = window.setTimeout(() => {
+                updateLayout();
+                resizeThrottleTimer = null;
+            }, 100); // 100ms throttle for resize
+        }
+    };
+    window.addEventListener('resize', throttledUpdateLayout);
 
     try {
         const request: DataQueryRequest = { query: "", accumulate: false, isNaturalLanguage: false };
@@ -1166,25 +1190,32 @@ async function checkAndUpdateAgentHealth() {
     if (!chatInput) return;
 
     try {
-        // Lightweight direct check to Ollama (fallback without gRPC types)
-        const resp = await fetch('http://localhost:11435/api/tags', { method: 'GET' });
-        const available = resp.ok;
+        // Use gRPC to check agent health
+        const resp = await dataClient.checkAgentHealth({}).response;
+        const available = resp.available ?? false;
+        const message = resp.message || "";
 
         if (available) {
             chatInput.disabled = false;
             chatInput.placeholder = "drop 50% of the samples with losses between 1.4 and 1.9";
-            chatInput.title = "";
+            chatInput.title = message;
         } else {
             chatInput.disabled = true;
             chatInput.placeholder = "Agent is not available";
-            chatInput.title = "Agent is not available - please ensure Ollama is running";
+            chatInput.title = message || "Agent is not available - please ensure the backend service is running";
         }
     } catch (error) {
-        console.error("Error checking agent health:", error);
+        // Silently handle connection errors when backend is not available
+        if (error?.code === 'UNAVAILABLE' || error?.message?.includes('503')) {
+            // Expected error when backend is not running - don't log
+        } else {
+            console.warn("Error checking agent health:", error);
+        }
+
         // On error, disable the input as a safety measure
         chatInput.disabled = true;
         chatInput.placeholder = "Agent is not available";
-        chatInput.title = "Agent is not available - please ensure Ollama is running";
+        chatInput.title = "Agent is not available - please ensure the backend service is running";
     }
 }
 

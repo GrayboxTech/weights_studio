@@ -1,7 +1,7 @@
 
 import { DataRecord } from "./data_service";
 import { DisplayPreferences } from "./DataDisplayOptionsPanel";
-import { SegmentationRenderer } from "./SegmentationRenderer";
+import { FastMaskRenderer } from "./FastMaskRenderer";
 
 
 const PLACEHOLDER_IMAGE_SRC = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
@@ -34,6 +34,11 @@ export class GridCell {
     private cachedGtStat: any | null = null;
     private cachedPredStat: any | null = null;
 
+    // Dirty flag to track if cell needs re-rendering
+    private isDirty: boolean = true;
+    private lastRenderHash: string | null = null;
+    private lastDataHash: string | null = null;
+
     constructor(width: number, height: number) {
         this.element = document.createElement('div');
         this.element.className = 'cell';
@@ -53,16 +58,97 @@ export class GridCell {
 
         // Store reference for selection.ts to use
         (this.element as any).__gridCell = this;
-        
+
         // Add double-click listener to show enlarged image
         this.element.addEventListener('dblclick', () => this.showEnlargedImage());
     }
-    
+
+    // Lightweight hashing utilities to detect meaningful data changes without
+    // iterating entire arrays (keeps auto-refresh inexpensive).
+    private static fnvPrime = 16777619;
+    private static fnvOffset = 2166136261;
+
+    private static hashNumbers(arr: number[], shape: number[] | null = null): number {
+        let hash = GridCell.fnvOffset >>> 0;
+        const len = arr ? arr.length : 0;
+        hash ^= len; hash = Math.imul(hash, GridCell.fnvPrime) >>> 0;
+        if (shape && shape.length) {
+            for (const s of shape) {
+                hash ^= s; hash = Math.imul(hash, GridCell.fnvPrime) >>> 0;
+            }
+        }
+        if (!arr || len === 0) return hash >>> 0;
+        const samples = 64;
+        const step = Math.max(1, Math.floor(len / samples));
+        for (let i = 0; i < len; i += step) {
+            const v = arr[i];
+            // Quantize floats to preserve differences with limited operations
+            const q = Number.isFinite(v) ? (v >= 0 ? Math.floor(v * 10000) : Math.ceil(v * 10000)) : 0;
+            hash ^= q >>> 0; hash = Math.imul(hash, GridCell.fnvPrime) >>> 0;
+        }
+        return hash >>> 0;
+    }
+
+    private static hashBytes(bytes: Uint8Array | null, shape: number[] | null = null): number {
+        let hash = GridCell.fnvOffset >>> 0;
+        const len = bytes ? bytes.byteLength : 0;
+        hash ^= len; hash = Math.imul(hash, GridCell.fnvPrime) >>> 0;
+        if (shape && shape.length) {
+            for (const s of shape) {
+                hash ^= s; hash = Math.imul(hash, GridCell.fnvPrime) >>> 0;
+            }
+        }
+        if (!bytes || len === 0) return hash >>> 0;
+        const samples = 128;
+        const step = Math.max(1, Math.floor(len / samples));
+        for (let i = 0; i < len; i += step) {
+            const b = bytes[i];
+            hash ^= b; hash = Math.imul(hash, GridCell.fnvPrime) >>> 0;
+        }
+        return hash >>> 0;
+    }
+
+    private buildRecordDataHash(record: DataRecord): string {
+        // Prefer hashing fields relevant to visual changes
+        const taskTypeStat = record.dataStats.find(stat => stat.name === 'task_type');
+        const taskType = taskTypeStat?.valueString || '';
+
+        if (taskType === 'segmentation') {
+            const rawStat = record.dataStats.find(stat => stat.name === 'raw_data' && stat.type === 'bytes');
+            const gtStat = record.dataStats.find(stat => stat.name === 'label' && stat.type === 'array');
+            const predStat = record.dataStats.find(stat => stat.name === 'pred_mask' && stat.type === 'array');
+
+            const rawBytes = rawStat && rawStat.value ? new Uint8Array(rawStat.value) : null;
+            const rawHash = GridCell.hashBytes(rawBytes, rawStat?.shape || null);
+            const gtHash = gtStat ? GridCell.hashNumbers(gtStat.value as number[], gtStat.shape || null) : 0;
+            const predHash = predStat ? GridCell.hashNumbers(predStat.value as number[], predStat.shape || null) : 0;
+            return `seg|${rawHash}|${gtHash}|${predHash}`;
+        }
+
+        // Image arrays (grayscale/RGB); hash the image array if present
+        const imageStat = record.dataStats.find(stat => stat.name === 'image' && stat.type === 'array');
+        if (imageStat) {
+            const imgHash = GridCell.hashNumbers(imageStat.value as number[], imageStat.shape || null);
+            return `img|${imgHash}`;
+        }
+
+        // Fallback: raw bytes
+        const rawData = record.dataStats.find(stat => stat.name === 'raw_data');
+        if (rawData && rawData.value) {
+            const rawBytes = new Uint8Array(rawData.value);
+            const rawHash = GridCell.hashBytes(rawBytes, rawData.shape || null);
+            return `raw|${rawHash}`;
+        }
+
+        // If nothing visual, include sampleId to avoid accidental grouping
+        return `none|${record.sampleId}`;
+    }
+
     private showEnlargedImage(): void {
         if (!this.img.src || this.img.src === PLACEHOLDER_IMAGE_SRC) {
             return;
         }
-        
+
         // Create modal overlay
         const modal = document.createElement('div');
         modal.style.position = 'fixed';
@@ -75,13 +161,13 @@ export class GridCell {
         modal.style.justifyContent = 'center';
         modal.style.alignItems = 'center';
         modal.style.zIndex = '9999';
-        
+
         // Create container for left panel and center content
         const mainContainer = document.createElement('div');
         mainContainer.style.display = 'flex';
         mainContainer.style.gap = '20px';
         mainContainer.style.alignItems = 'stretch';
-        
+
         // Create left metadata panel
         const metadataPanel = document.createElement('div');
         metadataPanel.style.backgroundColor = 'white';
@@ -91,7 +177,7 @@ export class GridCell {
         metadataPanel.style.maxHeight = '600px';
         metadataPanel.style.overflowY = 'auto';
         metadataPanel.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.3)';
-        
+
         // Add metadata content
         if (this.record) {
             const metadataTitle = document.createElement('h3');
@@ -100,7 +186,7 @@ export class GridCell {
             metadataTitle.style.marginBottom = '16px';
             metadataTitle.style.color = '#333';
             metadataPanel.appendChild(metadataTitle);
-            
+
             // Sample ID
             const sampleIdDiv = document.createElement('div');
             sampleIdDiv.style.marginBottom = '12px';
@@ -108,33 +194,33 @@ export class GridCell {
             sampleIdDiv.style.color = '#333';
             sampleIdDiv.style.fontSize = '14px';
             metadataPanel.appendChild(sampleIdDiv);
-            
+
             // Process data stats
             for (const stat of this.record.dataStats) {
                 if (stat.name === 'raw_data' || stat.name === 'image') {
                     continue; // Skip binary data fields
                 }
-                
+
                 const statDiv = document.createElement('div');
                 statDiv.style.marginBottom = '12px';
                 statDiv.style.color = '#333';
                 statDiv.style.fontSize = '14px';
                 statDiv.style.paddingBottom = '8px';
                 statDiv.style.borderBottom = '1px solid #eee';
-                
+
                 const label = document.createElement('strong');
                 label.textContent = stat.name + ':';
                 statDiv.appendChild(label);
-                
+
                 const value = document.createElement('div');
                 value.style.marginTop = '4px';
                 value.style.color = '#666';
                 value.style.wordBreak = 'break-word';
-                
+
                 if (stat.name === 'tags') {
                     value.textContent = stat.valueString || '(none)';
                 } else if (Array.isArray(stat.value)) {
-                    value.textContent = stat.value.map(v => 
+                    value.textContent = stat.value.map(v =>
                         typeof v === 'number' ? (v % 1 !== 0 ? v.toFixed(3) : v) : v
                     ).join(', ');
                 } else if (typeof stat.value === 'number') {
@@ -144,18 +230,18 @@ export class GridCell {
                 } else {
                     value.textContent = stat.valueString || (stat.value?.toString() || '(none)');
                 }
-                
+
                 statDiv.appendChild(value);
                 metadataPanel.appendChild(statDiv);
             }
         }
-        
+
         // Create container for image and menu
         const container = document.createElement('div');
         container.style.display = 'flex';
         container.style.alignItems = 'center';
         container.style.gap = '20px';
-        
+
         // Create enlarged image with fixed 512x512 size
         const enlargedImg = document.createElement('img');
         enlargedImg.src = this.img.src;
@@ -164,7 +250,7 @@ export class GridCell {
         enlargedImg.style.objectFit = 'contain';
         enlargedImg.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
         enlargedImg.style.borderRadius = '4px';
-        
+
         // Create context menu
         const menuContainer = document.createElement('div');
         menuContainer.style.display = 'flex';
@@ -174,13 +260,13 @@ export class GridCell {
         menuContainer.style.borderRadius = '4px';
         menuContainer.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.3)';
         menuContainer.style.minWidth = '200px';
-        
+
         // Menu items matching the right-click context menu
         const menuItems = [
             { label: 'Add Tag', action: 'add-tag' },
             { label: 'Discard', action: 'discard' }
         ];
-        
+
         menuItems.forEach(item => {
             const menuItem = document.createElement('div');
             menuItem.style.padding = '10px 16px';
@@ -190,40 +276,40 @@ export class GridCell {
             menuItem.style.fontSize = '14px';
             menuItem.textContent = item.label;
             menuItem.dataset.action = item.action;
-            
+
             menuItem.addEventListener('mouseenter', () => {
                 menuItem.style.backgroundColor = '#f0f0f0';
             });
             menuItem.addEventListener('mouseleave', () => {
                 menuItem.style.backgroundColor = 'transparent';
             });
-            
+
             menuContainer.appendChild(menuItem);
         });
-        
+
         // Remove last border
         const lastItem = menuContainer.lastElementChild as HTMLElement;
         if (lastItem) {
             lastItem.style.borderBottom = 'none';
         }
-        
+
         container.appendChild(enlargedImg);
         container.appendChild(menuContainer);
         mainContainer.appendChild(metadataPanel);
         mainContainer.appendChild(container);
         modal.appendChild(mainContainer);
         document.body.appendChild(modal);
-        
+
         // Handle menu item clicks
         menuContainer.addEventListener('click', (e) => {
             const target = e.target as HTMLElement;
             if (target.dataset.action) {
                 const action = target.dataset.action;
-                
+
                 // Get origin from record
                 const originStat = this.record?.dataStats.find(stat => stat.name === 'origin');
                 const origin = originStat?.valueString || '';
-                
+
                 // Dispatch custom event that data.ts can handle
                 const event = new CustomEvent('modalContextMenuAction', {
                     detail: {
@@ -233,18 +319,18 @@ export class GridCell {
                     }
                 });
                 document.dispatchEvent(event);
-                
+
                 modal.remove();
             }
         });
-        
+
         // Close on click outside menu/image or on modal background
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
                 modal.remove();
             }
         });
-        
+
         // Close on Escape key
         const escapeListener = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
@@ -292,10 +378,24 @@ export class GridCell {
 
 
     populate(record: DataRecord, displayPreferences: DisplayPreferences): void {
+        // Compute lightweight content hash to detect actual visual changes
+        const newDataHash = this.buildRecordDataHash(record);
+
+        // Update metadata regardless (stats/labels may change)
         this.record = record;
         this.displayPreferences = displayPreferences;
         this.updateLabel();
         this.updateBorderColor();
+
+        // If data hasn't changed, avoid re-rendering the image/masks
+        if (this.lastDataHash !== null && this.lastDataHash === newDataHash) {
+            this.isDirty = false;
+            return;
+        }
+
+        // Data changed → mark dirty and store hash
+        this.isDirty = true;
+        this.lastDataHash = newDataHash;
 
         // Check if the record is discarded
         const isDiscardedStat = record.dataStats.find(stat => stat.name === 'deny_listed');
@@ -431,40 +531,43 @@ export class GridCell {
         showPred: boolean,
         showDiff: boolean
     ): void {
+        const prefs = this.displayPreferences;
+        const classPrefs = prefs?.classPreferences as
+            | Record<number, ClassPreference>
+            | undefined;
+
+        // INSTANT: Render masks on black background - NO WAITING
+        if ((showGt && gtStat) || (showPred && predStat)) {
+            const maskRenderUrl = FastMaskRenderer.getInstance().renderMasksOnly(
+                gtStat ? { value: gtStat.value, shape: gtStat.shape } : null,
+                predStat ? { value: predStat.value, shape: predStat.shape } : null,
+                {
+                    showGt,
+                    showPred,
+                    showDiff,
+                    alpha: 0.45,
+                    classPrefs: classPrefs
+                }
+            );
+            // Display masks IMMEDIATELY
+            this.setImageSrc(maskRenderUrl);
+        } else if (showRaw) {
+            // If no masks but showing raw, display base image immediately
+            this.setImageSrc(baseImageUrl);
+        }
+
+        // Load base image and update display in parallel (non-blocking)
         const img = new Image();
+        img.crossOrigin = 'anonymous';
         img.onload = () => {
             const width = img.width;
             const height = img.height;
             if (!width || !height) {
-                this.setImageSrc(baseImageUrl);
                 return;
             }
 
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-                this.setImageSrc(baseImageUrl);
-                return;
-            }
-
-            // 1) Base: raw image or black
-            if (showRaw) {
-                ctx.drawImage(img, 0, 0, width, height);
-            } else {
-                ctx.clearRect(0, 0, width, height);
-                ctx.fillStyle = 'black';
-                ctx.fillRect(0, 0, width, height);
-            }
-
-            const prefs = this.displayPreferences;
-            const classPrefs = prefs?.classPreferences as
-                | Record<number, ClassPreference>
-                | undefined;
-
-            // 2) Use WebGL Renderer for masks
-            const finalUrl = SegmentationRenderer.getInstance().render(
+            // Render full composite with image
+            const finalUrl = FastMaskRenderer.getInstance().renderComposite(
                 img,
                 gtStat ? { value: gtStat.value, shape: gtStat.shape } : null,
                 predStat ? { value: predStat.value, shape: predStat.shape } : null,
@@ -477,10 +580,15 @@ export class GridCell {
                     classPrefs: classPrefs
                 }
             );
-
+            // Update display with full composite
             this.setImageSrc(finalUrl);
         };
 
+        img.onerror = () => {
+            // If image fails, keep showing masks
+        };
+
+        // Start loading image in parallel (no await)
         img.src = baseImageUrl;
     }
 
@@ -595,10 +703,29 @@ export class GridCell {
         this.label.textContent = '';
         this.element.style.border = ''; // Reset border
         this.element.classList.remove('discarded');
+        this.isDirty = true;
+        this.lastRenderHash = null;
     }
 
     public updateDisplay(displayPreferences: DisplayPreferences): void {
+        // Generate hash of current display state
+        const currentHash = JSON.stringify({
+            showRaw: displayPreferences.showRawImage,
+            showGt: displayPreferences.showGtMask,
+            showPred: displayPreferences.showPredMask,
+            showDiff: displayPreferences.showDiffMask,
+            classPrefs: displayPreferences.classPreferences
+        });
+
+        // Skip re-render if nothing changed and cell is not dirty
+        if (!this.isDirty && this.lastRenderHash === currentHash && this.displayPreferences === displayPreferences) {
+            return;
+        }
+
         this.displayPreferences = displayPreferences;
+        this.lastRenderHash = currentHash;
+        this.isDirty = false;
+
         this.updateLabel();
         this.updateBorderColor();
 

@@ -265,12 +265,12 @@ body.dark-mode {
   padding: 1rem 1.25rem;
 
   background: linear-gradient(135deg,
-      rgba(249, 250, 251, 0.92),
-      rgba(243, 244, 246, 0.92));
+      rgba(249, 250, 251, 0.98),
+      rgba(243, 244, 246, 0.98));
   border-bottom: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-subtle);
   z-index: 10;
-  backdrop-filter: blur(18px);
+  /* REMOVED backdrop-filter for GPU performance */
 }
 
 /* Left controls container */
