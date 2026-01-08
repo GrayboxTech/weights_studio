@@ -1,163 +1,3 @@
-/* Main UI wrapper fills the screen and matches dark mode */
-.main-ui {
-  min-height: 100vh;
-  min-width: 100vw;
-  width: 100vw;
-  height: 100vh;
-  background: var(--background-color, #0a0a0a);
-  color: var(--primary-text-color, #f5f5f5);
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 0;
-  overflow: auto;
-}
-body.dark-mode .main-ui {
-  background: #0a0a0a !important;
-  color: #f5f5f5 !important;
-}
-body.dark-mode, body.dark-mode html {
-  background: #0a0a0a !important;
-  color: #f5f5f5 !important;
-}
-/* Align color pickers for classes and splits vertically */
-.split-color-picker-wrapper, .class-color-picker-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-  margin-bottom: 2px;
-}
-.split-scroll-container, .class-scroll-container {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-/* Gray out chat input and button when agent unavailable */
-#chat-input:disabled, #chat-send:disabled {
-  background: #444 !important;
-  color: #bbb !important;
-  border-color: #444 !important;
-  cursor: not-allowed !important;
-}
-/* Split section: limit to 3 visible, scroll if more */
-.split-scroll-container {
-  max-height: 120px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-/* Classes section: vertical scroll for many classes */
-.class-scroll-container {
-  max-height: 320px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-/* Round color pickers for classes and splits, no white square in dark mode */
-.color-picker {
-  border-radius: 50% !important;
-  width: 22px !important;
-  height: 22px !important;
-  border: none !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-  margin-left: 4px;
-  background: transparent !important;
-  appearance: none !important;
-  -webkit-appearance: none !important;
-  -moz-appearance: none !important;
-}
-body.dark-mode .color-picker {
-  border: none !important;
-  box-shadow: none !important;
-  background: transparent !important;
-}
-/* Remove white border around color squares in dark mode */
-body.dark-mode .color-picker {
-  border: none !important;
-  box-shadow: none !important;
-}
-
-/* Make the entire page dark in dark mode */
-body.dark-mode, body.dark-mode html {
-  background: #0a0a0a !important;
-  color: #f5f5f5 !important;
-}
-
-/* Grid slider popup (tooltip) dark mode */
-#slider-tooltip, .slider-tooltip {
-  background: #222;
-  color: #fff;
-  border-radius: 6px;
-  padding: 2px 8px;
-  font-size: 0.95em;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
-  z-index: 1001;
-}
-body.dark-mode #slider-tooltip, body.dark-mode .slider-tooltip {
-  background: #222 !important;
-  color: #fff !important;
-}
-
-/* Context menu dark mode */
-body.dark-mode .context-menu {
-  background-color: #181818 !important;
-  color: #fff !important;
-  border: 1px solid #333 !important;
-  box-shadow: 0 22px 60px rgba(0,0,0,0.45) !important;
-}
-body.dark-mode .context-menu-item {
-  color: #fff !important;
-}
-body.dark-mode .context-menu-item:hover {
-  background-color: #333 !important;
-}
-
-/* Loader checkboxes style */
-.loader-checkbox-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-  font-size: 0.95em;
-  color: var(--primary-text-color);
-}
-.loader-checkbox-wrapper input[type='checkbox'] {
-  margin-right: 4px;
-}
-
-/* Hide white border around color pickers in dark mode */
-body.dark-mode input[type='color'] {
-  border: none !important;
-  box-shadow: none !important;
-}
-
-/* Popup/modal overlay click dismiss */
-.modal-backdrop, .popup-backdrop {
-  cursor: pointer;
-}
-
-/* Unselect grid selection on outside click */
-#cells-grid.unselecting * {
-  user-select: none !important;
-}
-/* Loader section: limit to 3 visible, scroll if more */
-.loader-scroll-container {
-  max-height: 120px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-/* Limit visible classes to 9, scroll if more */
-.class-scroll-container {
-  max-height: 320px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
 :root {
   /* Base colors */
   --background-color: #f5f5f7;
@@ -250,9 +90,7 @@ body.dark-mode {
 .container {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  height: 100dvh;
-  box-sizing: border-box;
+  height: 100vh;
 }
 
 /* Top app header - slim and focused */
@@ -336,20 +174,15 @@ body.dark-mode .logo-link:hover {
   align-items: flex-start;
   gap: 1rem;
   padding: 0 1.25rem 1.5rem 1.25rem;
-  flex: 1 1 auto;
-  min-height: 0;
 }
 
 .main-content {
   flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
   padding-bottom: 80px;
   /* Space for bottom bar */
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  overflow: hidden;
 }
 
 /* Content header: chat input only */
@@ -368,10 +201,6 @@ body.dark-mode .logo-link:hover {
   width: 100%;
   max-width: 1400px;
   margin: 0 auto;
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
 }
 
 /* Grid settings toggle button - inside the grid at top */
@@ -464,7 +293,6 @@ body.dark-mode .view-controls {
   .workspace-row {
     flex-direction: column;
     padding-left: 1.25rem;
-    min-height: 0;
   }
 
   #cells-grid {
@@ -913,7 +741,7 @@ body.dark-mode #chat-input:focus {
 
   justify-content: center;
   align-content: start;
-  justify-items: start;
+  justify-items: stretch;
 }
 
 .grid-content {
@@ -1505,25 +1333,6 @@ body.dark-mode .inspector-search {
   height: 1px;
   background-color: var(--border-color);
   margin: 0.4rem 0;
-}
-
-/* Dark mode: context menu */
-body.dark-mode .context-menu {
-  background-color: #111827;
-  border-color: rgba(55, 65, 81, 1);
-  color: #f9fafb;
-}
-body.dark-mode .context-menu-item {
-  color: #f9fafb;
-}
-body.dark-mode .context-menu-item:hover {
-  background-color: #1f2937;
-}
-body.dark-mode .context-menu-item.danger {
-  color: #fca5a5;
-}
-body.dark-mode .context-menu-separator {
-  background-color: rgba(75, 85, 99, 1);
 }
 
 /* Tooltip content */
@@ -2370,4 +2179,1181 @@ body.dark-mode .control-button.danger {
   color: var(--primary-text-color);
   transform: rotate(90deg);
   border-color: var(--border-color);
+}
+
+/* Painter Mode */
+#cells-grid.painter-active {
+  cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.375 2.625a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/><path d="m15 5 3 3"/><path d="M6.5 20c.5-2 1.5-2.5 3-2.5 1.5 0 2 1.5 2 2H6.5Z"/></svg>') 0 24, crosshair !important;
+}
+
+/* Ensure cell hover doesn't override cursor */
+#cells-grid.painter-active .cell {
+  cursor: inherit !important;
+}
+
+/* New Tag Button */
+#painter-new-tag {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  padding: 0;
+  color: var(--secondary-text-color);
+}
+
+#painter-new-tag:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+#painter-new-tag:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Toggle Switch Base (if not present) */
+.switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--secondary-text-color);
+  cursor: pointer;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch span {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  background-color: var(--border-color);
+  border-radius: 99px;
+  transition: .3s;
+  display: inline-block;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.switch span:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  border-radius: 50%;
+  transition: .3s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.switch input:checked+span {
+  background-color: var(--accent-color);
+}
+
+.switch input:checked+span:before {
+  transform: translateX(16px);
+}
+
+/* Sidebar Brush Chips */
+.brush-chip {
+  background-color: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--secondary-text-color);
+}
+
+.brush-chip:hover {
+  border-color: var(--accent-color);
+  color: var(--primary-text-color);
+}
+
+.brush-chip.active {
+  background-color: var(--accent-color);
+  color: white;
+  border-color: var(--accent-color);
+  box-shadow: 0 2px 6px rgba(0, 122, 255, 0.3);
+}
+
+/* Make sure the new panel matches the card style */
+.tagging-panel .inspector-header {
+  margin-bottom: 0.5rem;
+}
+
+.tagging-panel .row-controls {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* --- Painter Mode Panel Styling --- */
+
+/* The card itself inherits .card styles, so margin handled by flex gap */
+
+.painter-toggle-row {
+  margin-bottom: 1rem;
+}
+
+/* Custom switch layout for this panel */
+.painter-switch {
+  display: flex !important;
+  /* Override default inline-flex */
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  cursor: pointer;
+}
+
+.painter-switch .label-text {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--primary-text-color);
+}
+
+/* Re-implementing the switch slider visual specifically for this context if needed, 
+   but reusing existing .switch span pattern is reliable if structural assumption holds. 
+   The HTML uses <span class="slider-round"></span> which differs from the default <span class></span> 
+   in other parts of index.html? 
+   Let's check the default switch css. It usually expects input + span.
+*/
+.painter-switch input {
+  display: none;
+  /* Hide checkbox */
+}
+
+/* We need to match the previous switch style or adapt it */
+.painter-switch .slider-round {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  background-color: var(--border-color);
+  border-radius: 99px;
+  transition: 0.3s;
+  flex-shrink: 0;
+}
+
+.painter-switch .slider-round:before {
+  content: "";
+  position: absolute;
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  border-radius: 50%;
+  transition: 0.3s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.painter-switch input:checked+.slider-round {
+  background-color: var(--accent-color);
+}
+
+.painter-switch input:checked+.slider-round:before {
+  transform: translateX(18px);
+}
+
+
+/* Brush Section */
+.painter-brush-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.painter-brush-row .section-subtitle {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--secondary-text-color);
+  font-weight: 600;
+}
+
+.tag-brushes-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.empty-state {
+  font-size: 0.85rem;
+  color: var(--muted-text-color);
+  font-style: italic;
+  padding: 0.5rem 0;
+}
+
+/* Brush Chips */
+.brush-chip {
+  background-color: var(--background-color);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  /* slightly more squared than rounded pills for tool feel? */
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--primary-text-color);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.brush-chip:hover {
+  background-color: var(--surface-hover-color, #f3f4f6);
+  border-color: var(--border-subtle);
+  transform: translateY(-1px);
+}
+
+.brush-chip.active {
+  background-color: var(--accent-color);
+  color: white;
+  border-color: var(--accent-color);
+  box-shadow: 0 2px 5px rgba(0, 122, 255, 0.25);
+}
+
+/* Action Button */
+.control-button.dashed {
+  background-color: transparent;
+  border: 1px dashed var(--border-color);
+  color: var(--secondary-text-color);
+  transition: all 0.2s;
+}
+
+.control-button.dashed:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  background-color: var(--accent-soft);
+}
+
+.control-button.full-width {
+  width: 100%;
+  justify-content: center;
+  padding: 0.6rem;
+}
+
+
+/* Tag Panel Styles */
+.tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.tag-chip {
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  border-radius: 99px;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  color: var(--secondary-text-color);
+  cursor: pointer;
+  transition: .1s;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tag-chip.active {
+  background: var(--accent-color);
+  color: white;
+  border-color: var(--accent-color);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.tag-chip:hover {
+  border-color: var(--accent-color);
+}
+
+.tag-chip.active:hover {
+  background: var(--accent-color-hover);
+}
+
+.empty-state {
+  font-size: 0.8rem;
+  color: var(--muted-text-color);
+  text-align: center;
+  width: 100%;
+  padding: 1rem 0;
+  font-style: italic;
+}
+
+.control-button.small {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+}
+
+.switch.compact {
+  font-size: 0.75rem;
+}
+
+.switch.compact span {
+  width: 32px;
+  height: 18px;
+}
+
+.switch.compact span:before {
+  width: 14px;
+  height: 14px;
+  bottom: 2px;
+}
+
+.switch.compact input:checked+span:before {
+  transform: translateX(14px);
+}
+
+/* Tagger Panel - Elegant Redesign */
+.tagger-card {
+  min-height: 200px;
+}
+
+.tagger-header {
+  padding: 1rem 1.25rem !important;
+}
+
+.tagger-body {
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.tagger-section {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.tagger-section:last-child {
+  border-bottom: none;
+}
+
+.section-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted-text-color);
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+/* Tag Chips - More Spacious */
+.tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.tag-chip {
+  font-size: 0.85rem;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: var(--surface-elevated-color);
+  border: 1.5px solid var(--border-color);
+  color: var(--primary-text-color);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.tag-chip:hover {
+  border-color: var(--accent-color);
+  background: var(--accent-soft);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+}
+
+.tag-chip.active {
+  background: linear-gradient(135deg, var(--accent-color), var(--accent-color-hover));
+  color: white;
+  border-color: var(--accent-color);
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+  font-weight: 600;
+}
+
+.tag-chip.active:hover {
+  background: linear-gradient(135deg, var(--accent-color-hover), var(--accent-color));
+  box-shadow: 0 6px 16px rgba(0, 122, 255, 0.4);
+}
+
+/* Empty State */
+.empty-state {
+  font-size: 0.85rem;
+  color: var(--muted-text-color);
+  text-align: center;
+  width: 100%;
+  padding: 1.5rem 0;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+/* New Tag Button */
+.new-tag-btn {
+  width: 100%;
+  padding: 0.65rem 1rem !important;
+  font-size: 0.9rem !important;
+  font-weight: 600 !important;
+  border-radius: var(--radius-md) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+/* Compact Switch Refinement */
+.switch.compact {
+  font-size: 0;
+  margin: 0;
+}
+
+.switch.compact span {
+  width: 38px;
+  height: 22px;
+  margin: 0;
+}
+
+.switch.compact span:before {
+  width: 16px;
+  height: 16px;
+  bottom: 3px;
+  left: 3px;
+}
+
+.switch.compact input:checked+span:before {
+  transform: translateX(16px);
+}
+
+/* Dark mode adjustments */
+body.dark-mode .tag-chip {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border-color);
+}
+
+body.dark-mode .tag-chip:hover {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+/* Fix Tagger Panel Height to Prevent Overlap */
+.tagger-card {
+  min-height: auto;
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+}
+
+.tagger-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tagger-section:first-child {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tags-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 140px;
+}
+
+.tagger-section:last-child {
+  flex-shrink: 0;
+}
+
+/* Redesigned New Tag Button */
+.new-tag-btn {
+  width: 100%;
+  padding: 0.5rem 1rem !important;
+  font-size: 0.85rem !important;
+  font-weight: 500 !important;
+  border-radius: 8px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: transparent !important;
+  border: 1.5px dashed var(--border-color) !important;
+  color: var(--secondary-text-color) !important;
+  box-shadow: none !important;
+  transition: all 0.15s ease !important;
+}
+
+.new-tag-btn:hover {
+  background: var(--accent-soft) !important;
+  border-color: var(--accent-color) !important;
+  color: var(--accent-color) !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.new-tag-btn span {
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+body.dark-mode .new-tag-btn {
+  border-color: var(--border-color) !important;
+  color: var(--secondary-text-color) !important;
+}
+
+body.dark-mode .new-tag-btn:hover {
+  background: rgba(59, 130, 246, 0.1) !important;
+  border-color: var(--accent-color) !important;
+  color: var(--accent-color) !important;
+}
+
+/* Prevent text wrapping in new tag button */
+.new-tag-btn {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* Painter Mode Section */
+.painter-mode-section {
+  padding: 0.75rem 1rem !important;
+}
+
+.painter-mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.painter-mode-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--primary-text-color);
+}
+
+/* Tags Section */
+.tags-section {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0.75rem 1rem !important;
+}
+
+/* Add Tag Section */
+.add-tag-section {
+  padding: 0.75rem 1rem !important;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.add-tag-input-wrapper {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.new-tag-input {
+  flex: 1;
+  background-color: var(--surface-elevated-color);
+  color: var(--primary-text-color);
+  border: 1.5px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.new-tag-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+.new-tag-input::placeholder {
+  color: var(--muted-text-color);
+}
+
+.add-tag-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--accent-color);
+  border: none;
+  color: white;
+  font-size: 1.2rem;
+  font-weight: 400;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 122, 255, 0.2);
+}
+
+.add-tag-btn:hover {
+  background: var(--accent-color-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 122, 255, 0.3);
+}
+
+.add-tag-btn:active {
+  transform: translateY(0);
+}
+
+/* Dark mode */
+body.dark-mode .new-tag-input {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: var(--border-color);
+}
+
+body.dark-mode .new-tag-input:focus {
+  border-color: var(--accent-color);
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Refined Tagger Panel Layout */
+.card.tagger-card {
+  /* Ensure it doesn't get squeezed */
+  flex-shrink: 0;
+  min-height: 250px;
+  max-height: 350px;
+}
+
+.painter-mode-section {
+  padding: 1rem 1.25rem !important;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.painter-mode-row {
+  height: 24px;
+}
+
+.tags-section {
+  padding: 1rem 12px 1rem 1.25rem !important;
+  /* Give it space to grow/shrink */
+  flex: 1;
+  min-height: 100px;
+}
+
+.add-tag-section {
+  padding: 1rem 1.25rem !important;
+  background: var(--background-color);
+  /* Slight differentiation if needed, or keep same */
+}
+
+/* Scrollbar refinement for tags list */
+.tags-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tags-list::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 99px;
+}
+
+.tags-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Input refinement */
+.add-tag-input-wrapper {
+  height: 36px;
+}
+
+.new-tag-input {
+  height: 100%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.add-tag-btn {
+  height: 100%;
+  width: 40px;
+  border-radius: 8px;
+  padding: 0;
+}
+
+/* COMPACT Tagger Panel */
+.card.tagger-card {
+  min-height: auto;
+  max-height: 280px;
+}
+
+.compact-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem !important;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mode-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--secondary-text-color);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.compact-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0 !important;
+}
+
+.compact-list {
+  padding: 0.75rem 1rem !important;
+  max-height: 120px;
+  gap: 6px;
+}
+
+.compact-list .tag-chip {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  border-radius: 6px;
+}
+
+.tagger-footer {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-color);
+}
+
+.compact-input {
+  height: 32px;
+  gap: 6px;
+}
+
+.compact-input .new-tag-input {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.75rem;
+  border: none;
+  background: transparent;
+  border-bottom: 1.5px solid var(--border-color);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.compact-input .new-tag-input:focus {
+  border-color: var(--accent-color);
+  box-shadow: none;
+}
+
+.compact-input .add-tag-btn {
+  width: 28px;
+  background: transparent;
+  color: var(--accent-color);
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+
+.compact-input .add-tag-btn:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-soft);
+  transform: none;
+}
+
+/* Dark mode tweaks */
+body.dark-mode .compact-input .new-tag-input {
+  background: transparent;
+  border-bottom-color: var(--border-color);
+}
+
+body.dark-mode .compact-input .new-tag-input:focus {
+  border-bottom-color: var(--accent-color);
+}
+
+/* Force full width and narrow styling for tag input */
+.tagger-footer {
+  padding: 0.5rem 0.75rem !important;
+}
+
+.compact-input {
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  background: var(--surface-color) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 6px !important;
+  height: 30px !important;
+  /* Make it more narrow */
+  padding: 0 4px !important;
+  box-sizing: border-box !important;
+}
+
+.compact-input:focus-within {
+  border-color: var(--accent-color) !important;
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.1) !important;
+}
+
+.compact-input .new-tag-input {
+  flex: 1 !important;
+  width: 100% !important;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 6px !important;
+  font-size: 0.8rem !important;
+  height: 100% !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.compact-input .add-tag-btn {
+  flex-shrink: 0 !important;
+  width: 24px !important;
+  height: 24px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 4px !important;
+  color: var(--secondary-text-color) !important;
+  padding: 0 !important;
+}
+
+.compact-input .add-tag-btn:hover {
+  background: var(--accent-soft) !important;
+  color: var(--accent-color) !important;
+}
+
+/* Ensure no other styles interfere */
+.new-tag-input:focus {
+  box-shadow: none !important;
+}
+
+/* Agent-Style Tag Input */
+.tagger-footer {
+  padding: 0.75rem 1rem !important;
+  background: transparent !important;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.compact-input {
+  width: 100% !important;
+  height: 36px !important;
+  background: var(--surface-color) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 999px !important;
+  /* Pill shape */
+  display: flex !important;
+  align-items: center !important;
+  padding: 2px 4px 2px 12px !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
+  transition: all 0.2s ease;
+}
+
+.compact-input:focus-within {
+  border-color: var(--accent-color) !important;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12) !important;
+  background: var(--surface-elevated-color) !important;
+}
+
+.compact-input .new-tag-input {
+  flex: 1 !important;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  font-size: 0.9rem !important;
+  height: 100% !important;
+  color: var(--primary-text-color) !important;
+}
+
+.compact-input .add-tag-btn {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 50% !important;
+  border: none !important;
+  background: var(--accent-color) !important;
+  color: white !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin-left: 4px !important;
+  opacity: 0.9;
+  transition: all 0.2s ease !important;
+}
+
+.compact-input .add-tag-btn:hover {
+  opacity: 1;
+  transform: scale(1.05);
+}
+
+.compact-input .add-tag-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.5;
+}
+
+/* Dark mode */
+body.dark-mode .compact-input {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: var(--border-color) !important;
+}
+
+body.dark-mode .compact-input:focus-within {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* --- Painter Mode Atmosphere --- */
+
+/* 1. Subtle pulsing on the 'Painter' label in the header */
+body:has(#painter-toggle:checked) .mode-label::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: var(--accent-color);
+  border-radius: 50%;
+  margin-right: 6px;
+  box-shadow: 0 0 8px var(--accent-color);
+  animation: painter-pulse 2s infinite;
+  vertical-align: middle;
+}
+
+@keyframes painter-pulse {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.4;
+    transform: scale(1.2);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 2. Highlight the Tagger Card as the 'Active Tool' */
+.tagger-card {
+  transition: box-shadow 0.3s ease, border-color 0.3s ease !important;
+}
+
+body:has(#painter-toggle:checked) .tagger-card {
+  border-color: var(--accent-color) !important;
+  box-shadow: 0 0 15px rgba(0, 122, 255, 0.15) !important;
+}
+
+/* 3. Give the Grid a unique 'Active mode' tint */
+#cells-grid.painter-active {
+  background: radial-gradient(circle at top,
+      rgba(0, 122, 255, 0.03) 0,
+      rgba(249, 250, 251, 0.85) 55%) !important;
+  border-color: var(--accent-color) !important;
+  transition: all 0.4s ease;
+}
+
+/* 4. Refined Cursor - A minimalist circular 'brush' feel */
+#cells-grid.painter-active {
+  cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="6" stroke="rgba(0,122,255,0.8)" stroke-width="2"/><circle cx="16" cy="16" r="1" fill="rgba(0,122,255,0.8)"/></svg>') 16 16, crosshair !important;
+}
+
+/* 5. Cell Focus: when painting, emphasize the target cells */
+#cells-grid.painter-active .cell:hover {
+  border-color: var(--accent-color) !important;
+  box-shadow: 0 0 12px rgba(0, 122, 255, 0.2) !important;
+  z-index: 5;
+}
+
+
+/* --- Dark Mode Painter Atmosphere --- */
+
+body.dark-mode:has(#painter-toggle:checked) .tagger-card {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.25) !important;
+  border-color: var(--accent-color) !important;
+}
+
+body.dark-mode #cells-grid.painter-active {
+  background: radial-gradient(circle at top,
+      rgba(59, 130, 246, 0.08) 0,
+      rgba(10, 10, 10, 0.95) 55%) !important;
+}
+
+body.dark-mode #cells-grid.painter-active .cell:hover {
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.3) !important;
+}
+
+/* Adjusting cursor contrast for dark mode */
+body.dark-mode #cells-grid.painter-active {
+  cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="6" stroke="rgba(100,180,255,1)" stroke-width="2"/><circle cx="16" cy="16" r="1.5" fill="rgba(100,180,255,1)"/></svg>') 16 16, crosshair !important;
+}
+
+/* --- Tagger Panel Dark Mode Fix --- */
+body.dark-mode .tagger-card {
+  background: rgba(26, 26, 26, 0.72) !important;
+  backdrop-filter: blur(18px);
+  border-color: var(--border-color) !important;
+}
+
+body.dark-mode .tagger-header {
+  border-bottom-color: var(--border-color);
+}
+
+body.dark-mode .tagger-footer {
+  background: transparent !important;
+  border-top-color: var(--border-color);
+}
+
+body.dark-mode .tag-chip {
+  background: var(--surface-elevated-color);
+  border-color: var(--border-color);
+  color: var(--primary-text-color);
+}
+
+body.dark-mode .tag-chip.active {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: white;
+}
+
+body.dark-mode .compact-input {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: var(--border-color) !important;
+}
+/* Mode Switcher (Add/Remove) */
+.mode-switcher {
+    display: flex;
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-right: 8px;
+}
+
+.mode-btn {
+    padding: 3px 10px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border: none;
+    background: transparent;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border-right: 1px solid var(--border-color);
+}
+
+.mode-btn:last-child {
+    border-right: none;
+}
+
+.mode-btn:hover {
+    background: var(--accent-soft);
+    color: var(--accent-color);
+}
+
+.mode-btn.active {
+    background: var(--accent-color);
+    color: white;
+}
+
+.mode-btn.remove-mode {
+    background: #ef4444;
+    color: white;
+}
+
+.mode-btn.remove-mode:hover {
+    background: #dc2626;
+}
+
+/* Dark mode */
+body.dark-mode .mode-switcher {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* Tag Chip Delete Button */
+.tag-chip {
+    position: relative;
+    padding-right: 24px; /* Make room for delete button */
+}
+
+.tag-chip .delete-tag {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.15);
+    border: none;
+    color: var(--primary-text-color);
+    font-size: 10px;
+    line-height: 1;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+    padding: 0;
+}
+
+.tag-chip:hover .delete-tag {
+    display: flex;
+}
+
+.tag-chip .delete-tag:hover {
+    background: #ef4444;
+    color: white;
+    transform: translateY(-50%) scale(1.1);
+}
+
+body.dark-mode .tag-chip .delete-tag {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+body.dark-mode .tag-chip .delete-tag:hover {
+    background: #ef4444;
+}
+
+/* Fix layout shift when painter mode activates */
+.mode-label {
+    position: relative;
+    padding-left: 14px; /* Reserve space for the dot */
+}
+
+.mode-label::before {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+/* Only show the dot when painter is active */
+body:not(:has(#painter-toggle:checked)) .mode-label::before {
+    display: none;
 }

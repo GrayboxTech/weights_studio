@@ -1,140 +1,3 @@
-// ========== Split Checkboxes Logic (merged with color pickers) ==========
-let splitVisibility: Record<string, boolean> = {};
-
-function renderSplitCheckboxes(splits: string[]) {
-    const slot = document.getElementById('split-checkboxes-slot');
-    if (!slot) return;
-    slot.innerHTML = '';
-    splits.forEach((split, index) => {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'split-color-picker-wrapper';
-        // Label
-        const label = document.createElement('span');
-        label.className = 'chip';
-        label.textContent = split;
-        // Color picker
-        const colorInput = document.createElement('input');
-        colorInput.type = 'color';
-        colorInput.className = 'color-picker';
-        colorInput.id = `${split}-color`;
-        const savedColor = localStorage.getItem(`${split}-color`);
-        colorInput.value = savedColor || generateSplitColor(split, index, splits.length);
-        colorInput.addEventListener('input', () => {
-            localStorage.setItem(`${split}-color`, colorInput.value);
-            fetchAndDisplaySamples();
-        });
-        wrapper.appendChild(label);
-        wrapper.appendChild(colorInput);
-        slot.appendChild(wrapper);
-    });
-}
-
-// Patch fetchAndCreateSplitColorPickers to also render split checkboxes
-const origFetchAndCreateSplitColorPickers = fetchAndCreateSplitColorPickers;
-fetchAndCreateSplitColorPickers = async function() {
-    await origFetchAndCreateSplitColorPickers.apply(this, arguments);
-    if (Array.isArray(availableSplits) && availableSplits.length > 0) {
-        renderSplitCheckboxes(availableSplits);
-    }
-}
-
-// Patch fetchAndDisplaySamples to filter by split checkboxes
-const origFetchAndDisplaySamples = fetchAndDisplaySamples;
-fetchAndDisplaySamples = async function() {
-    const activeSplits = Object.keys(splitVisibility).filter(k => splitVisibility[k] !== false);
-    if (activeSplits.length === 0 || activeSplits.length === Object.keys(splitVisibility).length) {
-        return await origFetchAndDisplaySamples.apply(this, arguments);
-    }
-    await origFetchAndDisplaySamples.apply(this, arguments);
-    const gridCells = document.querySelectorAll('.cell');
-    gridCells.forEach(cell => {
-        const record = cell.__dataRecord || {};
-        const split = record.origin || record.split || record.loader || '';
-        if (activeSplits.includes(split)) {
-            cell.style.display = '';
-        } else {
-            cell.style.display = 'none';
-        }
-    });
-}
-
-// ========== Popup/modal dismiss on outside click ==========
-document.addEventListener('mousedown', (e) => {
-    // Dismiss modal
-    const modal = document.getElementById('image-detail-modal');
-    if (modal && modal.classList.contains('visible')) {
-        if (e.target && (e.target as HTMLElement).classList.contains('modal-backdrop')) {
-            modal.classList.remove('visible');
-        }
-    }
-    // Dismiss grid settings popup (collapses if open and click outside)
-    const gridSettings = document.getElementById('view-controls');
-    const gridSettingsToggle = document.getElementById('grid-settings-toggle');
-    if (gridSettings && !gridSettings.classList.contains('collapsed')) {
-        if (!gridSettings.contains(e.target as Node) && e.target !== gridSettingsToggle) {
-            gridSettings.classList.add('collapsed');
-        }
-    }
-    // Unselect grid selection if click outside grid/cell or details
-    const grid = document.getElementById('cells-grid');
-    const details = document.getElementById('details-body');
-    if (grid && !grid.contains(e.target as Node) && (!details || !details.contains(e.target as Node))) {
-        grid.classList.add('unselecting');
-        setTimeout(() => grid.classList.remove('unselecting'), 100);
-    }
-    // Dismiss context menu if open
-    const ctxMenu = document.getElementById('context-menu');
-    if (ctxMenu && ctxMenu.classList.contains('visible')) {
-        if (!ctxMenu.contains(e.target as Node)) {
-            ctxMenu.classList.remove('visible');
-        }
-    }
-});
-
-// ========== Agent Llama Availability Check ==========
-async function freezeInputIfAgentUnavailable() {
-    // Fetch agent status and freeze input if not alive
-    let available = false;
-    let statusText = '';
-    try {
-        // Use gRPC SDK to check agent health
-        const resp = await dataClient.checkAgentHealth({}).response;
-        // The proto may have isAvailable or available or status fields
-        available = !!(resp.isAvailable ?? resp.available);
-        statusText = resp.status || resp.message || '';
-    } catch (e) {
-        // If the call fails, treat as unavailable
-        available = false;
-        statusText = '';
-    }
-    const input = document.getElementById('chat-input') as HTMLInputElement;
-    const btn = document.getElementById('chat-send') as HTMLButtonElement;
-    if (!input || !btn) return;
-    if (!available) {
-        input.disabled = true;
-        btn.disabled = true;
-        input.value = '';
-        input.placeholder = 'Agent is not available';
-        input.style.background = '#444';
-        input.style.color = '#bbb';
-        btn.style.background = '#444';
-        btn.style.color = '#bbb';
-        btn.style.cursor = 'not-allowed';
-    } else {
-        input.disabled = false;
-        btn.disabled = false;
-        input.placeholder = 'drop 50% of the samples with losses between 1.4 and 1.9';
-        input.style.background = '';
-        input.style.color = '';
-        btn.style.background = '';
-        btn.style.color = '';
-        btn.style.cursor = '';
-    }
-}
-
-// Call on every refresh and on load
-setInterval(freezeInputIfAgentUnavailable, 15000);
-document.addEventListener('DOMContentLoaded', freezeInputIfAgentUnavailable);
 
 import { GrpcWebFetchTransport } from "@protobuf-ts/grpcweb-transport";
 import { RpcError } from "@protobuf-ts/runtime-rpc";
@@ -150,14 +13,10 @@ import {
     TrainerCommand,
     HyperParameterCommand,
     HyperParameters,
-    Empty,
 } from "./experiment_service";
 import { DataDisplayOptionsPanel, SplitColors } from "./DataDisplayOptionsPanel";
 import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteractionsPanel";
 import { GridManager } from "./GridManager";
-import { SelectionManager } from "./SelectionManager";
-import { ContextMenu } from "./ContextMenu";
-import { GridCell } from "./GridCell";
 import { initializeDarkMode } from "./darkMode";
 import { ClassPreference, GridCell } from "./GridCell";
 import { SegmentationRenderer } from "./SegmentationRenderer";
@@ -174,8 +33,6 @@ const traversalPanel = new DataTraversalAndInteractionsPanel();
 let cellsContainer: HTMLElement | null;
 let displayOptionsPanel: DataDisplayOptionsPanel | null = null;
 let gridManager: GridManager;
-let selectionManager: SelectionManager;
-let contextMenuManager: ContextMenu;
 let isTraining = false; // local UI state, initialized from server on load (default to paused)
 let inspectorOpen = true;
 let inspectorContainer: HTMLElement | null = null;
@@ -189,157 +46,17 @@ let uniqueTags: string[] = [];
 let fetchTimeout: any = null;
 let currentFetchRequestId = 0;
 
+// Painter Mode State
+let isPainterMode = false;
+let isPainterRemoveMode = false;
+let activeBrushTags = new Set<string>();
 
-// Global state for available splits
-let availableSplits: string[] = [];
 
-// Default color mapping
-const DEFAULT_SPLIT_COLORS: Record<string, string> = {
-    'train': '#1976D2',      // Blue
-    'test': '#388E3C',       // Green
-    'eval': '#388E3C',       // Green (alias for test)
-    'val': '#D32F2F',        // Red
-    'validation': '#D32F2F'  // Red (alias for val)
-};
-
-function generateSplitColor(splitName: string, index: number, total: number): string {
-    const lowerName = splitName.toLowerCase();
-
-    // Check if the split name contains keywords for default colors
-    if (lowerName.includes('train')) {
-        return DEFAULT_SPLIT_COLORS['train'];  // Blue
-    }
-    if (lowerName.includes('val')) {
-        return DEFAULT_SPLIT_COLORS['val'];  // Red
-    }
-    if (lowerName.includes('test') || lowerName.includes('eval')) {
-        return DEFAULT_SPLIT_COLORS['test'];  // Green
-    }
-
-    // For additional splits beyond the defaults, generate random colors
-    // Avoid red (0°/360°), green (120°), and blue (240°)
-    // Safe ranges: 30-90 (orange/yellow), 150-210 (cyan), 270-330 (purple/magenta)
-    const safeRanges = [
-        [30, 90],    // Orange to yellow
-        [150, 210],  // Cyan to teal
-        [270, 330]   // Purple to magenta
-    ];
-
-    // Pick a random safe range
-    const rangeIndex = Math.floor(Math.random() * safeRanges.length);
-    const [minHue, maxHue] = safeRanges[rangeIndex];
-
-    // Generate random hue within the safe range
-    const hue = Math.floor(Math.random() * (maxHue - minHue + 1)) + minHue;
-    const saturation = 65 + Math.floor(Math.random() * 15); // 65-80%
-    const lightness = 40 + Math.floor(Math.random() * 15);  // 40-55%
-
-    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-}
-
-async function fetchAndCreateSplitColorPickers(): Promise<void> {
-    try {
-        // Gracefully handle older SDKs without GetDataSplits
-        if (typeof (dataClient as any).getDataSplits !== 'function') {
-            console.warn('GetDataSplits RPC not available on client; falling back to defaults');
-            availableSplits = ['train', 'eval'];
-            return;
-        }
-
-        const response = await dataClient.getDataSplits({}).response;
-
-        if (response.success && response.splitNames.length > 0) {
-            availableSplits = response.splitNames;
-
-            // Find the split colors container in the HTML
-            const splitColorsContainer = document.querySelector('.split-colors .row-controls');
-            if (!splitColorsContainer) {
-                console.warn('Split colors container not found');
-                return;
-            }
-
-            // Clear existing color pickers
-            splitColorsContainer.innerHTML = '';
-
-            // Create color picker for each split
-            availableSplits.forEach((split, index) => {
-                const wrapper = document.createElement('div');
-                wrapper.className = 'color-picker-wrapper';
-
-                const label = document.createElement('span');
-                label.className = 'chip';
-                label.textContent = split.charAt(0).toUpperCase() + split.slice(1);
-
-                const input = document.createElement('input');
-                input.type = 'color';
-                input.id = `${split}-color`;
-                input.className = 'color-picker';
-
-                // Restore from localStorage or use default/generated color
-                const savedColor = localStorage.getItem(`${split}-color`);
-                input.value = savedColor || generateSplitColor(split, index, availableSplits.length);
-
-                // Save to localStorage on change and update display
-                input.addEventListener('input', () => {
-                    localStorage.setItem(`${split}-color`, input.value);
-                    updateDisplayOnly();
-                });
-
-                wrapper.appendChild(label);
-                wrapper.appendChild(input);
-                splitColorsContainer.appendChild(wrapper);
-            });
-
-            console.log(`Created color pickers for splits: ${availableSplits.join(', ')}`);
-        } else {
-            console.warn('No splits returned from server, using defaults');
-            availableSplits = ['train', 'eval'];
-        }
-    } catch (error) {
-        console.error('Failed to fetch data splits:', error);
-        // Fallback to defaults
-        availableSplits = ['train', 'eval'];
-    }
-}
 
 function getSplitColors(): SplitColors {
-    const colors: SplitColors = {};
-
-    // Build a case-insensitive map and include common aliases
-    const aliasPairs: Array<[string, string]> = [
-        ["eval", "test"],
-        ["test", "eval"],
-        ["test_loader", "eval"],
-        ["eval_loader", "test"],
-        ["val", "validation"],
-        ["val_loader", "val"],
-        ["validation", "val"],
-        ["validation_loader", "val"],
-        ["train_loader", "train"],
-        ["training_loader", "train"],
-    ];
-
-    availableSplits.forEach((split, index) => {
-        const key = split.toLowerCase();
-        const inputId = `${split}-color`;
-        const colorInput = document.getElementById(inputId) as HTMLInputElement;
-
-        const color = colorInput?.value
-            ? colorInput.value
-            : generateSplitColor(split, index, availableSplits.length);
-
-        // Primary key (lowercased)
-        colors[key] = color;
-
-        // Add alias entries if applicable
-        for (const [from, to] of aliasPairs) {
-            if (key === from && !(to in colors)) {
-                colors[to] = color;
-            }
-        }
-    });
-
-    return colors;
+    const trainColor = (document.getElementById('train-color') as HTMLInputElement)?.value || '#4CAF50';
+    const evalColor = (document.getElementById('eval-color') as HTMLInputElement)?.value || '#2196F3';
+    return { train: trainColor, eval: evalColor };
 }
 
 async function fetchSamples(request: DataSamplesRequest): Promise<DataSamplesResponse> {
@@ -372,7 +89,7 @@ async function fetchAndDisplaySamples() {
 
     const requestId = ++currentFetchRequestId;
 
-    // Do not clear all cells at once; update each cell in place as new data arrives
+    gridManager.clearAllCells();
 
     try {
         let totalRecordsRetrieved = 0;
@@ -478,49 +195,19 @@ async function updateLayout() {
         return;
     }
 
-    // Preserve current selection by storing selected cell indices
-    const selectedCells = selectionManager.getSelectedCells();
-    const selectedIndices = new Set<number>();
-
-    for (const selectedCell of selectedCells) {
-        // Try to find the index of this cell in the current grid
-        const cells = gridManager.getCells();
-        const index = cells.indexOf(selectedCell);
-        if (index !== -1) {
-            selectedIndices.add(index);
-        }
-    }
-
     gridManager.updateGridLayout();
     const gridDims = gridManager.calculateGridDimensions();
-
-    // Update SelectionManager with new cells array and register them
-    const cells = gridManager.getCells();
-    selectionManager.setAllCells(cells);
-    for (const cell of cells) {
-        selectionManager.registerCell(cell);
-    }
+    console.log(`[updateLayout] Grid dimensions: ${JSON.stringify(gridDims)}`);
 
     gridManager.clearAllCells();
+    const cellsAfterClear = gridManager.getCells().length;
+    console.log(`[updateLayout] Cells after clear: ${cellsAfterClear}`);
 
     if (displayOptionsPanel) {
         const preferences = displayOptionsPanel.getDisplayPreferences();
         preferences.splitColors = getSplitColors();
         for (const cell of gridManager.getCells()) {
             cell.setDisplayPreferences(preferences);
-        }
-    }
-
-    // Restore selection to cells at the preserved indices
-    if (selectedIndices.size > 0) {
-        selectionManager.clearSelection();
-        const newCells = gridManager.getCells();
-        for (const index of selectedIndices) {
-            if (index >= 0 && index < newCells.length) {
-                selectionManager.addCellToSelection(newCells[index]);
-                // Update lastSelectedCell to the last one in the selection
-                selectionManager.setLastSelectedCell(newCells[index]);
-            }
         }
     }
 
@@ -643,18 +330,6 @@ export async function initializeUIElements() {
         return;
     }
 
-    // Cache reset button
-    const cacheResetBtn = document.getElementById('cache-reset') as HTMLButtonElement | null;
-    if (cacheResetBtn) {
-        cacheResetBtn.addEventListener('click', () => {
-            if (confirm('Reset all UI settings and cached data? This will reload the page.')) {
-                localStorage.clear();
-                sessionStorage.clear();
-                location.reload();
-            }
-        });
-    }
-
     const chatInput = document.getElementById('chat-input') as HTMLInputElement;
     const chatSendBtn = document.getElementById('chat-send') as HTMLButtonElement;
 
@@ -722,7 +397,7 @@ export async function initializeUIElements() {
                 const gridCount = gridManager ? gridManager.getCells().length : traversalPanel.getLeftSamples();
                 const start = traversalPanel.getStartIndex();
                 const end = Math.max(start, start + gridCount - 1);
-                // trainingSummary.textContent = `TBD: add training stats`;
+                trainingSummary.textContent = `TBD: add training stats`;
             }
         };
 
@@ -790,8 +465,8 @@ export async function initializeUIElements() {
         // More patient settings for server startup
         async function fetchInitialTrainingState(retries = 5, initialDelay = 1000): Promise<boolean> {
             let delay = initialDelay;
-            let maxAttempts = 15;
-            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+
+            for (let attempt = 0; attempt < retries; attempt++) {
                 try {
                     const initResp = await dataClient.experimentCommand({
                         getHyperParameters: true,
@@ -820,20 +495,19 @@ export async function initializeUIElements() {
                     return false;
 
                 } catch (e) {
-                    if (attempt < maxAttempts - 1) {
-                        // Show visual feedback that we're retrying (no enumerate)
+                    if (attempt < retries - 1) {
+                        console.log(`Retry ${attempt + 1}/${retries} to fetch training state in ${delay}ms...`);
+
+                        // Show visual feedback that we're retrying
                         if (trainingStatePill) {
-                            trainingStatePill.textContent = `Connecting...`;
+                            trainingStatePill.textContent = `Connecting... (${attempt + 1}/${retries})`;
                             trainingStatePill.classList.add('pill-paused');
                         }
+
                         await new Promise(resolve => setTimeout(resolve, delay));
                         delay *= 2; // Exponential backoff
                     } else {
-                        if (trainingStatePill) {
-                            trainingStatePill.textContent = `Connection failed`;
-                            trainingStatePill.classList.add('pill-paused');
-                        }
-                        console.warn(`Failed to fetch training state after ${maxAttempts} attempts`, e);
+                        console.warn(`Failed to fetch training state after ${retries} attempts`, e);
 
                         // Fall back to localStorage if available
                         const savedState = localStorage.getItem('training-state');
@@ -871,61 +545,28 @@ export async function initializeUIElements() {
                     inspectorPanel.classList.toggle('details-collapsed');
                 }
             });
-
-            // Close options panel when clicking outside
-            document.addEventListener('click', (e) => {
-                const target = e.target as HTMLElement;
-                // const isVisible = displayOptionsPanel.style.display !== 'none';
-
-                // // Close if panel is visible and click is outside both panel and toggle button
-                // if (isVisible && !displayOptionsPanel.contains(target) && !optionsToggle.contains(target)) {
-                //     displayOptionsPanel.style.display = 'none';
-                // }
-            });
         }
 
         // Setup listeners for cell size and zoom - these need full layout update
         const cellSizeSlider = document.getElementById('cell-size') as HTMLInputElement;
         const zoomSlider = document.getElementById('zoom-level') as HTMLInputElement;
 
-        // Restore saved settings
-        const savedCellSize = localStorage.getItem('cellSize');
-        const savedZoomLevel = localStorage.getItem('zoomLevel');
-
         if (cellSizeSlider) {
-            if (savedCellSize) {
-                cellSizeSlider.value = savedCellSize;
-                const cellSizeValue = document.getElementById('cell-size-value');
-                if (cellSizeValue) {
-                    cellSizeValue.textContent = savedCellSize;
-                }
-            }
-
             cellSizeSlider.addEventListener('input', () => {
                 const cellSizeValue = document.getElementById('cell-size-value');
                 if (cellSizeValue) {
                     cellSizeValue.textContent = cellSizeSlider.value;
                 }
-                localStorage.setItem('cellSize', cellSizeSlider.value);
                 updateLayout();
             });
         }
 
         if (zoomSlider) {
-            if (savedZoomLevel) {
-                zoomSlider.value = savedZoomLevel;
-                const zoomValue = document.getElementById('zoom-value');
-                if (zoomValue) {
-                    zoomValue.textContent = `${savedZoomLevel}%`;
-                }
-            }
-
             zoomSlider.addEventListener('input', () => {
                 const zoomValue = document.getElementById('zoom-value');
                 if (zoomValue) {
                     zoomValue.textContent = `${zoomSlider.value}%`;
                 }
-                localStorage.setItem('zoomLevel', zoomSlider.value);
                 updateLayout();
             });
         }
@@ -934,7 +575,6 @@ export async function initializeUIElements() {
         const trainColorInput = document.getElementById('train-color') as HTMLInputElement;
         const evalColorInput = document.getElementById('eval-color') as HTMLInputElement;
 
-        // This will be replaced by dynamic color pickers after fetching splits
         // Restore saved colors from localStorage
         const savedTrainColor = localStorage.getItem('train-color');
         const savedEvalColor = localStorage.getItem('eval-color');
@@ -962,9 +602,6 @@ export async function initializeUIElements() {
         displayOptionsPanel.onUpdate(updateDisplayOnly);
     }
 
-    // Fetch available splits and create dynamic color pickers
-    await fetchAndCreateSplitColorPickers();
-
     // Grid settings toggle functionality
     const gridSettingsToggle = document.getElementById('grid-settings-toggle') as HTMLButtonElement;
     const viewControls = document.getElementById('view-controls') as HTMLElement;
@@ -973,8 +610,6 @@ export async function initializeUIElements() {
         let isSettingsExpanded = false; // Start collapsed
         viewControls.classList.add('collapsed'); // Start collapsed
 
-        // Ensure settings are collapsed at start (no auto popup)
-        // Only toggle on user click
         gridSettingsToggle.addEventListener('click', () => {
             isSettingsExpanded = !isSettingsExpanded;
             viewControls.classList.toggle('collapsed', !isSettingsExpanded);
@@ -985,123 +620,6 @@ export async function initializeUIElements() {
     gridManager = new GridManager(
         cellsContainer, traversalPanel,
         displayOptionsPanel as DataDisplayOptionsPanel);
-
-    // Create selection manager and context menu
-    selectionManager = new SelectionManager(cellsContainer);
-    gridManager.setSelectionManager(selectionManager);
-
-    // Register cells with selection manager and set all cells for range selection
-    const allCells = gridManager.getCells();
-    for (const cell of allCells) {
-        selectionManager.registerCell(cell);
-    }
-    selectionManager.setAllCells(allCells);
-
-    // Initialize context menu (cellsContainer is the grid element)
-    contextMenuManager = new ContextMenu(cellsContainer, selectionManager, {
-        onDiscard: async () => {
-            const selectedCells = selectionManager.getSelectedCells();
-            const sampleIds = selectedCells.map(cell => cell.getRecord()?.sampleId).filter((id): id is number => id !== undefined);
-            const origins = selectedCells.map(cell => {
-                const record = cell.getRecord();
-                const originStat = record?.dataStats.find(s => s.name === 'origin');
-                return originStat?.valueString || 'train';
-            }).filter((origin): origin is string => origin !== undefined);
-
-            if (sampleIds.length === 0) return;
-
-            // Toggle discard: if any selected is already discarded, undiscard all; else discard all
-            const anyDiscarded = selectedCells.some(cell => {
-                const rec = cell.getRecord();
-                if (!rec) return false;
-                const stat = rec.dataStats?.find(s => s.name === 'deny_listed');
-                return !!stat && Array.isArray(stat.value) && stat.value[0] === 1;
-            });
-
-            const request: DataEditsRequest = {
-                statName: "deny_listed",
-                floatValue: 0,
-                stringValue: '',
-                boolValue: anyDiscarded ? false : true,
-                type: SampleEditType.EDIT_OVERRIDE,
-                samplesIds: sampleIds,
-                sampleOrigins: origins
-            };
-
-            try {
-                const response = await dataClient.editDataSample(request).response;
-                if (response.success) {
-                    updateAffectedCellsOnly(sampleIds, request);
-                } else {
-                    console.error("Failed to update discard state:", response.message);
-                }
-            } catch (error) {
-                console.error("Error toggling discard:", error);
-            }
-        },
-        onAddTag: async (cells: GridCell[], tag: string) => {
-            const sampleIds = cells.map(cell => cell.getRecord()?.sampleId).filter((id): id is number => id !== undefined);
-            const origins = cells.map(cell => {
-                const record = cell.getRecord();
-                const originStat = record?.dataStats.find(s => s.name === 'origin');
-                return originStat?.valueString || 'train';
-            }).filter((origin): origin is string => origin !== undefined);
-
-            if (sampleIds.length === 0) return;
-
-            const request: DataEditsRequest = {
-                statName: "tags",
-                floatValue: 0,
-                stringValue: tag,
-                boolValue: false,
-                type: SampleEditType.EDIT_OVERRIDE,
-                samplesIds: sampleIds,
-                sampleOrigins: origins
-            };
-
-            try {
-                const response = await dataClient.editDataSample(request).response;
-                if (response.success) {
-                    updateAffectedCellsOnly(sampleIds, request);
-                } else {
-                    console.error("Failed to add tag:", response.message);
-                }
-            } catch (error) {
-                console.error("Error adding tag:", error);
-            }
-        },
-        onRemoveTag: async (cells: GridCell[]) => {
-            const sampleIds = cells.map(cell => cell.getRecord()?.sampleId).filter((id): id is number => id !== undefined);
-            const origins = cells.map(cell => {
-                const record = cell.getRecord();
-                const originStat = record?.dataStats.find(s => s.name === 'origin');
-                return originStat?.valueString || 'train';
-            }).filter((origin): origin is string => origin !== undefined);
-
-            if (sampleIds.length === 0) return;
-
-            const request: DataEditsRequest = {
-                statName: "tags",
-                floatValue: 0,
-                stringValue: "", // clearing tag
-                boolValue: false,
-                type: SampleEditType.EDIT_OVERRIDE,
-                samplesIds: sampleIds,
-                sampleOrigins: origins
-            };
-
-            try {
-                const response = await dataClient.editDataSample(request).response;
-                if (response.success) {
-                    updateAffectedCellsOnly(sampleIds, request);
-                } else {
-                    console.error("Failed to remove tag:", response.message);
-                }
-            } catch (error) {
-                console.error("Error removing tag:", error);
-            }
-        }
-    });
 
     traversalPanel.onUpdate(() => {
         debouncedFetchAndDisplay();
@@ -1150,116 +668,393 @@ export async function initializeUIElements() {
         refreshDynamicStatsOnly();
     }, 10000);
 
-    // Check agent health and update UI accordingly
-    await checkAndUpdateAgentHealth();
-
-    // Periodically check agent health (every 10 seconds)
-    setInterval(async () => {
-        await checkAndUpdateAgentHealth();
-    }, 10000);
-
     setTimeout(updateLayout, 0);
-}
 
-async function checkAndUpdateAgentHealth() {
-    const chatInput = document.getElementById('chat-input') as HTMLInputElement;
-    if (!chatInput) return;
+    // Painter Mode UI Initialization
+    const painterToggle = document.getElementById('painter-toggle') as HTMLInputElement;
+    const painterTagsList = document.getElementById('painter-tags-list') as HTMLElement;
+    const painterNewTagBtn = document.getElementById('painter-new-tag') as HTMLButtonElement;
+    const newTagInput = document.getElementById('new-tag-input') as HTMLInputElement;
 
-    try {
-        // Lightweight direct check to Ollama (fallback without gRPC types)
-        const resp = await fetch('http://localhost:11435/api/tags', { method: 'GET' });
-        const available = resp.ok;
+    if (painterToggle) {
+        painterToggle.addEventListener('change', () => {
+            isPainterMode = painterToggle.checked;
 
-        if (available) {
-            chatInput.disabled = false;
-            chatInput.placeholder = "drop 50% of the samples with losses between 1.4 and 1.9";
-            chatInput.title = "";
-        } else {
-            chatInput.disabled = true;
-            chatInput.placeholder = "Agent is not available";
-            chatInput.title = "Agent is not available - please ensure Ollama is running";
+            // Enable/disable tag interactions based on mode
+            if (isPainterMode) {
+                cellsContainer?.classList.add('painter-active');
+                clearSelection();
+
+                // If no brush active, auto-select first one 
+                if (activeBrushTags.size === 0 && uniqueTags.length > 0) {
+                    setActiveBrush(uniqueTags[0]);
+                }
+            } else {
+                cellsContainer?.classList.remove('painter-active');
+            }
+        });
+    }
+
+    const addNewTag = () => {
+        if (!newTagInput) return;
+
+        const newTag = newTagInput.value.trim();
+        if (newTag) {
+            // Add to list and select it
+            if (!uniqueTags.includes(newTag)) {
+                updateUniqueTags([...uniqueTags, newTag].sort());
+            }
+            setActiveBrush(newTag);
+
+            // Clear input
+            newTagInput.value = '';
         }
-    } catch (error) {
-        console.error("Error checking agent health:", error);
-        // On error, disable the input as a safety measure
-        chatInput.disabled = true;
-        chatInput.placeholder = "Agent is not available";
-        chatInput.title = "Agent is not available - please ensure Ollama is running";
+    };
+
+    if (painterNewTagBtn) {
+        painterNewTagBtn.addEventListener('click', addNewTag);
+    }
+
+    if (newTagInput) {
+        newTagInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addNewTag();
+            }
+        });
+    }
+
+    // Mode switcher (Add/Remove)
+    const modeAddBtn = document.getElementById('mode-add') as HTMLButtonElement;
+    const modeRemoveBtn = document.getElementById('mode-remove') as HTMLButtonElement;
+
+    if (modeAddBtn && modeRemoveBtn) {
+        modeAddBtn.addEventListener('click', () => {
+            isPainterRemoveMode = false;
+            modeAddBtn.classList.add('active');
+            modeAddBtn.classList.remove('remove-mode');
+            modeRemoveBtn.classList.remove('active', 'remove-mode');
+        });
+
+        modeRemoveBtn.addEventListener('click', () => {
+            isPainterRemoveMode = true;
+            modeRemoveBtn.classList.add('active', 'remove-mode');
+            modeAddBtn.classList.remove('active');
+        });
     }
 }
 
-// =============================================================================
-// Old selection code removed - now using SelectionManager and ContextMenu classes
-// =============================================================================
 
 // =============================================================================
-// Helper functions for selective cell updates
 
-function getSelectedSampleIds(): number[] {
-    return selectionManager.getSelectedCells()
-        .map(cell => cell.getRecord()?.sampleId)
-        .filter((id): id is number => id !== undefined);
+const grid = document.getElementById('cells-grid') as HTMLElement;
+const contextMenu = document.getElementById('context-menu') as HTMLElement;
+
+let selectedCells: Set<HTMLElement> = new Set();
+
+// Helper function to get GridCell from DOM element
+function getGridCell(element: HTMLElement): GridCell | null {
+    return (element as any).__gridCell || null;
 }
 
-function updateAffectedCellsOnly(sampleIds: number[], request: DataEditsRequest): void {
-    // Update only the cells with changed samples instead of reloading entire grid
-    if (sampleIds.length === 0) return;
+// For drag selection
+let isDragging = false;
+let startX = 0;
+let startY = 0;
+let lastMouseUpX = 0;
+let lastMouseUpY = 0;
+let selectionBox: HTMLElement | null = null;
 
-    for (const cell of gridManager.getCells()) {
-        const record = cell.getRecord();
-        if (record && sampleIds.includes(record.sampleId)) {
-            // Update the specific stat that was changed
-            if (request.statName === 'tags') {
-                // Update tags stat
-                let stat = record.dataStats.find(s => s.name === 'tags');
-                if (stat) {
-                    stat.valueString = request.stringValue;
-                } else {
-                    // Create if doesn't exist
-                    stat = {
-                        name: 'tags',
-                        type: 'string',
-                        shape: [1],
-                        valueString: request.stringValue,
-                        value: []
-                    };
-                    record.dataStats.push(stat);
-                }
-                // If clearing, ensure valueString is empty
-                if (!request.stringValue) {
-                    stat.valueString = "";
-                }
-            } else if (request.statName === 'deny_listed') {
-                // Update deny_listed stat
-                const stat = record.dataStats.find(s => s.name === 'deny_listed');
-                if (stat) {
-                    stat.value = [request.boolValue ? 1 : 0];
-                } else {
-                    record.dataStats.push({
-                        name: 'deny_listed',
-                        type: 'scalar',
-                        shape: [1],
-                        value: [request.boolValue ? 1 : 0],
-                        valueString: ''
-                    });
-                }
-            }
-
-            // Update cell display without refetching
-            const prefs = displayOptionsPanel?.getDisplayPreferences();
-            if (prefs) {
-                cell.updateDisplay(prefs);
-            }
-        }
+function createSelectionBox() {
+    if (!selectionBox) {
+        selectionBox = document.createElement('div');
+        selectionBox.style.position = 'absolute';
+        selectionBox.style.border = '1px dashed #adcef3ff';
+        selectionBox.style.backgroundColor = 'rgba(3, 97, 198, 0.2)';
+        selectionBox.style.pointerEvents = 'none';
+        selectionBox.style.zIndex = '1000';
+        document.body.appendChild(selectionBox);
     }
 }
 
-// Handle context menu actions from modal popup
-document.addEventListener('modalContextMenuAction', async (e: any) => {
-    const { action, sampleId, origin } = e.detail;
-    if (!sampleId) {
-        console.error('No sampleId provided in modal action');
+grid.addEventListener('mousedown', (e) => {
+    // Hide context menu on any new selection action
+    hideContextMenu();
+
+    // Prevent default browser drag behavior and text selection
+    e.preventDefault();
+
+    const target = e.target as HTMLElement;
+    const cell = target.closest('.cell') as HTMLElement | null;
+
+    // On a mousedown without Ctrl, if the click is not on an already selected cell,
+    // clear the existing selection. This prepares for a new selection (either click or drag).
+    if (!isPainterMode && !e.ctrlKey && !e.metaKey) {
+        if (!cell || !selectedCells.has(cell)) {
+            clearSelection();
+        }
+    }
+
+    // Start dragging
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+
+    if (isPainterMode) {
+        // Painter Mode: Apply tag immediately on click/down
+        if (cell) {
+            paintCell(cell);
+        }
+    } else {
+        // Normal Mode: Start selection box
+        createSelectionBox();
+        selectionBox!.style.left = `${startX}px`;
+        selectionBox!.style.top = `${startY}px`;
+        selectionBox!.style.width = '0px';
+        selectionBox!.style.height = '0px';
+        selectionBox!.style.display = 'block';
+    }
+});
+
+document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+
+    if (isPainterMode) {
+        // Painter Mode: Paint cells as we drag over them
+        const target = e.target as HTMLElement;
+        const cell = target.closest('.cell') as HTMLElement | null;
+        if (cell) {
+            paintCell(cell);
+        }
         return;
+    }
+
+    if (!selectionBox) return;
+
+    const currentX = e.clientX;
+    const currentY = e.clientY;
+
+    const x = Math.min(startX, currentX);
+    const y = Math.min(startY, currentY);
+    const width = Math.abs(currentX - startX);
+    const height = Math.abs(currentY - startY);
+
+    selectionBox.style.left = `${x}px`;
+    selectionBox.style.top = `${y}px`;
+    selectionBox.style.width = `${width}px`;
+    selectionBox.style.height = `${height}px`;
+
+    const selectionRect = selectionBox.getBoundingClientRect();
+
+    for (const cell of grid.children) {
+        const cellElem = cell as HTMLElement;
+        const cellRect = cellElem.getBoundingClientRect();
+
+        const isIntersecting =
+            selectionRect.left < cellRect.right &&
+            selectionRect.right > cellRect.left &&
+            selectionRect.top < cellRect.bottom &&
+            selectionRect.bottom > cellRect.top;
+
+        if (isIntersecting) {
+            addCellToSelection(cellElem);
+        } else if (!e.ctrlKey && !e.metaKey) {
+            // If not holding Ctrl, deselect cells that are no longer in the rectangle.
+            removeCellFromSelection(cellElem);
+        }
+    }
+});
+
+document.addEventListener('mouseup', (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+
+    if (isPainterMode) return; // Painter mode doesn't do selection on mouseup
+
+    // Store the mouse up position for context menu
+    lastMouseUpX = e.clientX;
+    lastMouseUpY = e.clientY;
+
+    if (selectionBox) {
+        selectionBox.style.display = 'none';
+
+        // Distinguish a click from a drag by checking how much the mouse moved.
+        const movedDuringDrag = Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5;
+        const target = e.target as HTMLElement;
+        const cell = target.closest('.cell') as HTMLElement | null;
+
+        if (!movedDuringDrag && cell) { // This was a click, not a drag.
+            if (e.ctrlKey || e.metaKey) {
+                // With Ctrl, toggle the clicked cell.
+                toggleCellSelection(cell);
+            } else {
+                // Without Ctrl, it's a simple click.
+                // If the cell wasn't already part of a multi-selection, clear others and select just this one.
+                if (!selectedCells.has(cell) || selectedCells.size <= 1) {
+                    clearSelection();
+                    addCellToSelection(cell);
+                }
+                // If it was part of a selection, the mousedown already handled it, so do nothing on mouseup.
+            }
+        }
+        // If it was a drag (movedDuringDrag is true), we do nothing on mouseup.
+        // The selection was already handled by the 'mousemove' event.
+    }
+});
+
+
+function toggleCellSelection(cell: HTMLElement) {
+    if (selectedCells.has(cell)) {
+        removeCellFromSelection(cell);
+    } else {
+        addCellToSelection(cell);
+    }
+}
+
+function addCellToSelection(cell: HTMLElement) {
+    if (!selectedCells.has(cell)) {
+        selectedCells.add(cell);
+        cell.classList.add('selected');
+    }
+}
+
+function removeCellFromSelection(cell: HTMLElement) {
+    if (selectedCells.has(cell)) {
+        selectedCells.delete(cell);
+        cell.classList.remove('selected');
+    }
+}
+
+function clearSelection() {
+    selectedCells.forEach(cell => {
+        cell.classList.remove('selected');
+    });
+    selectedCells.clear();
+}
+
+grid.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const target = e.target as HTMLElement;
+    const cell = target.closest('.cell') as HTMLElement | null;
+
+    // Use the event's coordinates for the position
+    const menuX = e.pageX;
+    const menuY = e.pageY;
+
+    if (cell) {
+        if (e.ctrlKey || e.metaKey) {
+            // Ctrl+right-click: toggle the cell in selection and show menu
+            toggleCellSelection(cell);
+            if (selectedCells.size > 0) {
+                showContextMenu(menuX, menuY);
+            } else {
+                hideContextMenu();
+            }
+        } else if (selectedCells.has(cell)) {
+            // Right-click on already selected cell: keep selection, show menu
+            showContextMenu(menuX, menuY);
+        } else {
+            // Right-click on unselected cell: clear others, select this one, show menu
+            clearSelection();
+            addCellToSelection(cell);
+            showContextMenu(menuX, menuY);
+        }
+    } else {
+        // Right-click on empty space: clear selection and hide menu
+        clearSelection();
+        hideContextMenu();
+    }
+});
+
+function showContextMenu(x: number, y: number) {
+    contextMenu.style.left = `${x}px`;
+    contextMenu.style.top = `${y}px`;
+    contextMenu.classList.add('visible');
+}
+
+function hideContextMenu() {
+    contextMenu.classList.remove('visible');
+}
+
+document.addEventListener('click', (e) => {
+    // A drag is completed on mouseup, but a click event still fires.
+    // We check if the mouse moved significantly to distinguish a real click from the end of a drag.
+    const movedDuringDrag = Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5;
+
+    const target = e.target as HTMLElement;
+    if (!target.closest('.context-menu') && !target.closest('.cell') && !isDragging && !movedDuringDrag) {
+        hideContextMenu();
+        clearSelection();
+    }
+});
+
+contextMenu.addEventListener('click', async (e) => {
+    const action = (e.target as HTMLElement).dataset.action;
+    if (action) {
+        console.log(
+            `Action: ${action}, selected cells:`,
+            Array.from(selectedCells)
+                .map(c => getGridCell(c)?.getRecord()?.sampleId)
+                .filter(id => id !== undefined)
+        );
+
+        const sample_ids = Array.from(selectedCells)
+            .map(c => getGridCell(c)?.getRecord()?.sampleId)
+            .filter(id => id !== undefined)
+
+        let origins = []
+        for (const c of Array.from(selectedCells)) {
+            const gridCell = getGridCell(c);
+            const record = gridCell?.getRecord();
+            // console.log("record: ", record)
+            const originStat = record.dataStats.find((stat: any) => stat.name === 'origin');
+            if (originStat) {
+                origins.push(originStat.valueString as string);
+            }
+        }
+
+        hideContextMenu();
+
+        switch (action) {
+            case 'add-tag':
+                openTaggingModal(sample_ids, origins);
+                // We DON'T clear selection or refresh here. 
+                // The modal will stay on top of the selected items.
+                return;
+            case 'remove-tag':
+                removeTag(sample_ids, origins);
+                clearSelection();
+                debouncedFetchAndDisplay();
+                break;
+            case 'discard':
+                selectedCells.forEach(cell => {
+                    const gridCell = getGridCell(cell);
+                    if (gridCell) {
+                        cell.classList.add('discarded');
+                    }
+                });
+
+                const drequest: DataEditsRequest = {
+                    statName: "deny_listed",
+                    floatValue: 0,
+                    stringValue: '',
+                    boolValue: true,
+                    type: SampleEditType.EDIT_OVERRIDE,
+                    samplesIds: sample_ids,
+                    sampleOrigins: origins
+                }
+                try {
+                    const dresponse = await dataClient.editDataSample(drequest).response;
+                    if (!dresponse.success) {
+                        console.error("Failed to discard:", dresponse.message);
+                    }
+                } catch (error) {
+                    console.error("Error discarding:", error);
+                }
+                clearSelection();
+                debouncedFetchAndDisplay();
+                break;
+        }
     }
 });
 
@@ -1272,141 +1067,6 @@ const modalImage = document.getElementById('modal-image') as HTMLImageElement;
 const modalStatsContainer = document.getElementById('modal-stats-container') as HTMLElement;
 const modalCloseBtn = document.getElementById('modal-close-btn') as HTMLButtonElement;
 
-// Modal action bar (created on demand)
-let modalActionBar: HTMLElement | null = null;
-let currentModalRecord: any | null = null;
-
-function ensureModalActionBar() {
-    if (modalActionBar) return;
-    if (!imageDetailModal) return;
-    modalActionBar = document.createElement('div');
-    modalActionBar.id = 'modal-action-bar';
-    modalActionBar.style.position = 'absolute';
-    modalActionBar.style.bottom = '12px';
-    modalActionBar.style.right = '12px';
-    modalActionBar.style.display = 'flex';
-    modalActionBar.style.gap = '8px';
-    modalActionBar.style.zIndex = '1200';
-    modalActionBar.style.pointerEvents = 'auto';
-
-    const makeButton = (label: string, action: string) => {
-        const btn = document.createElement('button');
-        btn.className = 'modal-action-btn';
-        btn.textContent = label;
-        btn.dataset.action = action;
-        btn.style.padding = '6px 10px';
-        btn.style.borderRadius = '6px';
-        btn.style.border = 'none';
-        btn.style.cursor = 'pointer';
-        btn.style.background = '#222';
-        btn.style.color = '#fff';
-        btn.style.opacity = '0.9';
-        btn.addEventListener('mouseenter', () => btn.style.opacity = '1');
-        btn.addEventListener('mouseleave', () => btn.style.opacity = '0.9');
-        return btn;
-    };
-
-    const tagBtn = makeButton('Tag', 'tag');
-    const untagBtn = makeButton('Untag', 'untag');
-    const discardBtn = makeButton('Discard', 'discard');
-
-    modalActionBar.appendChild(tagBtn);
-    modalActionBar.appendChild(untagBtn);
-    modalActionBar.appendChild(discardBtn);
-
-    imageDetailModal.appendChild(modalActionBar);
-
-    // Button click handlers
-    tagBtn.addEventListener('click', async () => {
-        if (!currentModalRecord) return;
-        const tag = prompt('Enter tag:');
-        if (tag === null) return;
-        const sample_ids = [currentModalRecord.sampleId];
-        const origin = currentModalRecord.dataStats?.find((s: any) => s.name === 'origin')?.valueString || '';
-        const req: DataEditsRequest = {
-            statName: 'tags',
-            floatValue: 0,
-            stringValue: String(tag),
-            boolValue: false,
-            type: SampleEditType.EDIT_OVERRIDE,
-            samplesIds: sample_ids,
-            sampleOrigins: [origin]
-        };
-        try {
-            const resp = await dataClient.editDataSample(req).response;
-            if (!resp.success) alert(`Failed to add tag: ${resp.message}`);
-        } catch (e) {
-            console.error('Error tagging sample', e);
-            alert('Error tagging sample');
-        }
-        debouncedFetchAndDisplay();
-    });
-
-    untagBtn.addEventListener('click', async () => {
-        if (!currentModalRecord) return;
-        const sample_ids = [currentModalRecord.sampleId];
-        const origin = currentModalRecord.dataStats?.find((s: any) => s.name === 'origin')?.valueString || '';
-        const req: DataEditsRequest = {
-            statName: 'tags',
-            floatValue: 0,
-            stringValue: '',
-            boolValue: false,
-            type: SampleEditType.EDIT_OVERRIDE,
-            samplesIds: sample_ids,
-            sampleOrigins: [origin]
-        };
-        try {
-            const resp = await dataClient.editDataSample(req).response;
-            if (!resp.success) alert(`Failed to remove tag: ${resp.message}`);
-        } catch (e) {
-            console.error('Error untagging sample', e);
-            alert('Error removing tag');
-        }
-        debouncedFetchAndDisplay();
-    });
-
-    discardBtn.addEventListener('click', async () => {
-        if (!currentModalRecord) return;
-        const sample_ids = [currentModalRecord.sampleId];
-        const origin = currentModalRecord.dataStats?.find((s: any) => s.name === 'origin')?.valueString || '';
-        const req: DataEditsRequest = {
-            statName: 'deny_listed',
-            floatValue: 0,
-            stringValue: '',
-            boolValue: true,
-            type: SampleEditType.EDIT_OVERRIDE,
-            samplesIds: sample_ids,
-            sampleOrigins: [origin]
-        };
-        try {
-            const resp = await dataClient.editDataSample(req).response;
-            if (!resp.success) alert(`Failed to discard: ${resp.message}`);
-            else {
-                // Mark visually in modal if desired
-            }
-        } catch (e) {
-            console.error('Error discarding sample', e);
-            alert('Error discarding sample');
-        }
-        debouncedFetchAndDisplay();
-    });
-
-    // Size buttons proportionally to image width
-    const adjustButtonSizes = () => {
-        if (!modalActionBar) return;
-        const imgW = modalImage?.clientWidth || 200;
-        const btnWidth = Math.max(56, Math.min(160, Math.round(imgW * 0.14)));
-        const buttons = modalActionBar.querySelectorAll('button');
-        buttons.forEach((b: Element) => {
-            const btn = b as HTMLElement;
-            btn.style.width = `${btnWidth}px`;
-            btn.style.fontSize = `${Math.max(12, Math.round(btnWidth * 0.12))}px`;
-        });
-    };
-
-    modalImage.addEventListener('load', adjustButtonSizes);
-    window.addEventListener('resize', adjustButtonSizes);
-}
 // Helper function to apply segmentation overlays to modal image
 function applySegmentationToModal(
     baseImageUrl: string,
@@ -1476,10 +1136,6 @@ async function openImageDetailModal(cell: HTMLElement) {
 
     const record = gridCell.getRecord();
     if (!record) return;
-
-    // Remember the record for modal actions and ensure action bar exists
-    currentModalRecord = record;
-    ensureModalActionBar();
 
     // Show the modal immediately with the grid's current image
     const imgElement = gridCell.getImage();
@@ -1566,22 +1222,7 @@ async function openImageDetailModal(cell: HTMLElement) {
 
             let value = '';
 
-
-            // Helper to format numbers in scientific notation if very small or large
-            function formatSmartNumber(num: number): string {
-                if (num === 0) return '0';
-                const absNum = Math.abs(num);
-                if ((absNum > 0 && absNum < 1e-3) || absNum >= 1e5) {
-                    // Use scientific notation, e.g. 7.10e-6
-                    const exp = num.toExponential(2);
-                    // Optionally format as 7.10×10⁻⁶
-                    const [mantissa, exponent] = exp.split('e');
-                    const expNum = parseInt(exponent, 10);
-                    return `${mantissa}×10<sup>${expNum}</sup>`;
-                }
-                return num % 1 !== 0 ? num.toFixed(4) : String(num);
-            }
-
+            // Handle string values
             if (stat.valueString !== undefined && stat.valueString !== '') {
                 value = stat.valueString;
             }
@@ -1590,25 +1231,20 @@ async function openImageDetailModal(cell: HTMLElement) {
                 if (stat.value.length === 1) {
                     // Single scalar value
                     const num = stat.value[0];
-                    if (typeof num === 'number' && stat.name && stat.name.includes('loss')) {
-                        value = formatSmartNumber(num);
-                    } else {
-                        value = typeof num === 'number' && num % 1 !== 0
-                            ? num.toFixed(4)
-                            : String(num);
-                    }
+                    value = typeof num === 'number' && num % 1 !== 0
+                        ? num.toFixed(4)
+                        : String(num);
                 } else {
                     // Array of values - show first few
                     value = stat.value.slice(0, 3).map((v: number) =>
-                        (typeof v === 'number' && stat.name && stat.name.includes('loss'))
-                            ? formatSmartNumber(v)
-                            : (typeof v === 'number' && v % 1 !== 0 ? v.toFixed(2) : String(v))
+                        typeof v === 'number' && v % 1 !== 0 ? v.toFixed(2) : String(v)
                     ).join(', ');
                     if (stat.value.length > 3) {
                         value += '...';
                     }
                 }
-            } else {
+            }
+            else {
                 value = '-';
             }
 
@@ -1623,13 +1259,6 @@ async function openImageDetailModal(cell: HTMLElement) {
     // Show the modal
     imageDetailModal.classList.add('visible');
     document.body.style.overflow = 'hidden';
-
-    // Trigger size adjustment for modal action buttons
-    try {
-        modalImage.dispatchEvent(new Event('load'));
-    } catch (e) {
-        // ignore
-    }
 
     // Now fetch full resolution image in background
     try {
@@ -1746,7 +1375,6 @@ async function openImageDetailModal(cell: HTMLElement) {
 function closeImageDetailModal() {
     imageDetailModal.classList.remove('visible');
     document.body.style.overflow = ''; // Restore scrolling
-    currentModalRecord = null;
 }
 
 // Close button
@@ -1770,110 +1398,82 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-// // Add double-click event listener to grid cells
-// grid.addEventListener('dblclick', (e) => {
-//     const target = e.target as HTMLElement;
-//     const cell = target.closest('.cell') as HTMLElement | null;
+// Add double-click event listener to grid cells
+grid.addEventListener('dblclick', (e) => {
+    const target = e.target as HTMLElement;
+    const cell = target.closest('.cell') as HTMLElement | null;
 
-//     if (cell) {
-//         openImageDetailModal(cell);
-//     }
-// });
+    if (cell) {
+        openImageDetailModal(cell);
+    }
+});
 
 // =============================================================================
 
 
 
-let autoRefreshTimer: NodeJS.Timeout | null = null;
-let autoRefreshEnabled = false;
-
-function setupAutoRefresh() {
-    const checkbox = document.getElementById('auto-refresh-checkbox') as HTMLInputElement;
-    if (!checkbox) return;
-
-    // Enable auto-refresh by default
-    autoRefreshEnabled = true;
-    checkbox.checked = true;
-    startAutoRefresh();
-
-    checkbox.addEventListener('change', () => {
-        autoRefreshEnabled = checkbox.checked;
-        if (autoRefreshEnabled) {
-            startAutoRefresh();
-        } else {
-            stopAutoRefresh();
-        }
-    });
-}
-
-async function startAutoRefresh() {
-    stopAutoRefresh();
-    const interval = 15; // seconds
-    // On each interval, refresh the sample count, slider, grid size, and agent status
-    autoRefreshTimer = setInterval(async () => {
-        await Promise.all([
-            refreshGridAndCounts(),
-            freezeInputIfAgentUnavailable()
-        ]);
-    }, interval * 1000);
-}
-
-// This function mimics a full manual refresh (F5) for grid, slider, and sample counts
-async function refreshGridAndCounts() {
-    try {
-        // 1. Update loader splits (availableSplits) and color pickers if new splits are detected
-        await fetchAndCreateSplitColorPickers();
-
-        // 2. Query for the latest sample count and update slider/grid
-        const request: DataQueryRequest = { query: '', accumulate: false, isNaturalLanguage: true };
-        const response: DataQueryResponse = await dataClient.applyDataQuery(request).response;
-        const sampleCount = response.numberOfAllSamples;
-        let currentStartIndex = traversalPanel.getStartIndex();
-        const gridCount = gridManager.calculateGridDimensions().gridCount;
-        if (sampleCount === 0) {
-            currentStartIndex = 0;
-        } else if (currentStartIndex >= sampleCount) {
-            currentStartIndex = Math.max(0, sampleCount - gridCount);
-        } else if (currentStartIndex + gridCount > sampleCount) {
-            currentStartIndex = Math.max(0, sampleCount - gridCount);
-        }
-        traversalPanel.updateSampleCounts(
-            response.numberOfAllSamples,
-            response.numberOfSamplesInTheLoop
-        );
-        traversalPanel.setStartIndex(currentStartIndex);
-
-        // 3. Update grid samples
-        await fetchAndDisplaySamples();
-    } catch (error) {
-        console.error('[AutoRefresh] Failed to refresh grid, counts, or splits:', error);
-    }
-}
-
-function stopAutoRefresh() {
-    if (autoRefreshTimer) {
-        clearInterval(autoRefreshTimer);
-        autoRefreshTimer = null;
-    }
-}
-
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         initializeDarkMode();
         initializeUIElements();
-        setupAutoRefresh();
     });
 } else {
     initializeDarkMode();
     initializeUIElements();
-    setupAutoRefresh();
+}
+
+// Helper to manage visual state of active brush
+function setActiveBrush(tag: string) {
+    if (activeBrushTags.has(tag)) {
+        activeBrushTags.delete(tag);
+    } else {
+        activeBrushTags.add(tag);
+    }
+
+    // Update visual state of chips
+    const chips = document.querySelectorAll('.tag-chip');
+    chips.forEach(chip => {
+        const t = (chip as HTMLElement).dataset.tag;
+        if (t && activeBrushTags.has(t)) {
+            chip.classList.add('active');
+        } else {
+            chip.classList.remove('active');
+        }
+    });
+
 }
 
 function updateUniqueTags(tags: string[]) {
-    uniqueTags = tags || [];
+    // Filter out None, null, undefined, empty strings, and whitespace-only strings
+    uniqueTags = (tags || []).filter(t => t && t.trim() !== '' && t !== 'None');
+
+    // 1. Update existing tags datalist (for tagging modal)
     const datalist = document.getElementById('existing-tags');
     if (datalist) {
         datalist.innerHTML = uniqueTags.map(t => `<option value="${t}">`).join('');
+    }
+
+    // 2. Update Painter Mode Tag List (Chips)
+    const tagsContainer = document.getElementById('painter-tags-list');
+    if (tagsContainer) {
+        if (uniqueTags.length === 0) {
+            tagsContainer.innerHTML = '<div class="empty-state">No tags found</div>';
+        } else {
+            tagsContainer.innerHTML = '';
+            uniqueTags.forEach(tag => {
+                const chip = document.createElement('div');
+                chip.className = 'tag-chip';
+                if (activeBrushTags.has(tag)) chip.classList.add('active');
+                chip.dataset.tag = tag;
+                chip.textContent = tag;
+
+                chip.onclick = (e) => {
+                    setActiveBrush(tag);
+                };
+
+                tagsContainer.appendChild(chip);
+            });
+        }
     }
 }
 
@@ -2079,5 +1679,89 @@ async function removeTag(sampleIds: number[], origins: string[]) {
         }
     } catch (error) {
         alert(`Error removing tag: ${error}`);
+    }
+}
+// Helper to get origin string
+function getRecordOrigin(record: any): string {
+    const originStat = record.dataStats.find((s: any) => s.name === 'origin');
+    return originStat?.valueString || 'train'; // default
+}
+
+async function paintCell(cell: HTMLElement) {
+    if (activeBrushTags.size === 0) return;
+
+    const gridCell = getGridCell(cell);
+    if (!gridCell) return;
+
+    const record = gridCell.getRecord();
+    if (!record) return;
+
+    // Check current tags
+    const tagsStat = record.dataStats.find((s: any) => s.name === 'tags');
+    const currentTagsStr = tagsStat?.valueString || "";
+    // Filter out None, empty strings, and whitespace-only strings
+    const currentTags = currentTagsStr
+        .split(',')
+        .map((t: string) => t.trim())
+        .filter((t: string) => t && t !== 'None');
+
+    if (isPainterRemoveMode) {
+        // REMOVE MODE: Remove any selected tags that exist
+        const tagsToRemove = Array.from(activeBrushTags).filter(t => currentTags.includes(t));
+        if (tagsToRemove.length === 0) return;
+
+        const newTags = currentTags.filter(t => !tagsToRemove.includes(t));
+        const newTagsStr = newTags.join(', ');
+
+        // Optimistic update
+        gridCell.updateStats({ "tags": newTagsStr });
+
+        // Send remove requests
+        tagsToRemove.forEach(tag => {
+            const request: DataEditsRequest = {
+                statName: "tags",
+                floatValue: 0,
+                stringValue: tag,
+                boolValue: false,
+                type: SampleEditType.EDIT_REMOVE,
+                samplesIds: [record.sampleId],
+                sampleOrigins: [getRecordOrigin(record)]
+            };
+
+            dataClient.editDataSample(request).response.then(r => {
+                if (!r.success) {
+                    console.error(`Remove failed for tag ${tag}:`, r.message);
+                }
+            });
+        });
+    } else {
+        // ADD MODE: Add selected tags that don't exist
+        const tagsToAdd = Array.from(activeBrushTags).filter(t => !currentTags.includes(t));
+        if (tagsToAdd.length === 0) return;
+
+        const newTags = [...currentTags, ...tagsToAdd];
+        const newTagsStr = newTags.join(', ');
+
+        // Optimistic update
+        gridCell.updateStats({ "tags": newTagsStr });
+
+        // Send add requests
+        tagsToAdd.forEach(tag => {
+            const request: DataEditsRequest = {
+                statName: "tags",
+                floatValue: 0,
+                stringValue: tag,
+                boolValue: false,
+                type: SampleEditType.EDIT_ACCUMULATE,
+                samplesIds: [record.sampleId],
+                sampleOrigins: [getRecordOrigin(record)]
+            };
+
+            dataClient.editDataSample(request).response.then(r => {
+                if (!r.success) {
+                    console.error(`Paint failed for tag ${tag}:`, r.message);
+                }
+            });
+        });
     }
 }
