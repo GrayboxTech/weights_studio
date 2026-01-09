@@ -500,17 +500,51 @@ export async function initializeUIElements() {
         }
     });
 
-    // Close history when clicking outside
+    // Global click handler: close popups/panels when clicking outside
     document.addEventListener('click', (e) => {
-        const panel = document.getElementById('chat-history-panel');
+        const target = e.target as HTMLElement;
+        
+        // Close chat history panel when clicking outside
+        const chatPanel = document.getElementById('chat-history-panel');
         const inputContainer = document.querySelector('.chat-input-container');
-        const toggleBtn = document.getElementById('toggle-history');
-        if (panel && panel.style.display === 'flex' && inputContainer) {
-            const target = e.target as HTMLElement;
-            // If click is NOT inside panel AND NOT inside input, close it
-            if (!panel.contains(target) && !inputContainer.contains(target)) {
-                panel.style.display = 'none';
-                if (toggleBtn) toggleBtn.classList.remove('active');
+        const toggleHistoryBtn = document.getElementById('toggle-history');
+        if (chatPanel && chatPanel.style.display === 'flex' && inputContainer) {
+            // If click is NOT inside panel AND NOT inside input container, close it
+            if (!chatPanel.contains(target) && !inputContainer.contains(target)) {
+                chatPanel.style.display = 'none';
+                if (toggleHistoryBtn) toggleHistoryBtn.classList.remove('active');
+            }
+        }
+
+        // Close grid settings panel when clicking outside
+        const gridSettingsToggle = document.getElementById('grid-settings-toggle');
+        const viewControls = document.getElementById('view-controls');
+        if (viewControls && !viewControls.classList.contains('collapsed')) {
+            // If click is NOT inside view controls AND NOT the toggle button itself, collapse it
+            if (!viewControls.contains(target) && target !== gridSettingsToggle && !gridSettingsToggle?.contains(target)) {
+                viewControls.classList.add('collapsed');
+            }
+        }
+
+        // Close inspector details panel when clicking outside (optional - only if it's in a modal/floating state)
+        const optionsPanel = document.getElementById('options-panel');
+        const detailsBody = document.getElementById('details-body');
+        const detailsToggle = document.getElementById('details-toggle');
+        
+        // Only auto-collapse if the panel is visible and click is outside
+        if (optionsPanel && detailsBody && !detailsBody.classList.contains('collapsed')) {
+            const inspectorContainer = document.querySelector('.inspector-container');
+            // Don't collapse if clicking within the inspector or its controls
+            if (inspectorContainer && !inspectorContainer.contains(target)) {
+                // Only collapse if clicking in the main content area (not in training card or other UI)
+                const mainContent = document.querySelector('.main-content');
+                if (mainContent?.contains(target)) {
+                    detailsBody.classList.add('collapsed');
+                    if (detailsToggle) {
+                        detailsToggle.textContent = 'v';
+                        detailsToggle.classList.add('collapsed');
+                    }
+                }
             }
         }
     });
@@ -2063,6 +2097,15 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
             cleanup();
         }
     };
+    
+    // Add backdrop click handler to close modal
+    const backdropClickHandler = (e: MouseEvent) => {
+        if (e.target === modal || (e.target as HTMLElement).classList.contains('modal-backdrop')) {
+            cleanup();
+            modal?.removeEventListener('click', backdropClickHandler);
+        }
+    };
+    modal?.addEventListener('click', backdropClickHandler);
 }
 
 async function removeTag(sampleIds: number[], origins: string[]) {
