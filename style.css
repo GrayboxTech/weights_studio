@@ -108,14 +108,7 @@ body.dark-mode {
       rgba(243, 244, 246, 0.92));
   border-bottom: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-subtle);
-  z-index: 100;
-}
-
-/* Left controls container */
-.header-controls-left {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+  z-index: 10;
 }
 
 body.dark-mode .app-header {
