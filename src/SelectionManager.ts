@@ -10,17 +10,14 @@ export class SelectionManager {
     private startX = 0;
     private startY = 0;
     private selectionBox: HTMLElement | null = null;
-    private gridElement: HTMLElement;
+    private gridElement: HTMLElement | null = null;
     private dragThreshold = 5;
     private hasMoved = false;
     private clickedCell: GridCell | null = null; // Track the cell clicked on mousedown
-    private allCells: GridCell[] = []; // Track all cells for range selection
 
     constructor(container: HTMLElement) {
         this.container = container;
-        // The container itself is the grid element
-        this.gridElement = container;
-        console.log('[SelectionManager] Initialized - Version 2.1');
+        this.gridElement = this.container.querySelector('.grid');
         this.setupEventListeners();
     }
 
@@ -103,10 +100,6 @@ export class SelectionManager {
         return this.lastSelectedCell;
     }
 
-    public setAllCells(cells: GridCell[]): void {
-        this.allCells = cells;
-    }
-
     private logSelectionState(caller: string): void {
         const selectedSampleIds = Array.from(this.selectedCells)
             .map(cell => cell.getRecord()?.sampleId)
@@ -154,30 +147,9 @@ export class SelectionManager {
                 e.preventDefault();
                 this.clickedCell = cell;
 
-                // Shift+Click: select range from last selected to this cell
-                if (e.shiftKey && this.lastSelectedCell && this.allCells.length > 0) {
-                    const lastIndex = this.allCells.indexOf(this.lastSelectedCell);
-                    const currentIndex = this.allCells.indexOf(cell);
-                    
-                    if (lastIndex !== -1 && currentIndex !== -1) {
-                        // Don't clear selection if Ctrl is also pressed
-                        if (!e.ctrlKey && !e.metaKey) {
-                            this.clearSelection();
-                        }
-                        this.selectRange(this.lastSelectedCell, cell, this.allCells);
-                        this.setLastSelectedCell(cell);
-                        this.isDragging = false;
-                        return;
-                    }
-                } else if (e.shiftKey) {
-                    // Shift was pressed but no previous selection or allCells not set
-                    // Fall through to regular click handling
-                }
-
                 // Ctrl/Cmd+Click: toggle selection
                 if (e.ctrlKey || e.metaKey) {
                     this.toggleCellSelection(cell);
-                    this.setLastSelectedCell(cell);
                     this.isDragging = false;
                     return;
                 }
@@ -192,7 +164,6 @@ export class SelectionManager {
                 // Regular click on unselected cell: clear and select this cell
                 this.clearSelection();
                 this.addCellToSelection(cell);
-                this.setLastSelectedCell(cell);
             }
         } else {
             // Clicking on empty space: clear selection and prepare for box select

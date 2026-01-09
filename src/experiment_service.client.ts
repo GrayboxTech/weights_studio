@@ -4,6 +4,7 @@
 import type { RpcTransport } from "@protobuf-ts/runtime-rpc";
 import type { ServiceInfo } from "@protobuf-ts/runtime-rpc";
 import { ExperimentService } from "./experiment_service";
+import type { AgentHealthResponse } from "./experiment_service";
 import type { DataEditsResponse } from "./experiment_service";
 import type { DataEditsRequest } from "./experiment_service";
 import type { DataSamplesResponse } from "./experiment_service";
@@ -68,6 +69,10 @@ export interface IExperimentServiceClient {
      * @generated from protobuf rpc: EditDataSample
      */
     editDataSample(input: DataEditsRequest, options?: RpcOptions): UnaryCall<DataEditsRequest, DataEditsResponse>;
+    /**
+     * @generated from protobuf rpc: CheckAgentHealth
+     */
+    checkAgentHealth(input: Empty, options?: RpcOptions): UnaryCall<Empty, AgentHealthResponse>;
 }
 /**
  * @generated from protobuf service ExperimentService
@@ -142,5 +147,12 @@ export class ExperimentServiceClient implements IExperimentServiceClient, Servic
     editDataSample(input: DataEditsRequest, options?: RpcOptions): UnaryCall<DataEditsRequest, DataEditsResponse> {
         const method = this.methods[8], opt = this._transport.mergeOptions(options);
         return stackIntercept<DataEditsRequest, DataEditsResponse>("unary", this._transport, method, opt, input);
+    }
+    /**
+     * @generated from protobuf rpc: CheckAgentHealth
+     */
+    checkAgentHealth(input: Empty, options?: RpcOptions): UnaryCall<Empty, AgentHealthResponse> {
+        const method = this.methods[9], opt = this._transport.mergeOptions(options);
+        return stackIntercept<Empty, AgentHealthResponse>("unary", this._transport, method, opt, input);
     }
 }
