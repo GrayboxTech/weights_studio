@@ -39,7 +39,24 @@
               <span id="training-state-pill" class="pill pill-paused">Paused</span>
             </div>
             <div class="card-body">
-              <div id="training-summary" class="training-summary">-</div>
+              <div id="training-summary" class="training-summary">
+                <div id="training-metrics" class="training-metrics">
+                  <!-- Metrics will be populated here -->
+                </div>
+                <div class="training-progress-container">
+                  <div class="progress-info-row">
+                    <div class="training-steps">
+                      <span id="training-current-step">0</span> / <span id="training-total-steps">---</span> epochs
+                    </div>
+                    <div class="training-percentage">
+                      <span id="training-percentage-text">0%</span>
+                    </div>
+                  </div>
+                  <div class="progress-bar-container">
+                    <div id="training-progress-bar" class="progress-bar-fill" style="width: 0%"></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -142,9 +159,21 @@
           <!-- Content Header: Chat -->
           <div class="content-header">
             <div class="chat-input-container">
-              <input type="text" id="chat-input"
-                placeholder="drop 50% of the samples with losses between 1.4 and 1.9" />
+              <input type="text" id="chat-input" placeholder="Ask a question or describe a filter..." />
+              <button id="toggle-history" class="toggle-history-button" title="Toggle chat history (Ctrl+H)">💬</button>
               <button id="chat-send" class="chat-send-button">Send</button>
+            </div>
+            <!-- Chat History Panel (Floating) -->
+            <div id="chat-history-panel" class="chat-history-panel">
+              <div class="resize-handle resize-left"></div>
+              <div class="resize-handle resize-bottom"></div>
+              <div class="resize-handle resize-bottom-left"></div>
+              <div class="chat-history-list" id="chat-history-list">
+                <!-- Messages injected here -->
+              </div>
+              <div class="chat-history-footer">
+                <button class="chat-history-clear" id="chat-history-clear">Clear History</button>
+              </div>
             </div>
           </div>
 
