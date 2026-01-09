@@ -108,7 +108,6 @@ body.dark-mode {
   border-bottom: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-subtle);
   z-index: 10;
-  backdrop-filter: blur(18px);
 }
 
 /* Left controls container */
@@ -222,7 +221,6 @@ body.dark-mode .logo-link:hover {
   justify-content: center;
   gap: 6px;
   box-shadow: var(--shadow-subtle);
-  backdrop-filter: blur(14px);
   transition: all var(--transition-speed);
   z-index: 15;
   white-space: nowrap;
@@ -260,7 +258,6 @@ body.dark-mode .grid-settings-toggle:hover {
       rgba(243, 244, 246, 0.98));
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  backdrop-filter: blur(18px);
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15);
   margin: 0;
   overflow: hidden;
@@ -405,7 +402,6 @@ body.dark-mode .view-controls {
   border: 1px solid var(--border-subtle);
   cursor: pointer;
   color: var(--secondary-text-color);
-  backdrop-filter: blur(14px);
   transition: background-color var(--transition-speed), color var(--transition-speed),
     border-color var(--transition-speed), box-shadow var(--transition-speed),
     transform var(--transition-speed);
@@ -445,7 +441,6 @@ body.dark-mode .view-controls {
     background-color var(--transition-speed);
   -webkit-appearance: none;
   appearance: none;
-  backdrop-filter: blur(14px);
 }
 
 /* Make zoom select same width as cell size input */
@@ -599,7 +594,6 @@ body.segmentation-mode [data-section='segmentation'] {
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
   transition: opacity var(--transition-speed);
   z-index: 2;
-  backdrop-filter: blur(12px);
 }
 
 .slider-wrapper:hover #slider-tooltip {
@@ -622,7 +616,6 @@ body.segmentation-mode [data-section='segmentation'] {
   border-top: 1px solid var(--border-subtle);
   box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
   z-index: 10;
-  backdrop-filter: blur(18px);
 }
 
 body.dark-mode .bottom-bar {
@@ -660,7 +653,6 @@ body.dark-mode .bottom-bar {
   font-size: 0.9rem;
   transition: border-color var(--transition-speed), box-shadow var(--transition-speed),
     background-color var(--transition-speed);
-  backdrop-filter: blur(14px);
 }
 
 #chat-input:focus {
@@ -737,7 +729,6 @@ body.dark-mode #chat-input:focus {
   box-sizing: border-box;
 
   background: radial-gradient(circle at top, rgba(229, 231, 235, 0.85), rgba(249, 250, 251, 0.85));
-  backdrop-filter: blur(14px);
 
   justify-content: center;
   align-content: start;
@@ -882,7 +873,6 @@ body.dark-mode .cell .cell-label {
   display: flex;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(18px);
   color: var(--secondary-text-color);
 }
 
@@ -931,7 +921,6 @@ body.dark-mode .toggle-button:hover {
   width: 280px;
   max-width: 280px;
   max-height: calc(100vh - 220px);
-  backdrop-filter: blur(18px);
   overflow-y: auto;
 }
 
@@ -965,7 +954,6 @@ body.dark-mode .options-panel {
   color: var(--primary-text-color);
   outline: none;
   transition: box-shadow var(--transition-speed), border-color var(--transition-speed);
-  backdrop-filter: blur(14px);
 }
 
 .inspector-search:focus {
@@ -1300,7 +1288,6 @@ body.dark-mode .inspector-search {
   z-index: 1000;
   min-width: 180px;
   display: none;
-  backdrop-filter: blur(18px);
 }
 
 .context-menu.visible {
@@ -1366,7 +1353,6 @@ body.dark-mode .inspector-search {
   background: rgba(255, 255, 255, 0.85);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  backdrop-filter: blur(14px);
   height: 36px;
   box-sizing: border-box;
 }
@@ -1625,7 +1611,6 @@ body.dark-mode .training-card {
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  backdrop-filter: blur(14px);
   transition: background-color var(--transition-speed), color var(--transition-speed),
     border-color var(--transition-speed), box-shadow var(--transition-speed),
     transform var(--transition-speed);
@@ -1769,15 +1754,11 @@ body.dark-mode .pill-paused::before {
   right: 0;
   bottom: 0;
   background: rgba(15, 23, 42, 0.35);
-  /* Sophisticated dark tint instead of solid black */
-  backdrop-filter: blur(14px);
-  /* Increased blur for more elegance */
 }
 
 .tagging-modal .modal-backdrop {
   background: rgba(255, 255, 255, 0.4);
   /* Much lighter for the smaller modal */
-  backdrop-filter: blur(10px);
 }
 
 body.dark-mode .tagging-modal .modal-backdrop {
@@ -2326,10 +2307,10 @@ body.dark-mode .control-button.danger {
   color: var(--primary-text-color);
 }
 
-/* Re-implementing the switch slider visual specifically for this context if needed, 
-   but reusing existing .switch span pattern is reliable if structural assumption holds. 
-   The HTML uses <span class="slider-round"></span> which differs from the default <span class></span> 
-   in other parts of index.html? 
+/* Re-implementing the switch slider visual specifically for this context if needed,
+   but reusing existing .switch span pattern is reliable if structural assumption holds.
+   The HTML uses <span class="slider-round"></span> which differs from the default <span class></span>
+   in other parts of index.html?
    Let's check the default switch css. It usually expects input + span.
 */
 .painter-switch input {
@@ -3216,7 +3197,6 @@ body.dark-mode #cells-grid.painter-active {
 /* --- Tagger Panel Dark Mode Fix --- */
 body.dark-mode .tagger-card {
   background: rgba(26, 26, 26, 0.72) !important;
-  backdrop-filter: blur(18px);
   border-color: var(--border-color) !important;
 }
 
