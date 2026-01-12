@@ -21,10 +21,9 @@
         </div>
 
         <div class="header-branding">
-          <span class="branding-text">weights-studio by</span>
+          <span class="branding-text">Weights-Studio by</span>
           <a href="https://www.graybx.com/" target="_blank" class="logo-link">
-            <img src="./logo.png" alt="Graybx Logo" class="logo-img">
-            <span class="logo-text">Graybx</span>
+            <img id="logo-img" src="./images/lightmode/logo.png" alt="Graybx Logo" class="logo-img">
           </a>
         </div>
       </div>
@@ -39,7 +38,62 @@
               <span id="training-state-pill" class="pill pill-paused">Paused</span>
             </div>
             <div class="card-body">
-              <div id="training-summary" class="training-summary">-</div>
+              <div id="training-summary" class="training-summary">
+                <div id="training-metrics" class="training-metrics">
+                  <!-- Metrics will be populated here -->
+                </div>
+                <div class="training-progress-container">
+                  <div class="progress-info-row">
+                    <div class="training-steps">
+                      <span id="training-current-step">0</span> / <span id="training-total-steps">---</span> epochs
+                    </div>
+                    <div class="training-percentage">
+                      <span id="training-percentage-text">0%</span>
+                    </div>
+                  </div>
+                  <div class="progress-bar-container">
+                    <div id="training-progress-bar" class="progress-bar-fill" style="width: 0%"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAGGER PANEL -->
+          <div class="card tagger-card">
+            <div class="card-header tagger-header compact-header">
+              <div class="inspector-title">Tags</div>
+              <div class="header-controls">
+                <div class="mode-switcher">
+                  <button id="mode-add" class="mode-btn active" title="Add Tags">+</button>
+                  <button id="mode-remove" class="mode-btn" title="Remove Tags">−</button>
+                </div>
+                <span class="mode-label">Painter</span>
+                <label class="switch compact" title="Toggle Painter Mode">
+                  <input type="checkbox" id="painter-toggle">
+                  <span></span>
+                </label>
+              </div>
+            </div>
+            <div class="card-body tagger-body compact-body">
+              <!-- Tag List -->
+              <div id="painter-tags-list" class="tags-list compact-list">
+                <div class="empty-state">No tags</div>
+              </div>
+
+              <!-- Add New Tag Footer -->
+              <div class="tagger-footer">
+                <div class="add-tag-input-wrapper compact-input">
+                  <input type="text" id="new-tag-input" class="new-tag-input" placeholder="New tag...">
+                  <button id="painter-new-tag" class="add-tag-btn" title="Add">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -142,9 +196,21 @@
           <!-- Content Header: Chat -->
           <div class="content-header">
             <div class="chat-input-container">
-              <input type="text" id="chat-input"
-                placeholder="drop 50% of the samples with losses between 1.4 and 1.9" />
+              <input type="text" id="chat-input" placeholder="Ask a question or describe a filter..." />
+              <button id="toggle-history" class="toggle-history-button" title="Toggle chat history (Ctrl+H)">💬</button>
               <button id="chat-send" class="chat-send-button">Send</button>
+            </div>
+            <!-- Chat History Panel (Floating) -->
+            <div id="chat-history-panel" class="chat-history-panel">
+              <div class="resize-handle resize-left"></div>
+              <div class="resize-handle resize-bottom"></div>
+              <div class="resize-handle resize-bottom-left"></div>
+              <div class="chat-history-list" id="chat-history-list">
+                <!-- Messages injected here -->
+              </div>
+              <div class="chat-history-footer">
+                <button class="chat-history-clear" id="chat-history-clear">Clear History</button>
+              </div>
             </div>
           </div>
 

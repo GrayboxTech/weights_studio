@@ -37,7 +37,7 @@ export class GridCell {
 
     constructor(width: number, height: number) {
         this.element = document.createElement('div');
-        this.element.className = 'cell';
+        this.element.className = 'cell empty';
         this.element.style.width = `${width}px`;
         this.element.style.height = `${height}px`;
 
@@ -95,6 +95,7 @@ export class GridCell {
     populate(record: DataRecord, displayPreferences: DisplayPreferences): void {
         this.record = record;
         this.displayPreferences = displayPreferences;
+        this.element.classList.remove('empty');
         this.updateLabel();
         this.updateBorderColor();
 
@@ -406,6 +407,7 @@ export class GridCell {
         this.label.textContent = '';
         this.element.style.border = ''; // Reset border
         this.element.classList.remove('discarded');
+        this.element.classList.add('empty');
     }
 
     public updateDisplay(displayPreferences: DisplayPreferences): void {

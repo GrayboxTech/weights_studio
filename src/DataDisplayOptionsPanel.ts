@@ -60,6 +60,44 @@ export class DataDisplayOptionsPanel {
     private classIds: number[] = [];
     private isSegmentationDataset = false;
 
+    private updateOverlayToggleAvailability(hasGtMask: boolean, hasPredMask: boolean): void {
+        const toggleGt = document.getElementById('toggle-gt') as HTMLInputElement | null;
+        const togglePred = document.getElementById('toggle-pred') as HTMLInputElement | null;
+        const toggleDiff = document.getElementById('toggle-diff') as HTMLInputElement | null;
+
+        const isSegmentation = this.isSegmentationDataset;
+
+        const gtDisabled = !isSegmentation || !hasGtMask;
+        const predDisabled = !isSegmentation || !hasPredMask;
+        const diffDisabled = !isSegmentation || !hasGtMask || !hasPredMask;
+
+        const applyState = (el: HTMLInputElement | null, disabled: boolean, reason: string) => {
+            if (!el) return;
+            el.disabled = disabled;
+            if (disabled) {
+                el.checked = false;
+            }
+            const label = el.closest('label');
+            if (label) {
+                label.classList.toggle('disabled', disabled);
+                if (disabled) {
+                    label.setAttribute('title', reason);
+                } else {
+                    label.removeAttribute('title');
+                }
+            }
+        };
+
+        const segmentationMsg = 'Disabled: no segmentation data for this batch.';
+        const gtMsg = !isSegmentation ? segmentationMsg : 'Disabled: no ground-truth mask present.';
+        const predMsg = !isSegmentation ? segmentationMsg : 'Disabled: no prediction mask present.';
+        const diffMsg = !isSegmentation ? segmentationMsg : 'Disabled: need both ground-truth and prediction masks.';
+
+        applyState(toggleGt, gtDisabled, gtMsg);
+        applyState(togglePred, predDisabled, predMsg);
+        applyState(toggleDiff, diffDisabled, diffMsg);
+    }
+
     constructor(container: HTMLElement) {
         this.element = container;
         this.setupControlListeners();
@@ -109,6 +147,23 @@ export class DataDisplayOptionsPanel {
             return;
         }
 
+        // Determine availability of segmentation artifacts across provided records
+        let hasGtMask = false;
+        let hasPredMask = false;
+
+        dataRecords.forEach(record => {
+            if (record.dataStats) {
+                for (const stat of record.dataStats) {
+                    if (stat.name === "label") {
+                        hasGtMask = true;
+                    }
+                    if (stat.name === "pred_mask") {
+                        hasPredMask = true;
+                    }
+                }
+            }
+        });
+
         const currentPrefs = this.getDisplayPreferences();
         const availableFields = new Set<string>();
 
@@ -150,6 +205,7 @@ export class DataDisplayOptionsPanel {
         }
 
         if (!hasNewFields && this.element.children.length > 0) {
+            this.updateOverlayToggleAvailability(hasGtMask, hasPredMask);
             return;
         }
 
@@ -171,6 +227,9 @@ export class DataDisplayOptionsPanel {
                 defaultCheckedFields.delete(field);
             }
         }
+
+        // Update overlay toggle availability after rebuilding the panel
+        this.updateOverlayToggleAvailability(hasGtMask, hasPredMask);
 
         // Sort fields for better organization (same order as modal)
         const sortedFields = Array.from(availableFields).sort((a, b) => {

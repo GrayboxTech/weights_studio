@@ -13,6 +13,7 @@ import {
     TrainerCommand,
     HyperParameterCommand,
     HyperParameters,
+    AgentIntentType,
 } from "./experiment_service";
 import { DataDisplayOptionsPanel, SplitColors } from "./DataDisplayOptionsPanel";
 import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteractionsPanel";
@@ -51,6 +52,49 @@ let isPainterMode = false;
 let isPainterRemoveMode = false;
 let activeBrushTags = new Set<string>();
 
+
+
+// --- Chat History Helper ---
+function addChatMessage(text: string, type: 'user' | 'agent', isTyping: boolean = false): HTMLElement | null {
+    const list = document.getElementById('chat-history-list');
+    const panel = document.getElementById('chat-history-panel');
+    if (!list || !panel) return null;
+
+    // Ensure panel is visible
+    panel.style.display = 'flex';
+
+    const item = document.createElement('div');
+    item.className = `history-item ${type}`;
+    if (isTyping) item.classList.add('is-typing');
+
+    // Timestamp
+    const meta = document.createElement('span');
+    meta.className = 'msg-meta';
+    const now = new Date();
+    meta.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Bubble
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+
+    if (isTyping) {
+        bubble.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+    } else if (type === 'agent') {
+        // Simple heuristic to highlight numbers or code-like tokens
+        bubble.innerHTML = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+    } else {
+        bubble.textContent = text;
+    }
+
+    item.appendChild(meta);
+    item.appendChild(bubble);
+    list.appendChild(item);
+
+    // Scroll to bottom
+    list.scrollTop = list.scrollHeight;
+
+    return item;
+}
 
 
 function getSplitColors(): SplitColors {
@@ -237,6 +281,21 @@ async function handleQuerySubmit(query: string): Promise<void> {
     try {
         const request: DataQueryRequest = { query, accumulate: false, isNaturalLanguage: true };
         const response: DataQueryResponse = await dataClient.applyDataQuery(request).response;
+
+        // Handle Analysis Intent (Chat Mode)
+        if (response.agentIntentType === AgentIntentType.INTENT_ANALYSIS) {
+            addChatMessage(response.analysisResult || "Analysis complete.", 'agent');
+            return; // Do not refresh grid for analysis queries
+        }
+
+        // Handle Filter Intent (Grid Mode)
+        // If there is a meaningful message, log it to chat
+        if (response.message && response.message !== "Reset view to base dataset") {
+            addChatMessage(response.message, 'agent');
+        } else if (response.message === "Reset view to base dataset") {
+            addChatMessage("Reset view to full dataset.", 'agent');
+        }
+
         updateUniqueTags(response.uniqueTags);
         const sampleCount = response.numberOfAllSamples;
 
@@ -251,7 +310,6 @@ async function handleQuerySubmit(query: string): Promise<void> {
             currentStartIndex = Math.max(0, sampleCount - gridCount);
         }
 
-        // traversalPanel.setMaxSampleId(sampleCount > 0 ? sampleCount - 1 : 0);
         traversalPanel.updateSampleCounts(
             response.numberOfAllSamples,
             response.numberOfSamplesInTheLoop
@@ -261,6 +319,7 @@ async function handleQuerySubmit(query: string): Promise<void> {
         fetchAndDisplaySamples();
     } catch (error) {
         console.error('Error applying query:', error);
+        throw error;
     }
 }
 
@@ -343,10 +402,22 @@ export async function initializeUIElements() {
             chatSendBtn.textContent = 'Working...';
             chatInput.disabled = true;
 
+            // 1. Add User Message immediately
+            addChatMessage(query, 'user');
+            chatInput.value = '';
+
+            // 2. Add Typing indicator
+            const typingMsg = addChatMessage('', 'agent', true);
+
             try {
                 await handleQuerySubmit(query);
-                chatInput.value = '';
+            } catch (error: any) {
+                console.error("Query failed:", error);
+                // 3. Add Error Message to history
+                addChatMessage(`Error: ${error.message || "Unknown error"}`, 'agent');
             } finally {
+                // Remove typing indicator if it exists
+                if (typingMsg) typingMsg.remove();
                 // Reset state
                 chatSendBtn.disabled = false;
                 chatSendBtn.classList.remove('loading');
@@ -364,6 +435,15 @@ export async function initializeUIElements() {
                 await submitQuery();
             }
         });
+
+        // Auto-show history on focus if not empty
+        chatInput.addEventListener('focus', () => {
+            const list = document.getElementById('chat-history-list');
+            const panel = document.getElementById('chat-history-panel');
+            if (list && list.children.length > 0 && panel) {
+                panel.style.display = 'flex';
+            }
+        });
     }
 
     if (chatSendBtn) {
@@ -371,6 +451,207 @@ export async function initializeUIElements() {
             await submitQuery();
         });
     }
+
+    // Clear History Button
+    const clearBtn = document.getElementById('chat-history-clear');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            const list = document.getElementById('chat-history-list');
+            const panel = document.getElementById('chat-history-panel');
+            if (list) list.innerHTML = '';
+            if (panel) panel.style.display = 'none';
+
+            // Also deactivate toggle button
+            const toggleBtn = document.getElementById('toggle-history');
+            if (toggleBtn) toggleBtn.classList.remove('active');
+        });
+    }
+
+    // Toggle History Button
+    const toggleHistoryBtn = document.getElementById('toggle-history');
+    if (toggleHistoryBtn) {
+        toggleHistoryBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const panel = document.getElementById('chat-history-panel');
+            if (!panel) return;
+
+            const isVisible = panel.style.display === 'flex';
+            panel.style.display = isVisible ? 'none' : 'flex';
+            toggleHistoryBtn.classList.toggle('active', !isVisible);
+        });
+    }
+
+    // Keyboard shortcut: Ctrl+H to toggle history
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'h') {
+            e.preventDefault();
+            const toggleBtn = document.getElementById('toggle-history');
+            if (toggleBtn) toggleBtn.click();
+        }
+
+        // Escape to close
+        if (e.key === 'Escape') {
+            const panel = document.getElementById('chat-history-panel');
+            const toggleBtn = document.getElementById('toggle-history');
+            if (panel && panel.style.display === 'flex') {
+                panel.style.display = 'none';
+                if (toggleBtn) toggleBtn.classList.remove('active');
+            }
+        }
+    });
+
+    // Global click handler: close popups/panels when clicking outside
+    document.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        
+        // Close chat history panel when clicking outside
+        const chatPanel = document.getElementById('chat-history-panel');
+        const inputContainer = document.querySelector('.chat-input-container');
+        const toggleHistoryBtn = document.getElementById('toggle-history');
+        if (chatPanel && chatPanel.style.display === 'flex' && inputContainer) {
+            // If click is NOT inside panel AND NOT inside input container, close it
+            if (!chatPanel.contains(target) && !inputContainer.contains(target)) {
+                chatPanel.style.display = 'none';
+                if (toggleHistoryBtn) toggleHistoryBtn.classList.remove('active');
+            }
+        }
+
+        // Close grid settings panel when clicking outside
+        const gridSettingsToggle = document.getElementById('grid-settings-toggle');
+        const viewControls = document.getElementById('view-controls');
+        if (viewControls && !viewControls.classList.contains('collapsed')) {
+            // If click is NOT inside view controls AND NOT the toggle button itself, collapse it
+            if (!viewControls.contains(target) && target !== gridSettingsToggle && !gridSettingsToggle?.contains(target)) {
+                viewControls.classList.add('collapsed');
+            }
+        }
+
+        // Close inspector details panel when clicking outside (optional - only if it's in a modal/floating state)
+        const optionsPanel = document.getElementById('options-panel');
+        const detailsBody = document.getElementById('details-body');
+        const detailsToggle = document.getElementById('details-toggle');
+        
+        // Only auto-collapse if the panel is visible and click is outside
+        if (optionsPanel && detailsBody && !detailsBody.classList.contains('collapsed')) {
+            const inspectorContainer = document.querySelector('.inspector-container');
+            // Don't collapse if clicking within the inspector or its controls
+            if (inspectorContainer && !inspectorContainer.contains(target)) {
+                // Only collapse if clicking in the main content area (not in training card or other UI)
+                const mainContent = document.querySelector('.main-content');
+                if (mainContent?.contains(target)) {
+                    detailsBody.classList.add('collapsed');
+                    if (detailsToggle) {
+                        detailsToggle.textContent = 'v';
+                        detailsToggle.classList.add('collapsed');
+                    }
+                }
+            }
+        }
+    });
+
+    // Custom Resize Handles for Chat History Panel
+    const panel = document.getElementById('chat-history-panel');
+    const resizeLeft = document.querySelector('.resize-left') as HTMLElement;
+    const resizeBottom = document.querySelector('.resize-bottom') as HTMLElement;
+    const resizeBottomLeft = document.querySelector('.resize-bottom-left') as HTMLElement;
+
+    if (panel && resizeLeft) {
+        let isResizing = false;
+        let startX = 0;
+        let startWidth = 0;
+        let startRight = 0;
+
+        resizeLeft.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startX = e.clientX;
+            startWidth = panel.offsetWidth;
+            startRight = window.innerWidth - panel.getBoundingClientRect().right;
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            const dx = startX - e.clientX;
+            const newWidth = startWidth + dx;
+            if (newWidth >= 300 && newWidth <= window.innerWidth * 0.5) {
+                panel.style.width = newWidth + 'px';
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isResizing = false;
+        });
+    }
+
+    if (panel && resizeBottom) {
+        let isResizing = false;
+        let startY = 0;
+        let startHeight = 0;
+
+        resizeBottom.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startY = e.clientY;
+            startHeight = panel.offsetHeight;
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            const dy = e.clientY - startY;
+            const newHeight = startHeight + dy;
+            const minHeight = 200;
+            const maxHeight = window.innerHeight - 160;
+            if (newHeight >= minHeight && newHeight <= maxHeight) {
+                panel.style.height = newHeight + 'px';
+                panel.style.bottom = 'auto';
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isResizing = false;
+        });
+    }
+
+    if (panel && resizeBottomLeft) {
+        let isResizing = false;
+        let startX = 0;
+        let startY = 0;
+        let startWidth = 0;
+        let startHeight = 0;
+
+        resizeBottomLeft.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            startWidth = panel.offsetWidth;
+            startHeight = panel.offsetHeight;
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            const dx = startX - e.clientX;
+            const dy = e.clientY - startY;
+            const newWidth = startWidth + dx;
+            const newHeight = startHeight + dy;
+
+            if (newWidth >= 300 && newWidth <= window.innerWidth * 0.5) {
+                panel.style.width = newWidth + 'px';
+            }
+            const minHeight = 200;
+            const maxHeight = window.innerHeight - 160;
+            if (newHeight >= minHeight && newHeight <= maxHeight) {
+                panel.style.height = newHeight + 'px';
+                panel.style.bottom = 'auto';
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isResizing = false;
+        });
+    }
+
+
 
 
     inspectorContainer = document.querySelector('.inspector-container') as HTMLElement | null;
@@ -382,7 +663,7 @@ export async function initializeUIElements() {
 
     const toggleBtn = document.getElementById('toggle-training') as HTMLButtonElement | null;
     if (toggleBtn) {
-        const syncTrainingUI = () => {
+        const syncTrainingUI = async () => {
             if (toggleBtn) {
                 toggleBtn.textContent = isTraining ? 'Pause' : 'Resume';
                 toggleBtn.classList.toggle('running', isTraining);
@@ -393,11 +674,44 @@ export async function initializeUIElements() {
                 trainingStatePill.classList.toggle('pill-running', isTraining);
                 trainingStatePill.classList.toggle('pill-paused', !isTraining);
             }
-            if (trainingSummary) {
-                const gridCount = gridManager ? gridManager.getCells().length : traversalPanel.getLeftSamples();
-                const start = traversalPanel.getStartIndex();
-                const end = Math.max(start, start + gridCount - 1);
-                trainingSummary.textContent = `TBD: add training stats`;
+
+            // Fetch training_steps_to_do from hyperparameters
+            try {
+                const cmd = {
+                    getHyperParameters: true,
+                    getInteractiveLayers: false,
+                };
+                const resp = await dataClient.experimentCommand(cmd).response;
+                const params = resp.hyperParametersDescs || [];
+
+                // Prioritize 'total_training_steps' for the progress bar denominator.
+                // Fall back to 'training_left'/'training_steps_to_do' only if total is missing.
+                const stepsParam = params.find((p: any) => p.name === 'total_training_steps') ||
+                    params.find((p: any) =>
+                        p.name === 'training_left' ||
+                        p.name === 'training_steps_to_do' ||
+                        p.label === 'Left Training Steps' ||
+                        p.label === 'training_steps_to_do'
+                    );
+
+                if (stepsParam && stepsParam.numericalValue) {
+                    const newTotal = stepsParam.numericalValue;
+
+                    // Update if changed or not set
+                    if ((window as any).trainingTotalSteps !== newTotal) {
+                        console.log(`📊 Training total steps updated: ${(window as any).trainingTotalSteps} -> ${newTotal}`);
+                        (window as any).trainingTotalSteps = newTotal;
+
+                        const totalStepsEl = document.getElementById('training-total-steps');
+                        if (totalStepsEl) {
+                            totalStepsEl.textContent = Math.round(newTotal).toString();
+                        }
+                    }
+                } else {
+                    console.warn('Total steps hyperparameter not found in:', params.map((p: any) => p.name));
+                }
+            } catch (err) {
+                console.warn('Could not fetch training parameters:', err);
             }
         };
 
@@ -741,6 +1055,136 @@ export async function initializeUIElements() {
             modeRemoveBtn.classList.add('active', 'remove-mode');
             modeAddBtn.classList.remove('active');
         });
+    }
+}
+
+// ===== TRAINING PROGRESS STREAM =====
+let isStreamRunning = false;
+let trainingStreamAbortController: AbortController | null = null;
+
+async function startTrainingStatusStream() {
+    // Prevent multiple concurrent streams
+    if (isStreamRunning) {
+        console.log('Training status stream is already running');
+        return;
+    }
+
+    const currentStepEl = document.getElementById('training-current-step');
+    const progressBarEl = document.getElementById('training-progress-bar');
+    const percentageEl = document.getElementById('training-percentage-text');
+    const metricsEl = document.getElementById('training-metrics');
+
+    if (!currentStepEl || !progressBarEl || !percentageEl || !metricsEl) {
+        console.warn('One or more progress UI elements not found, delay starting stream');
+        setTimeout(startTrainingStatusStream, 1000);
+        return;
+    }
+
+    isStreamRunning = true;
+    trainingStreamAbortController = new AbortController();
+
+    // Track latest metrics (keep only last 5 unique names)
+    const latestMetrics = new Map<string, number>();
+
+    function updateProgress(currentStep: number) {
+        currentStepEl!.textContent = currentStep.toString();
+
+        const totalSteps = (window as any).trainingTotalSteps;
+        if (totalSteps && totalSteps > 0) {
+            const stepsContainer = currentStepEl!.parentElement;
+
+            // Check for evaluation state (current > total)
+            if (currentStep > totalSteps) {
+                progressBarEl!.classList.add('eval-mode');
+                // Don't force width to 100%, keep it at last valid progress
+                // progressBarEl!.style.width = '100%'; 
+                if (stepsContainer) stepsContainer.classList.add('eval-mode');
+                // percentageEl!.textContent = ""; // Keep previous percent
+            } else {
+                // Normal Training State
+                progressBarEl!.classList.remove('eval-mode');
+                if (stepsContainer) stepsContainer.classList.remove('eval-mode');
+
+                const percentage = Math.min(100, (currentStep / totalSteps) * 100);
+                progressBarEl!.style.width = `${percentage}%`;
+                percentageEl!.textContent = `${percentage.toFixed(1)}%`;
+            }
+        }
+    }
+
+    function updateMetrics() {
+        if (!metricsEl) return;
+        // Keep order of metrics as they come, but only the last 5 unique ones
+        const metricsArray = Array.from(latestMetrics.entries()).slice(-5);
+        metricsEl.innerHTML = metricsArray.map(([name, value]) => `
+            <div class="training-metric-item">
+                <span class="training-metric-name">${name}:</span>
+                <span class="training-metric-value">${value.toFixed(4)}</span>
+            </div>
+        `).join('');
+    }
+
+    async function ensureTotalSteps() {
+        if ((window as any).trainingTotalSteps) return true;
+        try {
+            const resp = await dataClient.experimentCommand({ getHyperParameters: true, getInteractiveLayers: false }).response;
+            const params = resp.hyperParametersDescs || [];
+            const stepsParam = params.find((p: any) => p.name === 'total_training_steps') ||
+                params.find((p: any) =>
+                    p.name === 'training_left' ||
+                    p.name === 'training_steps_to_do' ||
+                    p.label === 'Left Training Steps' ||
+                    p.label === 'training_steps_to_do'
+                );
+
+            if (stepsParam && stepsParam.numericalValue) {
+                const total = stepsParam.numericalValue;
+                (window as any).trainingTotalSteps = total;
+                const totalStepsEl = document.getElementById('training-total-steps');
+                if (totalStepsEl) {
+                    totalStepsEl.textContent = Math.round(total).toString();
+                }
+                return true;
+            }
+        } catch (err) {
+            console.warn('Could not fetch total steps for stream:', err);
+        }
+        return false;
+    }
+
+    console.log('🚀 Starting training status stream...');
+
+    while (isStreamRunning) {
+        try {
+            await ensureTotalSteps();
+            const stream = dataClient.streamStatus({});
+
+            for await (const status of stream.responses) {
+                if (!isStreamRunning) break;
+
+                // Update current step (model_age)
+                if (status.modelAge !== undefined && status.modelAge !== null) {
+                    updateProgress(status.modelAge);
+                }
+
+                // Update metrics
+                if (status.metricsStatus && status.metricsStatus.name) {
+                    latestMetrics.set(status.metricsStatus.name, status.metricsStatus.value);
+                    updateMetrics();
+                }
+            }
+        } catch (streamError) {
+            console.warn('📡 Training status stream interrupted:', streamError);
+            if (!isStreamRunning) break;
+            // Wait before reconnecting
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            console.log('🔄 Attempting to reconnect training status stream...');
+        }
+
+        if (isStreamRunning) {
+            console.log('📡 Training status stream ended, reconnecting...');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
     }
 }
 
@@ -1416,10 +1860,33 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         initializeDarkMode();
         initializeUIElements();
+        startTrainingStatusStream();
     });
 } else {
     initializeDarkMode();
     initializeUIElements();
+    startTrainingStatusStream();
+}
+
+// Helper to manage visual state of active brush
+function setActiveBrush(tag: string) {
+    if (activeBrushTags.has(tag)) {
+        activeBrushTags.delete(tag);
+    } else {
+        activeBrushTags.add(tag);
+    }
+
+    // Update visual state of chips
+    const chips = document.querySelectorAll('.tag-chip');
+    chips.forEach(chip => {
+        const t = (chip as HTMLElement).dataset.tag;
+        if (t && activeBrushTags.has(t)) {
+            chip.classList.add('active');
+        } else {
+            chip.classList.remove('active');
+        }
+    });
+
 }
 
 // Helper to manage visual state of active brush
@@ -1652,6 +2119,15 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
             cleanup();
         }
     };
+    
+    // Add backdrop click handler to close modal
+    const backdropClickHandler = (e: MouseEvent) => {
+        if (e.target === modal || (e.target as HTMLElement).classList.contains('modal-backdrop')) {
+            cleanup();
+            modal?.removeEventListener('click', backdropClickHandler);
+        }
+    };
+    modal?.addEventListener('click', backdropClickHandler);
 }
 
 async function removeTag(sampleIds: number[], origins: string[]) {
@@ -1707,17 +2183,17 @@ async function paintCell(cell: HTMLElement) {
 
     if (isPainterRemoveMode) {
         // REMOVE MODE: Remove any selected tags that exist
-        const tagsToRemove = Array.from(activeBrushTags).filter(t => currentTags.includes(t));
+        const tagsToRemove = Array.from(activeBrushTags).filter((t: string) => currentTags.includes(t));
         if (tagsToRemove.length === 0) return;
 
-        const newTags = currentTags.filter(t => !tagsToRemove.includes(t));
+        const newTags = currentTags.filter((t: string) => !tagsToRemove.includes(t));
         const newTagsStr = newTags.join(', ');
 
         // Optimistic update
         gridCell.updateStats({ "tags": newTagsStr });
 
         // Send remove requests
-        tagsToRemove.forEach(tag => {
+        tagsToRemove.forEach((tag: string) => {
             const request: DataEditsRequest = {
                 statName: "tags",
                 floatValue: 0,
@@ -1728,7 +2204,7 @@ async function paintCell(cell: HTMLElement) {
                 sampleOrigins: [getRecordOrigin(record)]
             };
 
-            dataClient.editDataSample(request).response.then(r => {
+            dataClient.editDataSample(request).response.then((r: any) => {
                 if (!r.success) {
                     console.error(`Remove failed for tag ${tag}:`, r.message);
                 }
@@ -1736,7 +2212,7 @@ async function paintCell(cell: HTMLElement) {
         });
     } else {
         // ADD MODE: Add selected tags that don't exist
-        const tagsToAdd = Array.from(activeBrushTags).filter(t => !currentTags.includes(t));
+        const tagsToAdd = Array.from(activeBrushTags).filter((t: string) => !currentTags.includes(t));
         if (tagsToAdd.length === 0) return;
 
         const newTags = [...currentTags, ...tagsToAdd];
@@ -1746,7 +2222,7 @@ async function paintCell(cell: HTMLElement) {
         gridCell.updateStats({ "tags": newTagsStr });
 
         // Send add requests
-        tagsToAdd.forEach(tag => {
+        tagsToAdd.forEach((tag: string) => {
             const request: DataEditsRequest = {
                 statName: "tags",
                 floatValue: 0,
@@ -1757,7 +2233,7 @@ async function paintCell(cell: HTMLElement) {
                 sampleOrigins: [getRecordOrigin(record)]
             };
 
-            dataClient.editDataSample(request).response.then(r => {
+            dataClient.editDataSample(request).response.then((r: any) => {
                 if (!r.success) {
                     console.error(`Paint failed for tag ${tag}:`, r.message);
                 }
