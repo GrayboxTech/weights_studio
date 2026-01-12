@@ -503,7 +503,7 @@ export async function initializeUIElements() {
     // Global click handler: close popups/panels when clicking outside
     document.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
-        
+
         // Close chat history panel when clicking outside
         const chatPanel = document.getElementById('chat-history-panel');
         const inputContainer = document.querySelector('.chat-input-container');
@@ -530,7 +530,7 @@ export async function initializeUIElements() {
         const optionsPanel = document.getElementById('options-panel');
         const detailsBody = document.getElementById('details-body');
         const detailsToggle = document.getElementById('details-toggle');
-        
+
         // Only auto-collapse if the panel is visible and click is outside
         if (optionsPanel && detailsBody && !detailsBody.classList.contains('collapsed')) {
             const inspectorContainer = document.querySelector('.inspector-container');
@@ -999,7 +999,7 @@ export async function initializeUIElements() {
                 cellsContainer?.classList.add('painter-active');
                 clearSelection();
 
-                // If no brush active, auto-select first one 
+                // If no brush active, auto-select first one
                 if (activeBrushTags.size === 0 && uniqueTags.length > 0) {
                     setActiveBrush(uniqueTags[0]);
                 }
@@ -1097,7 +1097,7 @@ async function startTrainingStatusStream() {
             if (currentStep > totalSteps) {
                 progressBarEl!.classList.add('eval-mode');
                 // Don't force width to 100%, keep it at last valid progress
-                // progressBarEl!.style.width = '100%'; 
+                // progressBarEl!.style.width = '100%';
                 if (stepsContainer) stepsContainer.classList.add('eval-mode');
                 // percentageEl!.textContent = ""; // Keep previous percent
             } else {
@@ -1462,7 +1462,7 @@ contextMenu.addEventListener('click', async (e) => {
         switch (action) {
             case 'add-tag':
                 openTaggingModal(sample_ids, origins);
-                // We DON'T clear selection or refresh here. 
+                // We DON'T clear selection or refresh here.
                 // The modal will stay on top of the selected items.
                 return;
             case 'remove-tag':
@@ -1868,26 +1868,6 @@ if (document.readyState === 'loading') {
     startTrainingStatusStream();
 }
 
-// Helper to manage visual state of active brush
-function setActiveBrush(tag: string) {
-    if (activeBrushTags.has(tag)) {
-        activeBrushTags.delete(tag);
-    } else {
-        activeBrushTags.add(tag);
-    }
-
-    // Update visual state of chips
-    const chips = document.querySelectorAll('.tag-chip');
-    chips.forEach(chip => {
-        const t = (chip as HTMLElement).dataset.tag;
-        if (t && activeBrushTags.has(t)) {
-            chip.classList.add('active');
-        } else {
-            chip.classList.remove('active');
-        }
-    });
-
-}
 
 // Helper to manage visual state of active brush
 function setActiveBrush(tag: string) {
@@ -2119,7 +2099,7 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
             cleanup();
         }
     };
-    
+
     // Add backdrop click handler to close modal
     const backdropClickHandler = (e: MouseEvent) => {
         if (e.target === modal || (e.target as HTMLElement).classList.contains('modal-backdrop')) {

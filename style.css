@@ -111,6 +111,13 @@ body.dark-mode {
   z-index: 10;
 }
 
+.header-controls-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: nowrap;
+}
+
 body.dark-mode .app-header {
   background: linear-gradient(135deg,
       rgba(26, 26, 26, 0.88),
