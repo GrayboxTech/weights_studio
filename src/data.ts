@@ -1188,6 +1188,7 @@ async function startTrainingStatusStream() {
     }
 }
 
+
 // =============================================================================
 
 const grid = document.getElementById('cells-grid') as HTMLElement;
@@ -1865,6 +1866,27 @@ if (document.readyState === 'loading') {
     initializeDarkMode();
     initializeUIElements();
     startTrainingStatusStream();
+}
+
+// Helper to manage visual state of active brush
+function setActiveBrush(tag: string) {
+    if (activeBrushTags.has(tag)) {
+        activeBrushTags.delete(tag);
+    } else {
+        activeBrushTags.add(tag);
+    }
+
+    // Update visual state of chips
+    const chips = document.querySelectorAll('.tag-chip');
+    chips.forEach(chip => {
+        const t = (chip as HTMLElement).dataset.tag;
+        if (t && activeBrushTags.has(t)) {
+            chip.classList.add('active');
+        } else {
+            chip.classList.remove('active');
+        }
+    });
+
 }
 
 // Helper to manage visual state of active brush
