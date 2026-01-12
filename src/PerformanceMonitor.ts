@@ -22,7 +22,9 @@ interface MetricsAggregate {
 export class PerformanceMonitor {
     private requestMetrics = new Map<string, MetricEntry[]>();
     private renderMetrics = new Map<string, MetricEntry[]>();
+    private e2eMetrics = new Map<string, MetricEntry[]>();
     private activeRequests = new Map<string, number>();
+    private e2eActiveBySample = new Map<string, number>();
     private logInterval: number | null = null;
     private enableLogging: boolean = true;
 
@@ -117,6 +119,46 @@ export class PerformanceMonitor {
     }
 
     /**
+     * Start end-to-end timing for a sample (from request start to UI render complete)
+     * If startTimeMs is provided, uses that (e.g., request start time); otherwise uses now
+     */
+    public startEndToEndForSample(sampleId: number, dataType: string = 'DataSamples', startTimeMs?: number): void {
+        const key = `${dataType}_${sampleId}`;
+        const t = startTimeMs ?? Date.now();
+        this.e2eActiveBySample.set(key, t);
+        if (this.enableLogging) {
+            console.debug(`[perf] E2E START: ${dataType} sample=${sampleId}`);
+        }
+    }
+
+    /**
+     * End end-to-end timing for a sample
+     */
+    public endEndToEndForSample(sampleId: number, dataType: string = 'DataSamples'): void {
+        const key = `${dataType}_${sampleId}`;
+        const startTime = this.e2eActiveBySample.get(key);
+        if (!startTime) {
+            // Avoid noisy warnings; can happen with cached renders or missing start
+            return;
+        }
+        const duration = Date.now() - startTime;
+        const metricKey = `e2e_${dataType}`;
+        if (!this.e2eMetrics.has(metricKey)) {
+            this.e2eMetrics.set(metricKey, []);
+        }
+        this.e2eMetrics.get(metricKey)!.push({
+            timestamp: Date.now(),
+            duration,
+            sampleId,
+            dataType,
+        });
+        this.e2eActiveBySample.delete(key);
+        if (this.enableLogging) {
+            console.debug(`[perf] E2E END: ${dataType} sample=${sampleId} - ${duration}ms`);
+        }
+    }
+
+    /**
      * Calculate aggregated metrics for a specific metric type
      */
     private calculateAggregate(metrics: MetricEntry[]): MetricsAggregate {
@@ -150,9 +192,11 @@ export class PerformanceMonitor {
     public getSummary(): {
         requests: Map<string, MetricsAggregate>;
         renders: Map<string, MetricsAggregate>;
+        e2e: Map<string, MetricsAggregate>;
     } {
         const requestSummary = new Map<string, MetricsAggregate>();
         const renderSummary = new Map<string, MetricsAggregate>();
+        const e2eSummary = new Map<string, MetricsAggregate>();
 
         for (const [key, metrics] of this.requestMetrics.entries()) {
             requestSummary.set(key, this.calculateAggregate(metrics));
@@ -162,7 +206,11 @@ export class PerformanceMonitor {
             renderSummary.set(key, this.calculateAggregate(metrics));
         }
 
-        return { requests: requestSummary, renders: renderSummary };
+        for (const [key, metrics] of this.e2eMetrics.entries()) {
+            e2eSummary.set(key, this.calculateAggregate(metrics));
+        }
+
+        return { requests: requestSummary, renders: renderSummary, e2e: e2eSummary };
     }
 
     /**
@@ -199,6 +247,24 @@ export class PerformanceMonitor {
                 console.table({
                     Type: key.replace('render_', ''),
                     'Renders': metrics.count,
+                    'Avg Time (ms)': metrics.averageDuration.toFixed(2),
+                    'Min (ms)': metrics.minDuration.toFixed(2),
+                    'Max (ms)': metrics.maxDuration.toFixed(2),
+                    'Last (ms)': metrics.lastDuration.toFixed(2),
+                    'Total (ms)': metrics.totalDuration.toFixed(0),
+                });
+            }
+        }
+        console.groupEnd();
+
+        console.group('🔗 End-to-End Image Metrics');
+        if (summary.e2e.size === 0) {
+            console.log('No end-to-end metrics recorded');
+        } else {
+            for (const [key, metrics] of summary.e2e.entries()) {
+                console.table({
+                    Type: key.replace('e2e_', ''),
+                    'Images': metrics.count,
                     'Avg Time (ms)': metrics.averageDuration.toFixed(2),
                     'Min (ms)': metrics.minDuration.toFixed(2),
                     'Max (ms)': metrics.maxDuration.toFixed(2),
@@ -246,7 +312,7 @@ export class PerformanceMonitor {
             }
         }
 
-        // Print per-image metrics
+        // Print per-image metrics (request + render)
         const perImageData = Array.from(imageMetrics.entries()).map(([type, times]) => ({
             'Data Type': type,
             'Avg Request Time (ms)': times.request.toFixed(2),
@@ -255,6 +321,30 @@ export class PerformanceMonitor {
         }));
 
         console.table(perImageData);
+        console.groupEnd();
+    }
+
+    /**
+     * Log end-to-end averages (request -> render complete)
+     */
+    public logEndToEndAverages(): void {
+        const { e2e } = this.getSummary();
+        console.group('🔗 END-TO-END AVERAGE PER IMAGE');
+        if (e2e.size === 0) {
+            console.log('No end-to-end metrics recorded');
+        } else {
+            for (const [key, metrics] of e2e.entries()) {
+                console.table({
+                    Type: key.replace('e2e_', ''),
+                    'Images': metrics.count,
+                    'Avg Time (ms)': metrics.averageDuration.toFixed(2),
+                    'Min (ms)': metrics.minDuration.toFixed(2),
+                    'Max (ms)': metrics.maxDuration.toFixed(2),
+                    'Last (ms)': metrics.lastDuration.toFixed(2),
+                    'Total (ms)': metrics.totalDuration.toFixed(0),
+                });
+            }
+        }
         console.groupEnd();
     }
 

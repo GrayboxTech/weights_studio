@@ -29,6 +29,7 @@ export class GridCell {
     private label: HTMLSpanElement;
     private record: DataRecord | null = null;
     private displayPreferences: DisplayPreferences | null = null;
+    private currentRenderId: string | null = null;
 
     private taskType: string | null = null;
     private cachedRawBytes: Uint8Array | null = null;
@@ -55,6 +56,21 @@ export class GridCell {
 
         // Store reference for selection.ts to use
         (this.element as any).__gridCell = this;
+
+        // When the image fully loads (decoded), mark render and end-to-end complete
+        this.img.addEventListener('load', () => {
+            if (this.record) {
+                const sampleId = (this.record as any).sampleId ?? undefined;
+                const ds: any = (this.img as any).dataset || {};
+                const rid: string | null = ds.renderId || this.currentRenderId;
+                if (rid) {
+                    perfMonitor.endRender(rid, sampleId, 'SegmentationCell');
+                }
+                if (sampleId !== undefined) {
+                    perfMonitor.endEndToEndForSample(sampleId, 'DataSamples');
+                }
+            }
+        });
     }
 
     getElement(): HTMLElement {
@@ -95,8 +111,8 @@ export class GridCell {
 
     populate(record: DataRecord, displayPreferences: DisplayPreferences): void {
         const renderStartTime = Date.now();
-        const renderId = `cell_render_${record.sampleId}_${renderStartTime}`;
-        perfMonitor.startRender(renderId, 'SegmentationCell');
+        this.currentRenderId = `cell_render_${(record as any).sampleId ?? ''}_${renderStartTime}`;
+        perfMonitor.startRender(this.currentRenderId, 'SegmentationCell');
 
         this.record = record;
         this.displayPreferences = displayPreferences;
@@ -219,7 +235,7 @@ export class GridCell {
 
                 ctx.putImageData(imageData, 0, 0);
                 const dataUrl = canvas.toDataURL();
-                this.setImageSrc(dataUrl);
+                this.setImageSrcWithRenderId(dataUrl, this.currentRenderId);
                 return;
             }
         }
@@ -228,12 +244,10 @@ export class GridCell {
         if (rawData && rawData.value && rawData.value.length > 0) {
             const base64 = bytesToBase64(new Uint8Array(rawData.value));
             const dataUrl = `data:image/jpeg;base64,${base64}`;
-            this.setImageSrc(dataUrl);
-            perfMonitor.endRender(renderId, record.sampleId, 'SegmentationCell');
+            this.setImageSrcWithRenderId(dataUrl, this.currentRenderId);
             return;
         }
 
-        perfMonitor.endRender(renderId, record.sampleId, 'SegmentationCell');
     }
 
     private applySegmentationVisualization(
@@ -250,7 +264,7 @@ export class GridCell {
             const width = img.width;
             const height = img.height;
             if (!width || !height) {
-                this.setImageSrc(baseImageUrl);
+                this.setImageSrcWithRenderId(baseImageUrl, this.currentRenderId);
                 return;
             }
 
@@ -259,7 +273,7 @@ export class GridCell {
             canvas.height = height;
             const ctx = canvas.getContext('2d');
             if (!ctx) {
-                this.setImageSrc(baseImageUrl);
+                this.setImageSrcWithRenderId(baseImageUrl, this.currentRenderId);
                 return;
             }
 
@@ -292,7 +306,7 @@ export class GridCell {
                 }
             );
 
-            this.setImageSrc(finalUrl);
+            this.setImageSrcWithRenderId(finalUrl, this.currentRenderId);
         };
 
         img.src = baseImageUrl;
@@ -432,6 +446,13 @@ export class GridCell {
         this.img.src = src || PLACEHOLDER_IMAGE_SRC;
     }
 
+    private setImageSrcWithRenderId(src: string, renderId: string | null): void {
+        const ds: any = (this.img as any).dataset || {};
+        if (renderId) ds.renderId = renderId;
+        (this.img as any).dataset = ds;
+        this.setImageSrc(src);
+    }
+
     public clear(): void {
         this.record = null;
         this.displayPreferences = null;
@@ -459,6 +480,11 @@ export class GridCell {
             const predStat = this.record.dataStats.find(stat => stat.name === 'pred_mask' && stat.type === 'array');
 
             if (rawStat && rawStat.value && rawStat.shape && (gtStat || predStat)) {
+                // Start a new render timing for overlay recomposition
+                const renderStartTime = Date.now();
+                this.currentRenderId = `cell_render_${(this.record as any).sampleId ?? ''}_${renderStartTime}`;
+                perfMonitor.startRender(this.currentRenderId, 'SegmentationCell');
+
                 const base64 = bytesToBase64(new Uint8Array(rawStat.value));
                 const dataUrl = `data:image/png;base64,${base64}`;
 

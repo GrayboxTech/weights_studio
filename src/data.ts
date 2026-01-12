@@ -295,6 +295,8 @@ async function fetchAndDisplaySamples() {
                 resizeHeight: resizeHeight
             };
 
+            // Start request timestamp (used for end-to-end per-sample)
+            const requestStartTs = Date.now();
             const response = await fetchSamples(request);
 
             if (requestId !== currentFetchRequestId) {
@@ -307,6 +309,11 @@ async function fetchAndDisplaySamples() {
                 const preferences = displayOptionsPanel.getDisplayPreferences();
                 preferences.splitColors = getSplitColors();
                 response.dataRecords.forEach((record, index) => {
+                    // Mark end-to-end start for this sample at the request start time
+                    const sampleId = (record as any).sampleId ?? undefined;
+                    if (sampleId !== undefined) {
+                        perfMonitor.startEndToEndForSample(sampleId, 'DataSamples', requestStartTs);
+                    }
                     const cell = gridManager.getCellbyIndex(i + index);
                     if (cell) {
                         cell.populate(record, preferences);
@@ -2445,6 +2452,7 @@ async function paintCell(cell: HTMLElement) {
     log: () => perfMonitor.logMetrics(),
     summary: () => perfMonitor.getSummary(),
     perImage: () => perfMonitor.getAverageTimePerImage(),
+    endToEnd: () => perfMonitor.logEndToEndAverages(),
     reset: () => perfMonitor.reset(),
     export: () => perfMonitor.exportMetricsJSON(),
     toggleLogging: (enabled: boolean) => perfMonitor.setDetailedLogging(enabled),
@@ -2456,4 +2464,4 @@ async function paintCell(cell: HTMLElement) {
     }
 };
 
-console.info('📊 Performance Monitor loaded! Use wsMetrics.log(), wsMetrics.summary(), wsMetrics.perImage(), wsMetrics.reset(), or perfMonitor directly');
+console.info('📊 Performance Monitor loaded! Use wsMetrics.log(), wsMetrics.summary(), wsMetrics.perImage(), wsMetrics.endToEnd(), wsMetrics.reset(), or perfMonitor directly');
