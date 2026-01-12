@@ -37,7 +37,6 @@ export class DataTraversalAndInteractionsPanel {
         this.sliderMinLabel = document.getElementById('slider-min-label') as HTMLSpanElement;
         this.sliderMaxLabel = document.getElementById('slider-max-label') as HTMLSpanElement;
         this.sliderTooltip = document.getElementById('slider-tooltip') as HTMLSpanElement;
-        this.gridToggleButton = document.getElementById('grid-toggle') as HTMLButtonElement;
         this.gridContent = document.getElementById('grid-content') as HTMLElement;
 
         this.startIndexSlider = document.getElementById('start-index-slider') as HTMLInputElement;
@@ -45,7 +44,7 @@ export class DataTraversalAndInteractionsPanel {
 
         if (!this.sampleSlider || !this.cellSize || !this.zoomLevel ||
             !this.sliderMinLabel || !this.sliderMaxLabel || !this.sliderTooltip ||
-            !this.gridToggleButton || !this.gridContent) {
+            !this.gridContent) {
             console.error('[DataTraversalAndInteractionsPanel] Missing required elements');
             return;
         }
@@ -85,9 +84,32 @@ export class DataTraversalAndInteractionsPanel {
         }
         if (this.sampleSlider) {
             this.sampleSlider.addEventListener('input', () => {
-                this.updateSliderTooltip();
                 this.handleControlsChange();
                 this.onUpdateCallback();
+                
+                // Update tooltip to show range at current slider position
+                if (this.sliderTooltip) {
+                    const value = parseFloat(this.sampleSlider!.value);
+                    const gridCount = parseInt(this.sampleSlider!.step, 10) || 1;
+                    
+                    const rawIndex = Math.round(value);
+                    const batchNumber = Math.floor(rawIndex / gridCount);
+                    const startIndex = batchNumber * gridCount;
+                    const endIndex = Math.min(startIndex + gridCount - 1, this.maxSampleId);
+                    
+                    this.sliderTooltip.textContent = `${startIndex}-${endIndex}`;
+                    
+                    // Position at slider thumb
+                    const sliderRect = this.sampleSlider!.getBoundingClientRect();
+                    const min = parseFloat(this.sampleSlider!.min);
+                    const max = parseFloat(this.sampleSlider!.max);
+                    const percent = (value - min) / (max - min);
+                    const thumbX = sliderRect.width * percent;
+                    
+                    this.sliderTooltip.style.left = `${thumbX}px`;
+                    this.sliderTooltip.style.transform = 'translateX(-50%)';
+                    this.sliderTooltip.style.display = 'block';
+                }
             });
         }
         if (this.gridToggleButton) {
@@ -96,11 +118,65 @@ export class DataTraversalAndInteractionsPanel {
         if (this.startIndexSlider) {
             this.startIndexSlider.addEventListener('input', () => {
                 if (this.startIndexTooltip && this.startIndexSlider) {
-                    // Temporarily update tooltip for responsiveness before grid recalculates
-                    this.startIndexTooltip.textContent = `Start Index: ${this.startIndexSlider.value}`;
+                    // Update tooltip to show data range
+                    const startIndex = parseInt(this.startIndexSlider.value, 10);
+                    const gridCount = parseInt(this.startIndexSlider.step, 10) || 1;
+                    const effectiveGridCount = Math.min(gridCount, this.maxSampleId - startIndex + 1);
+                    const endIndex = Math.min(startIndex + effectiveGridCount - 1, this.maxSampleId);
+
+                    this.startIndexTooltip.textContent = `${startIndex} - ${endIndex}`;
+
+                    // Position tooltip at slider cursor position
+                    const sliderRect = this.startIndexSlider.getBoundingClientRect();
+                    const percent = parseFloat(this.startIndexSlider.value) / parseFloat(this.startIndexSlider.max);
+                    const tooltipLeft = (sliderRect.width * percent) - (this.startIndexTooltip.offsetWidth / 2);
+                    this.startIndexTooltip.style.left = `${tooltipLeft}px`;
                 }
                 this.onUpdateCallback();
             });
+        }
+
+        // Add hover tooltip to slider showing data range at cursor position
+        if (this.sampleSlider) {
+            const sliderWrapper = this.sampleSlider.parentElement;
+            if (sliderWrapper && this.sliderTooltip) {
+                sliderWrapper.addEventListener('mouseenter', () => {
+                    if (this.sliderTooltip) {
+                        this.sliderTooltip.style.display = 'block';
+                    }
+                });
+
+                sliderWrapper.addEventListener('mouseleave', () => {
+                    if (this.sliderTooltip) {
+                        this.sliderTooltip.style.display = 'none';
+                    }
+                });
+
+                sliderWrapper.addEventListener('mousemove', (e: MouseEvent) => {
+                    if (!this.sampleSlider || !this.sliderTooltip) return;
+
+                    const sliderRect = this.sampleSlider.getBoundingClientRect();
+                    const mouseX = e.clientX - sliderRect.left;
+                    const percent = Math.max(0, Math.min(1, mouseX / sliderRect.width));
+
+                    // Calculate data range at this position
+                    const min = parseFloat(this.sampleSlider.min);
+                    const max = parseFloat(this.sampleSlider.max);
+                    const gridCount = parseInt(this.sampleSlider.step, 10) || 1;
+
+                    // Calculate raw position and snap to nearest batch boundary
+                    const rawIndex = min + (max - min) * percent;
+                    const batchNumber = Math.floor(rawIndex / gridCount);
+                    const startIndex = batchNumber * gridCount;
+
+                    const effectiveGridCount = Math.min(gridCount, this.maxSampleId - startIndex + 1);
+                    const endIndex = Math.min(startIndex + effectiveGridCount - 1, this.maxSampleId);
+
+                    this.sliderTooltip.textContent = `${startIndex}-${endIndex}`;
+                    this.sliderTooltip.style.left = `${mouseX}px`;
+                    this.sliderTooltip.style.transform = 'translateX(-50%)';
+                });
+            }
         }
     }
 
@@ -168,6 +244,8 @@ export class DataTraversalAndInteractionsPanel {
         const percent = max > min ? ((value - min) / (max - min)) * 100 : 0;
         this.sliderTooltip.style.left = `calc(${percent}% - ${this.sliderTooltip.offsetWidth / 2}px)`;
     }
+
+
 
     public updateSliderStep(step: number): void {
         if (this.sampleSlider) {

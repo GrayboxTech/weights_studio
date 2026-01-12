@@ -1,4 +1,3 @@
-
 import { GrpcWebFetchTransport } from "@protobuf-ts/grpcweb-transport";
 import { RpcError } from "@protobuf-ts/runtime-rpc";
 import { ExperimentServiceClient } from "./experiment_service.client";
@@ -19,6 +18,14 @@ import { DataDisplayOptionsPanel, SplitColors } from "./DataDisplayOptionsPanel"
 import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteractionsPanel";
 import { GridManager } from "./GridManager";
 import { initializeDarkMode } from "./darkMode";
+
+// Utility function to convert bytes to base64
+function bytesToBase64(bytes: Uint8Array): string {
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++)
+        binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+}
 import { ClassPreference, GridCell } from "./GridCell";
 import { SegmentationRenderer } from "./SegmentationRenderer";
 
@@ -51,6 +58,72 @@ let currentFetchRequestId = 0;
 let isPainterMode = false;
 let isPainterRemoveMode = false;
 let activeBrushTags = new Set<string>();
+
+// Prefetch Cache for faster navigation
+interface CacheEntry {
+    response: DataSamplesResponse;
+    timestamp: number;
+}
+const responseCache = new Map<string, CacheEntry>();
+const MAX_PREFETCH_BATCHES = (() => {
+    const envValue = import.meta.env.VITE_MAX_PREFETCH_BATCHES;
+    const parsed = parseInt(envValue, 10);
+    // Validate: must be a positive integer, otherwise default to 5
+    return (Number.isInteger(parsed) && parsed > 0) ? parsed : 5;
+})();
+const MAX_CACHE_ENTRIES = MAX_PREFETCH_BATCHES + 4; // Keep extra batches in memory (+2 for first/last batches)
+let prefetchInProgress = false;
+
+function getCacheKey(startIndex: number, count: number, resizeWidth: number, resizeHeight: number): string {
+    return `${startIndex}-${count}-${resizeWidth}-${resizeHeight}`;
+}
+
+function getCachedResponse(startIndex: number, count: number, resizeWidth: number, resizeHeight: number): DataSamplesResponse | null {
+    const key = getCacheKey(startIndex, count, resizeWidth, resizeHeight);
+    const entry = responseCache.get(key);
+    if (entry) {
+        console.debug(`[Cache HIT] Using cached response for startIndex=${startIndex}`);
+        return entry.response;
+    }
+    console.debug(`[Cache MISS] No cached response for startIndex=${startIndex}`);
+    return null;
+}
+
+function setCachedResponse(startIndex: number, count: number, resizeWidth: number, resizeHeight: number, response: DataSamplesResponse): void {
+    const key = getCacheKey(startIndex, count, resizeWidth, resizeHeight);
+    responseCache.set(key, { response, timestamp: Date.now() });
+
+    // LRU eviction: keep only MAX_CACHE_ENTRIES most recent
+    // BUT protect first batch (startIndex=0) and last batch from eviction
+    if (responseCache.size > MAX_CACHE_ENTRIES) {
+        const maxSampleId = traversalPanel.getMaxSampleId();
+        const lastBatchStart = Math.floor(maxSampleId / count) * count;
+
+        const sortedEntries = Array.from(responseCache.entries())
+            .sort((a, b) => a[1].timestamp - b[1].timestamp);
+
+        // Find first evictable entry (not first or last batch)
+        for (const [oldestKey, _] of sortedEntries) {
+            const keyParts = oldestKey.split('-');
+            const keyStartIndex = parseInt(keyParts[0]);
+
+            // Skip if this is the first batch (0) or last batch
+            if (keyStartIndex === 0 || keyStartIndex === lastBatchStart) {
+                continue;
+            }
+
+            // Evict this entry
+            responseCache.delete(oldestKey);
+            console.debug(`[Cache EVICT] Removed entry: ${oldestKey} (protected first and last batches)`);
+            break;
+        }
+    }
+}
+
+function clearResponseCache(): void {
+    responseCache.clear();
+    console.debug('[Cache CLEAR] All cached responses cleared');
+}
 
 
 
@@ -135,8 +208,42 @@ async function fetchAndDisplaySamples() {
 
     gridManager.clearAllCells();
 
+    // Get resolution settings once
+    const resolutionPercent = traversalPanel.getImageResolutionPercent();
+    let resizeWidth = 0;
+    let resizeHeight = 0;
+
+    if (resolutionPercent > 0 && resolutionPercent <= 100) {
+        resizeWidth = -resolutionPercent;
+        resizeHeight = -resolutionPercent;
+    } else {
+        const cellSize = gridManager.calculateGridDimensions().cellSize;
+        resizeWidth = cellSize;
+        resizeHeight = cellSize;
+    }
+
+    // Check cache first for the entire batch
+    const cachedResponse = getCachedResponse(start, count, resizeWidth, resizeHeight);
+    if (cachedResponse && cachedResponse.success && cachedResponse.dataRecords.length > 0) {
+        // Display from cache
+        const preferences = displayOptionsPanel.getDisplayPreferences();
+        preferences.splitColors = getSplitColors();
+        cachedResponse.dataRecords.forEach((record, index) => {
+            const cell = gridManager.getCellbyIndex(index);
+            if (cell) {
+                cell.populate(record, preferences);
+            }
+        });
+        console.debug(`[Cache] Displayed ${cachedResponse.dataRecords.length} cached records`);
+
+        // Trigger prefetch of multiple batches ahead in background
+        prefetchMultipleBatches(start, count, resizeWidth, resizeHeight);
+        return;
+    }
+
     try {
         let totalRecordsRetrieved = 0;
+        const allRecords: any[] = [];
 
         for (let i = 0; i < count; i += batchSize) {
             if (requestId !== currentFetchRequestId) {
@@ -201,6 +308,9 @@ async function fetchAndDisplaySamples() {
                         console.warn(`Cell at index ${i + index} not found`);
                     }
                 });
+
+                // Collect records for caching
+                allRecords.push(...response.dataRecords);
                 totalRecordsRetrieved += response.dataRecords.length;
 
                 if (response.dataRecords.length < currentBatchSize) {
@@ -213,9 +323,107 @@ async function fetchAndDisplaySamples() {
         }
 
         console.debug(`Retrieved ${totalRecordsRetrieved} records for grid of size ${count}.`);
+
+        // Cache the complete response
+        if (allRecords.length > 0) {
+            const completeResponse: DataSamplesResponse = {
+                success: true,
+                message: '',
+                dataRecords: allRecords
+            };
+            setCachedResponse(start, count, resizeWidth, resizeHeight, completeResponse);
+        }
+
+        // Trigger prefetch of multiple batches ahead (2, 3, 4)
+        prefetchMultipleBatches(start, count, resizeWidth, resizeHeight);
+
     } catch (error) {
         // Error is already logged by fetchSamples, so we just catch to prevent unhandled promise rejection.
         console.debug("fetchAndDisplaySamples failed. See error above.");
+    }
+}
+
+async function prefetchMultipleBatches(currentStart: number, count: number, resizeWidth: number, resizeHeight: number, batchesAhead: number = MAX_PREFETCH_BATCHES): Promise<void> {
+    if (prefetchInProgress) {
+        console.debug('[Prefetch] Already in progress, skipping');
+        return;
+    }
+
+    prefetchInProgress = true;
+    const maxSampleId = traversalPanel.getMaxSampleId();
+    const batchesToPrefetch: number[] = [];
+
+    // Determine which batches to prefetch (next 3 batches: 2, 3, 4 by default)
+    for (let i = 1; i <= batchesAhead; i++) {
+        const batchStart = currentStart + (count * i);
+        // Check if batch start is within dataset bounds
+        if (batchStart > maxSampleId) {
+            console.debug(`[Prefetch] Batch ${batchStart} exceeds max sample ID ${maxSampleId}, stopping`);
+            break;
+        }
+        
+        // Only add if not already cached
+        const cached = getCachedResponse(batchStart, count, resizeWidth, resizeHeight);
+        if (!cached) {
+            batchesToPrefetch.push(batchStart);
+            console.debug('[Prefetch] Adding in cache batch starting at', batchStart);
+        }
+    }
+
+    if (batchesToPrefetch.length === 0) {
+        console.debug('[Prefetch] All upcoming batches already cached or at end of dataset');
+        prefetchInProgress = false;
+        return;
+    }
+
+    console.debug(`[Prefetch] Loading ${batchesToPrefetch.length} batches ahead: ${batchesToPrefetch.join(', ')}`);
+
+    try {
+        const batchSize = 32;
+
+        // Prefetch each batch
+        for (const batchStart of batchesToPrefetch) {
+            const allRecords: any[] = [];
+
+            for (let i = 0; i < count; i += batchSize) {
+                const currentBatchSize = Math.min(batchSize, count - i);
+                const request: DataSamplesRequest = {
+                    startIndex: batchStart + i,
+                    recordsCnt: currentBatchSize,
+                    includeRawData: true,
+                    includeTransformedData: false,
+                    statsToRetrieve: [],
+                    resizeWidth: resizeWidth,
+                    resizeHeight: resizeHeight
+                };
+
+                const response = await fetchSamples(request);
+
+                if (response.success && response.dataRecords.length > 0) {
+                    allRecords.push(...response.dataRecords);
+
+                    if (response.dataRecords.length < currentBatchSize) {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            if (allRecords.length > 0) {
+                const completeResponse: DataSamplesResponse = {
+                    success: true,
+                    message: '',
+                    dataRecords: allRecords
+                };
+                setCachedResponse(batchStart, count, resizeWidth, resizeHeight, completeResponse);
+                console.debug(`[Prefetch] Cached batch starting at ${batchStart} (${allRecords.length} records)`);
+            }
+        }
+    } catch (error) {
+        console.debug('[Prefetch] Failed:', error);
+    } finally {
+        prefetchInProgress = false;
     }
 }
 
@@ -238,6 +446,9 @@ async function updateLayout() {
         console.warn('[updateLayout] gridManager is missing.');
         return;
     }
+
+    // Clear cache since image dimensions will change
+    clearResponseCache();
 
     gridManager.updateGridLayout();
     const gridDims = gridManager.calculateGridDimensions();
@@ -289,6 +500,9 @@ async function handleQuerySubmit(query: string): Promise<void> {
         }
 
         // Handle Filter Intent (Grid Mode)
+        // Clear cache since query changed the dataset
+        clearResponseCache();
+
         // If there is a meaningful message, log it to chat
         if (response.message && response.message !== "Reset view to base dataset") {
             addChatMessage(response.message, 'agent');
@@ -1744,23 +1958,15 @@ async function openImageDetailModal(cell: HTMLElement) {
         if (highResResponse.success && highResResponse.dataRecords.length > 0) {
             const highResRecord = highResResponse.dataRecords[0];
 
-            // Find raw_data stat
-            const rawDataStat = highResRecord.dataStats.find(
+            // Find raw_data stat - use full resolution for modal
+            const rawImageStat = highResRecord.dataStats.find(
                 (stat: any) => stat.name === 'raw_data' && stat.type === 'bytes'
             );
 
-            if (rawDataStat && rawDataStat.value && rawDataStat.value.length > 0) {
-                // Convert bytes to base64 in chunks to avoid stack overflow
-                const bytes = new Uint8Array(rawDataStat.value);
-                let binary = '';
-                const chunkSize = 8192;
-
-                for (let i = 0; i < bytes.length; i += chunkSize) {
-                    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
-                    binary += String.fromCharCode.apply(null, Array.from(chunk));
-                }
-
-                const base64Image = btoa(binary);
+            if (rawImageStat && rawImageStat.value) {
+                // Always use full resolution in modal (not thumbnail)
+                const fullResBytes = new Uint8Array(rawImageStat.value);
+                const base64Image = bytesToBase64(fullResBytes);
 
                 // Check if this is a segmentation task and apply overlays
                 const taskTypeStat = highResRecord.dataStats.find(

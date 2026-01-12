@@ -118,7 +118,12 @@ export class GridCell {
             const gtStat = record.dataStats.find(stat => stat.name === 'label' && stat.type === 'array');
             const predStat = record.dataStats.find(stat => stat.name === 'pred_mask' && stat.type === 'array');
 
-            this.cachedRawBytes = rawStat && rawStat.value ? new Uint8Array(rawStat.value) : null;
+            // Use thumbnail if available, otherwise fall back to full image
+            const imageBytes = rawStat?.thumbnail && rawStat.thumbnail.length > 0
+                ? rawStat.thumbnail
+                : (rawStat?.value ? new Uint8Array(rawStat.value) : null);
+
+            this.cachedRawBytes = imageBytes;
             this.cachedRawShape = rawStat?.shape || null;
             this.cachedGtStat = gtStat || null;
             this.cachedPredStat = predStat || null;
@@ -149,7 +154,7 @@ export class GridCell {
                 const imageData = ctx.createImageData(width, height);
                 const data = imageData.data;
 
-                // Handle flattened data. 
+                // Handle flattened data.
                 // If shape is [28, 28], length is 784.
                 // If shape is [1, 28, 28], length is 784.
 
@@ -377,18 +382,38 @@ export class GridCell {
             return;
         }
 
-        console.log('Updating border color for sample ID:', this.record.sampleId, this.record);
         const originStat = this.record.dataStats.find(stat => stat.name === 'origin');
-        console.log('Origin Stat Value:', originStat);
         const isEval = originStat?.valueString === 'eval';
+        const isDiscarded = this.element.classList.contains('discarded');
         const splitColors = this.displayPreferences.splitColors;
-        console.log(`Sample ID: ${this.record.sampleId}, Origin Stat:`, originStat, `Is Eval: ${isEval}`, `Split Colors:`, splitColors);
 
+        let borderColor = isEval ? EVAL_BORDER_COLOR : TRAIN_BORDER_COLOR;
         if (splitColors?.eval && splitColors?.train) {
-            this.element.style.border = `3px solid ${isEval ? splitColors.eval : splitColors.train}`;
-        } else {
-            this.element.style.border = `3px solid ${isEval ? EVAL_BORDER_COLOR : TRAIN_BORDER_COLOR}`;
+            borderColor = isEval ? splitColors.eval : splitColors.train;
         }
+
+        // If discarded, reduce opacity to 40% (60% transparent)
+        if (isDiscarded && borderColor) {
+            // Convert hex color to rgba with reduced opacity
+            if (borderColor.startsWith('#')) {
+                // Convert #rrggbb or #rrggbbaa to rgba
+                const hex = borderColor.replace('#', '');
+                if (hex.length === 8) {
+                    // Already has alpha, replace it
+                    const r = parseInt(hex.substring(0, 2), 16);
+                    const g = parseInt(hex.substring(2, 4), 16);
+                    const b = parseInt(hex.substring(4, 6), 16);
+                    borderColor = `rgba(${r}, ${g}, ${b}, 0.4)`;
+                } else if (hex.length === 6) {
+                    const r = parseInt(hex.substring(0, 2), 16);
+                    const g = parseInt(hex.substring(2, 4), 16);
+                    const b = parseInt(hex.substring(4, 6), 16);
+                    borderColor = `rgba(${r}, ${g}, ${b}, 0.4)`;
+                }
+            }
+        }
+
+        this.element.style.border = `3px solid ${borderColor}`;
     }
 
     getImage(): HTMLImageElement {
