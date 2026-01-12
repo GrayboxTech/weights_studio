@@ -86,26 +86,26 @@ export class DataTraversalAndInteractionsPanel {
             this.sampleSlider.addEventListener('input', () => {
                 this.handleControlsChange();
                 this.onUpdateCallback();
-                
+
                 // Update tooltip to show range at current slider position
                 if (this.sliderTooltip) {
                     const value = parseFloat(this.sampleSlider!.value);
                     const gridCount = parseInt(this.sampleSlider!.step, 10) || 1;
-                    
+
                     const rawIndex = Math.round(value);
                     const batchNumber = Math.floor(rawIndex / gridCount);
                     const startIndex = batchNumber * gridCount;
                     const endIndex = Math.min(startIndex + gridCount - 1, this.maxSampleId);
-                    
+
                     this.sliderTooltip.textContent = `${startIndex}-${endIndex}`;
-                    
+
                     // Position at slider thumb
                     const sliderRect = this.sampleSlider!.getBoundingClientRect();
                     const min = parseFloat(this.sampleSlider!.min);
                     const max = parseFloat(this.sampleSlider!.max);
                     const percent = (value - min) / (max - min);
                     const thumbX = sliderRect.width * percent;
-                    
+
                     this.sliderTooltip.style.left = `${thumbX}px`;
                     this.sliderTooltip.style.transform = 'translateX(-50%)';
                     this.sliderTooltip.style.display = 'block';

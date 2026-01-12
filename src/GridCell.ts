@@ -2,6 +2,7 @@
 import { DataRecord } from "./data_service";
 import { DisplayPreferences } from "./DataDisplayOptionsPanel";
 import { SegmentationRenderer } from "./SegmentationRenderer";
+import { perfMonitor } from "./PerformanceMonitor";
 
 
 const PLACEHOLDER_IMAGE_SRC = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
@@ -93,6 +94,10 @@ export class GridCell {
 
 
     populate(record: DataRecord, displayPreferences: DisplayPreferences): void {
+        const renderStartTime = Date.now();
+        const renderId = `cell_render_${record.sampleId}_${renderStartTime}`;
+        perfMonitor.startRender(renderId, 'SegmentationCell');
+
         this.record = record;
         this.displayPreferences = displayPreferences;
         this.element.classList.remove('empty');
@@ -224,8 +229,11 @@ export class GridCell {
             const base64 = bytesToBase64(new Uint8Array(rawData.value));
             const dataUrl = `data:image/jpeg;base64,${base64}`;
             this.setImageSrc(dataUrl);
+            perfMonitor.endRender(renderId, record.sampleId, 'SegmentationCell');
             return;
         }
+
+        perfMonitor.endRender(renderId, record.sampleId, 'SegmentationCell');
     }
 
     private applySegmentationVisualization(

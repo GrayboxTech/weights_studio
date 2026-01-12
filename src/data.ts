@@ -18,6 +18,7 @@ import { DataDisplayOptionsPanel, SplitColors } from "./DataDisplayOptionsPanel"
 import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteractionsPanel";
 import { GridManager } from "./GridManager";
 import { initializeDarkMode } from "./darkMode";
+import { perfMonitor } from "./PerformanceMonitor";
 
 // Utility function to convert bytes to base64
 function bytesToBase64(bytes: Uint8Array): string {
@@ -177,10 +178,15 @@ function getSplitColors(): SplitColors {
 }
 
 async function fetchSamples(request: DataSamplesRequest): Promise<DataSamplesResponse> {
+    const requestId = `fetch_${Date.now()}_${Math.random()}`;
+    perfMonitor.startRequest(requestId, 'DataSamples');
+
     try {
         const response = await dataClient.getDataSamples(request).response;
+        perfMonitor.endRequest(requestId, request.startIndex, 'DataSamples');
         return response;
     } catch (error) {
+        perfMonitor.endRequest(requestId, request.startIndex, 'DataSamples_ERROR');
         if (error instanceof RpcError) {
             console.error(
                 `gRPC Error fetching samples (Method: ${error.methodName}, Service: ${error.serviceName}): ${error.message}`,
@@ -361,7 +367,7 @@ async function prefetchMultipleBatches(currentStart: number, count: number, resi
             console.debug(`[Prefetch] Batch ${batchStart} exceeds max sample ID ${maxSampleId}, stopping`);
             break;
         }
-        
+
         // Only add if not already cached
         const cached = getCachedResponse(batchStart, count, resizeWidth, resizeHeight);
         if (!cached) {
@@ -1341,7 +1347,12 @@ async function startTrainingStatusStream() {
     async function ensureTotalSteps() {
         if ((window as any).trainingTotalSteps) return true;
         try {
+            const hpRequestId = `hp_request_${Date.now()}`;
+            perfMonitor.startRequest(hpRequestId, 'HyperParameters');
+
             const resp = await dataClient.experimentCommand({ getHyperParameters: true, getInteractiveLayers: false }).response;
+            perfMonitor.endRequest(hpRequestId, undefined, 'HyperParameters');
+
             const params = resp.hyperParametersDescs || [];
             const stepsParam = params.find((p: any) => p.name === 'total_training_steps') ||
                 params.find((p: any) =>
@@ -2427,3 +2438,22 @@ async function paintCell(cell: HTMLElement) {
         });
     }
 }
+
+// Export perfMonitor to global scope for console debugging
+(window as any).perfMonitor = perfMonitor;
+(window as any).wsMetrics = {
+    log: () => perfMonitor.logMetrics(),
+    summary: () => perfMonitor.getSummary(),
+    perImage: () => perfMonitor.getAverageTimePerImage(),
+    reset: () => perfMonitor.reset(),
+    export: () => perfMonitor.exportMetricsJSON(),
+    toggleLogging: (enabled: boolean) => perfMonitor.setDetailedLogging(enabled),
+    stop: () => perfMonitor.stopAutoLogging(),
+    start: (intervalMs?: number) => {
+        if (intervalMs) perfMonitor.stopAutoLogging();
+        // Can't restart - create new instance or adjust
+        console.info('Logging is running. Use wsMetrics.stop() to pause.');
+    }
+};
+
+console.info('📊 Performance Monitor loaded! Use wsMetrics.log(), wsMetrics.summary(), wsMetrics.perImage(), wsMetrics.reset(), or perfMonitor directly');
