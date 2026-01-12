@@ -96,6 +96,21 @@ export class DataDisplayOptionsPanel {
         applyState(toggleGt, gtDisabled, gtMsg);
         applyState(togglePred, predDisabled, predMsg);
         applyState(toggleDiff, diffDisabled, diffMsg);
+
+        // Auto-toggle GT if available
+        if (toggleGt && !toggleGt.disabled && hasGtMask) {
+            toggleGt.checked = true;
+        }
+
+        // Auto-toggle Pred if available
+        if (togglePred && !togglePred.disabled && hasPredMask) {
+            togglePred.checked = true;
+        }
+
+        // Note: Diff is NOT auto-toggled (user must explicitly enable it)
+
+        // Trigger update callback if any toggles changed state
+        this.updateCallback?.();
     }
 
     constructor(container: HTMLElement) {
@@ -214,9 +229,7 @@ export class DataDisplayOptionsPanel {
         this.checkboxes.clear();
 
         const defaultCheckedFields = new Set([
-            "sampleId",
-            "mean_loss",
-            "tags"
+            "sampleId"
         ]);
 
         // Restore user preferences
@@ -376,7 +389,7 @@ export class DataDisplayOptionsPanel {
                 const cb = document.createElement("input");
                 cb.type = "checkbox";
                 cb.id = `seg-class-enabled-${id}`;
-                cb.checked = id !== 0;
+                cb.checked = true;
 
                 const nameSpan = document.createElement("span");
                 nameSpan.textContent = `${id}`;
@@ -390,6 +403,8 @@ export class DataDisplayOptionsPanel {
                 colorInput.style.height = "20px";
                 colorInput.style.border = "none";
                 colorInput.style.padding = "0";
+                colorInput.style.borderRadius = "50%";
+                colorInput.style.cursor = "pointer";
 
                 cb.addEventListener("change", () => this.updateCallback?.());
                 colorInput.addEventListener("input", () => this.updateCallback?.());

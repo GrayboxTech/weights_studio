@@ -161,7 +161,7 @@ body.dark-mode .logo-link:hover {
 }
 
 .logo-img {
-  height: 18px;
+  height: 32px;
   width: auto;
   object-fit: contain;
   /* subtle drop shadow for the logo */
@@ -347,6 +347,31 @@ body.dark-mode .view-controls {
 .color-picker::-moz-color-swatch {
   border-radius: 999px;
   border: none;
+}
+
+/* Class color pickers (dynamically created) */
+input[type="color"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  border: none !important;
+  padding: 0 !important;
+  cursor: pointer;
+}
+
+input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border-radius: 50%;
+}
+
+input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+input[type="color"]::-moz-color-swatch {
+  border: none;
+  border-radius: 50%;
 }
 
 .color-picker:hover {
@@ -597,6 +622,12 @@ body.segmentation-mode [data-section='segmentation'] {
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
   transition: opacity var(--transition-speed);
   z-index: 2;
+}
+
+body.dark-mode #slider-tooltip {
+  background-color: rgba(31, 41, 55, 0.95);
+  border-color: rgba(107, 114, 128, 0.4);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
 }
 
 .slider-wrapper:hover #slider-tooltip {
@@ -969,6 +1000,12 @@ body.dark-mode .toggle-button:hover {
   max-width: 280px;
   max-height: calc(100vh - 220px);
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.options-panel::-webkit-scrollbar {
+  display: none;
 }
 
 body.dark-mode .options-panel {
@@ -1347,6 +1384,52 @@ body.dark-mode .inspector-search {
   transform: translateY(-0.5px);
 }
 
+/* Disabled label styling */
+.checkbox-inputs label.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.12);
+  color: var(--muted-text-color);
+}
+
+.checkbox-inputs label.disabled:hover {
+  background: rgba(148, 163, 184, 0.08);
+  transform: none;
+}
+
+/* Native tooltip styling for disabled labels */
+.checkbox-inputs label.disabled[title] {
+  position: relative;
+  cursor: help;
+}
+
+/* Custom tooltip on hover for disabled elements */
+.checkbox-inputs label.disabled[title]:hover::after {
+  content: attr(title);
+  position: absolute;
+  bottom: 120%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(31, 41, 55, 0.95);
+  color: #f1f5f9;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  z-index: 10;
+  border: 1px solid rgba(107, 114, 128, 0.4);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+body.light-mode .checkbox-inputs label.disabled[title]:hover::after {
+  background-color: rgba(255, 255, 255, 0.95);
+  color: #1f2937;
+  border-color: rgba(148, 163, 184, 0.4);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+}
+
 .checkbox-inputs label.train {
   border: 1px solid rgba(0, 122, 255, 0.22);
   background: rgba(0, 122, 255, 0.05);
@@ -1422,6 +1505,12 @@ body.dark-mode .inspector-search {
   display: none;
 }
 
+body.dark-mode .context-menu {
+  background-color: rgba(31, 41, 55, 0.95);
+  border: 1px solid rgba(75, 85, 99, 0.6);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.45);
+}
+
 .context-menu.visible {
   display: block;
 }
@@ -1444,14 +1533,26 @@ body.dark-mode .inspector-search {
   transform: translateX(1px);
 }
 
+body.dark-mode .context-menu-item:hover {
+  background-color: rgba(0, 122, 255, 0.15);
+}
+
 .context-menu-item.danger {
   color: #b91c1c;
+}
+
+body.dark-mode .context-menu-item.danger {
+  color: #f87171;
 }
 
 .context-menu-separator {
   height: 1px;
   background-color: var(--border-color);
   margin: 0.4rem 0;
+}
+
+body.dark-mode .context-menu-separator {
+  background-color: rgba(75, 85, 99, 0.5);
 }
 
 /* Tooltip content */
@@ -3526,12 +3627,13 @@ body.dark-mode .compact-input {
 }
 
 .mode-btn.remove-mode {
-  background: #ef4444;
-  color: white;
+  background: transparent;
+  color: var(--secondary-text-color);
 }
 
 .mode-btn.remove-mode:hover {
-  background: #dc2626;
+  background: var(--accent-soft);
+  color: var(--accent-color);
 }
 
 /* Dark mode */
