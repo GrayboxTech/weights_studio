@@ -1519,8 +1519,9 @@ body.dark-mode .inspector-search {
   gap: 10px;
   min-width: 240px;
   max-width: 320px;
-  height: calc(100vh - 190px);
-  overflow: hidden;
+  height: auto;
+  max-height: none;
+  overflow: visible;
   transition: width 0.2s ease, opacity 0.2s ease;
 }
 
@@ -1588,8 +1589,7 @@ body.dark-mode .inspector-search {
   padding: 14px 16px 16px;
   /* Reduced bottom padding */
   margin-bottom: 16px;
-  min-height: 140px;
-  /* Slightly taller to accommodate content with spacing */
+  min-height: auto;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
