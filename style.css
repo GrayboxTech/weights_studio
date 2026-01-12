@@ -111,6 +111,13 @@ body.dark-mode {
   z-index: 10;
 }
 
+.header-controls-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: nowrap;
+}
+
 body.dark-mode .app-header {
   background: linear-gradient(135deg,
       rgba(26, 26, 26, 0.88),
@@ -1138,7 +1145,92 @@ body.dark-mode .inspector-search {
   margin-bottom: 10px;
 }
 
-.options-row {
+body.dark-mode .options-panel {
+  background: rgba(26, 26, 26, 0.72);
+}
+
+/* New inspector header (optional if you add it) */
+.inspector-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.inspector-title {
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: var(--primary-text-color);
+}
+
+.inspector-search {
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--primary-text-color);
+  outline: none;
+  transition: box-shadow var(--transition-speed), border-color var(--transition-speed);
+}
+
+.inspector-search:focus {
+  border-color: rgba(0, 122, 255, 0.55);
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.12);
+}
+
+body.dark-mode .inspector-search {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--primary-text-color);
+}
+
+/* Section + disclosure */
+.inspector-section {
+  padding: 10px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.inspector-section:last-child {
+  border-bottom: none;
+}
+
+.inspector-section>summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted-text-color);
+  padding: 6px 0;
+}
+
+.inspector-section>summary::-webkit-details-marker {
+  display: none;
+}
+
+.inspector-group {
+  padding: 6px 0 2px;
+}
+
+/* Rows */
+.row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 8px 0;
+}
+
+.row-label {
+  font-size: 0.82rem;
+  color: var(--secondary-text-color);
+  padding-top: 6px;
+}
+
+.row-controls {
   display: flex;
   align-items: flex-start;
   margin-bottom: 6px;
@@ -1512,8 +1604,9 @@ body.dark-mode .inspector-search {
   gap: 10px;
   min-width: 240px;
   max-width: 320px;
-  height: calc(100vh - 190px);
-  overflow: hidden;
+  height: auto;
+  max-height: none;
+  overflow: visible;
   transition: width 0.2s ease, opacity 0.2s ease;
 }
 
@@ -1581,8 +1674,7 @@ body.dark-mode .inspector-search {
   padding: 14px 16px 16px;
   /* Reduced bottom padding */
   margin-bottom: 16px;
-  min-height: 140px;
-  /* Slightly taller to accommodate content with spacing */
+  min-height: auto;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
