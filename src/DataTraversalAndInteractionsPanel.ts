@@ -189,7 +189,8 @@ export class DataTraversalAndInteractionsPanel {
         this.sampleSlider.step = "1";
 
         this.sliderMinLabel.textContent = '0';
-        this.sliderMaxLabel.textContent = this.maxSampleId.toString();
+        // Don't set default value - wait for actual data to arrive via setMaxSampleId
+        this.sliderMaxLabel.textContent = '';
     }
 
     private handleControlsChange(): void {
@@ -374,6 +375,10 @@ export class DataTraversalAndInteractionsPanel {
 
         if (this.sampleSlider) {
             this.sampleSlider.max = availableSamples.toString();
+        }
+
+        if (this.sliderMaxLabel) {
+            this.sliderMaxLabel.textContent = availableSamples.toString();
         }
 
         if (this.startIndexSlider) {
