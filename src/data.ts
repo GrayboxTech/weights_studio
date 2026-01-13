@@ -610,9 +610,9 @@ async function updateDisplayOnly() {
     }
 }
 
-async function handleQuerySubmit(query: string): Promise<void> {
+export async function handleQuerySubmit(query: string, isNaturalLanguage: boolean = true): Promise<void> {
     try {
-        const request: DataQueryRequest = { query, accumulate: false, isNaturalLanguage: true };
+        const request: DataQueryRequest = { query, accumulate: false, isNaturalLanguage };
         const response: DataQueryResponse = await dataClient.applyDataQuery(request).response;
 
         // Handle Analysis Intent (Chat Mode)
@@ -1186,6 +1186,10 @@ export async function initializeUIElements() {
     const detailsOptionsRow = document.querySelector('.details-options-row') as HTMLElement;
     if (detailsOptionsRow) {
         displayOptionsPanel = new DataDisplayOptionsPanel(detailsOptionsRow);
+        displayOptionsPanel.onSort(async (query) => {
+            // Bypass agent for deterministic response (sorting)
+            await handleQuerySubmit(query, false);
+        });
         displayOptionsPanel.initialize();
 
         if (detailsToggle && inspectorPanel) {
@@ -2485,8 +2489,9 @@ async function paintCell(cell: HTMLElement) {
     const tagsStat = record.dataStats.find((s: any) => s.name === 'tags');
     const currentTagsStr = tagsStat?.valueString || "";
     // Filter out None, empty strings, and whitespace-only strings
+    // Backend uses semi-colon separator
     const currentTags = currentTagsStr
-        .split(',')
+        .split(';')
         .map((t: string) => t.trim())
         .filter((t: string) => t && t !== 'None');
 
@@ -2496,7 +2501,7 @@ async function paintCell(cell: HTMLElement) {
         if (tagsToRemove.length === 0) return;
 
         const newTags = currentTags.filter((t: string) => !tagsToRemove.includes(t));
-        const newTagsStr = newTags.join(', ');
+        const newTagsStr = newTags.join(';');
 
         // Optimistic update
         gridCell.updateStats({ "tags": newTagsStr });
@@ -2524,8 +2529,9 @@ async function paintCell(cell: HTMLElement) {
         const tagsToAdd = Array.from(activeBrushTags).filter((t: string) => !currentTags.includes(t));
         if (tagsToAdd.length === 0) return;
 
-        const newTags = [...currentTags, ...tagsToAdd];
-        const newTagsStr = newTags.join(', ');
+        // Deduplicate using Set to be safe
+        const newTags = Array.from(new Set([...currentTags, ...tagsToAdd])).filter(Boolean);
+        const newTagsStr = newTags.join(';');
 
         // Optimistic update
         gridCell.updateStats({ "tags": newTagsStr });

@@ -2625,7 +2625,7 @@ body.dark-mode .control-button.danger {
 }
 
 /* Disabled switches */
-.switch input:disabled + span {
+.switch input:disabled+span {
   opacity: 0.35;
   cursor: not-allowed;
 }
@@ -4097,4 +4097,32 @@ body.dark-mode .msg-bubble code {
 .cell.empty img,
 .cell.empty .cell-label {
   opacity: 0;
+}
+
+/* Shake animation for unsortable fields */
+@keyframes shake {
+  0% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-4px);
+  }
+
+  50% {
+    transform: translateX(4px);
+  }
+
+  75% {
+    transform: translateX(-4px);
+  }
+
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.shake-animation {
+  animation: shake 0.4s ease-in-out;
+  color: var(--destructive-color, #ef4444) !important;
 }

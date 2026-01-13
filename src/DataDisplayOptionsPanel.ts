@@ -55,6 +55,7 @@ function hslToHex(h: number, s: number, l: number): string {
 export class DataDisplayOptionsPanel {
     private element: HTMLElement;
     private checkboxes: Map<string, HTMLInputElement> = new Map();
+    private fieldTypes: Map<string, string> = new Map();
     private availableStats: string[] = [];
     private updateCallback: (() => void) | null = null;
     private classIds: number[] = [];
@@ -190,8 +191,13 @@ export class DataDisplayOptionsPanel {
         }
 
         // 1) Collect all fields seen across all provided records
+        this.fieldTypes.clear();
+
         availableFields.add("sampleId");
+        this.fieldTypes.set("sampleId", "string");
+
         availableFields.add("tags");
+        this.fieldTypes.set("tags", "array");
 
         dataRecords.forEach(record => {
             if (record.dataStats) {
@@ -205,6 +211,7 @@ export class DataDisplayOptionsPanel {
                         return;
                     }
                     availableFields.add(stat.name);
+                    this.fieldTypes.set(stat.name, stat.type);
                 });
             }
         });
@@ -299,14 +306,36 @@ export class DataDisplayOptionsPanel {
 
             checkbox.checked = defaultCheckedFields.has(fieldName);
 
-            const label = document.createElement("label");
-            label.htmlFor = checkbox.id;
-            label.textContent = this.formatFieldName(fieldName);
+            const labelSpan = document.createElement("span");
+            labelSpan.className = "sortable-label";
+            labelSpan.textContent = this.formatFieldName(fieldName);
+            labelSpan.style.cursor = "pointer";
+            labelSpan.style.flexGrow = "1"; // Fill space
+            labelSpan.style.marginLeft = "8px"; // Gap
+            labelSpan.title = "Click to sort";
+            labelSpan.style.userSelect = "none";
+
+            const sortIcon = document.createElement("span");
+            sortIcon.className = "sort-icon";
+            sortIcon.style.marginLeft = "4px";
+            sortIcon.style.color = "var(--accent-color)";
+            labelSpan.appendChild(sortIcon);
+
+            labelSpan.addEventListener('click', (e) => {
+                e.preventDefault();
+                // If the user clicks the label, they intend to sort, not toggle visibility
+                this.handleSort(fieldName);
+            });
 
             const wrapper = document.createElement("div");
             wrapper.className = "checkbox-wrapper";
+            // Ensure wrapper is flex for alignment
+            wrapper.style.display = "flex";
+            wrapper.style.alignItems = "center";
+            wrapper.style.padding = "2px 0";
+
             wrapper.appendChild(checkbox);
-            wrapper.appendChild(label);
+            wrapper.appendChild(labelSpan);
 
             this.element.appendChild(wrapper);
             this.checkboxes.set(fieldName, checkbox);
@@ -424,9 +453,89 @@ export class DataDisplayOptionsPanel {
         return name.replace(/([A-Z])/g, " $1").replace(/^./, str => str.toUpperCase());
     }
 
+    private sortCallback: ((query: string) => void) | null = null;
+    private sortState: { field: string | null; direction: 'asc' | 'desc' | null } = { field: null, direction: null };
+
+    onSort(callback: (query: string) => void): void {
+        this.sortCallback = callback;
+    }
+
+    private handleSort(fieldName: string) {
+        // Validate sortability
+        const type = this.fieldTypes.get(fieldName);
+        // Whitelist safe arrays/types that backend can handle (or redirect)
+        const safeArrays = ['tags', 'task_type', 'prediction_loss', 'prediction', 'target', 'label'];
+
+        const isUnsortable = (type === 'array' || type === 'tensor' || type === 'image') && !safeArrays.includes(fieldName);
+
+        if (isUnsortable) {
+            const cb = this.checkboxes.get(fieldName);
+            const label = cb?.parentElement?.querySelector('.sortable-label');
+            if (label) {
+                label.classList.add('shake-animation');
+                setTimeout(() => label.classList.remove('shake-animation'), 500);
+            }
+            return;
+        }
+
+        let newDir: 'asc' | 'desc' | null = 'asc';
+
+        if (this.sortState.field === fieldName) {
+            if (this.sortState.direction === 'asc') newDir = 'desc';
+            else if (this.sortState.direction === 'desc') newDir = null;
+        }
+
+        this.sortState = {
+            field: newDir ? fieldName : null,
+            direction: newDir
+        };
+
+        this.updateSortUI();
+
+        if (this.sortCallback) {
+            // Map UI field names to DB column names
+            let queryCol = fieldName;
+            if (fieldName === 'sampleId') queryCol = 'sample_id';
+            if (fieldName === 'label') queryCol = 'target';
+            if (fieldName === 'pred') queryCol = 'prediction';
+
+            // Quote if necessary (handles spaces in column names)
+            if (queryCol.includes(' ')) {
+                queryCol = `\`${queryCol}\``;
+            }
+
+            // If clearing sort (null), default to index sort (restores original view)
+            const query = newDir
+                ? `sortby ${queryCol} ${newDir}`
+                : `sortby index asc`;
+            this.sortCallback(query);
+        }
+    }
+
+    private updateSortUI() {
+        this.checkboxes.forEach((_, field) => {
+            // Find the wrapper for this field
+            // We stored checkboxes, parent is wrapper
+            const cb = this.checkboxes.get(field);
+            if (!cb) return;
+
+            const wrapper = cb.parentElement;
+            const sortIcon = wrapper?.querySelector('.sort-icon');
+            const labelText = wrapper?.querySelector('.sortable-label');
+
+            if (sortIcon) sortIcon.textContent = '';
+            if (labelText) (labelText as HTMLElement).style.fontWeight = 'normal';
+
+            if (this.sortState.field === field && this.sortState.direction && sortIcon) {
+                sortIcon.textContent = this.sortState.direction === 'asc' ? ' ▴' : ' ▾';
+                if (labelText) (labelText as HTMLElement).style.fontWeight = 'bold';
+            }
+        });
+    }
+
     getDisplayPreferences(): DisplayPreferences {
         const preferences: DisplayPreferences = {};
-
+        // ... (rest of function unchanged, just need to make sure I don't delete logic)
         for (const [field, checkbox] of this.checkboxes.entries()) {
             preferences[field] = checkbox.checked;
         }
