@@ -546,12 +546,34 @@ body.segmentation-mode [data-section='segmentation'] {
   min-width: 300px;
 }
 
+.slider-label-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 50px;
+}
+
+.slider-label-group.left {
+  align-items: flex-start;
+}
+
+.slider-label-group.right {
+  align-items: flex-end;
+}
+
 #slider-min-label,
 #slider-max-label {
   font-size: 0.9rem;
   color: var(--secondary-text-color);
-  min-width: 40px;
   text-align: center;
+}
+
+.slider-range-label {
+  font-size: 0.75rem;
+  color: var(--tertiary-text-color, rgba(128, 128, 128, 0.7));
+  font-weight: 500;
+  letter-spacing: 0.3px;
 }
 
 .slider-wrapper {

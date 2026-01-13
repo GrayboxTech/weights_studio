@@ -86,26 +86,26 @@ export class DataTraversalAndInteractionsPanel {
             this.sampleSlider.addEventListener('input', () => {
                 this.handleControlsChange();
                 this.onUpdateCallback();
-                
+
                 // Update tooltip to show range at current slider position
                 if (this.sliderTooltip) {
                     const value = parseFloat(this.sampleSlider!.value);
                     const gridCount = parseInt(this.sampleSlider!.step, 10) || 1;
-                    
+
                     const rawIndex = Math.round(value);
                     const batchNumber = Math.floor(rawIndex / gridCount);
                     const startIndex = batchNumber * gridCount;
                     const endIndex = Math.min(startIndex + gridCount - 1, this.maxSampleId);
-                    
+
                     this.sliderTooltip.textContent = `${startIndex}-${endIndex}`;
-                    
+
                     // Position at slider thumb
                     const sliderRect = this.sampleSlider!.getBoundingClientRect();
                     const min = parseFloat(this.sampleSlider!.min);
                     const max = parseFloat(this.sampleSlider!.max);
                     const percent = (value - min) / (max - min);
                     const thumbX = sliderRect.width * percent;
-                    
+
                     this.sliderTooltip.style.left = `${thumbX}px`;
                     this.sliderTooltip.style.transform = 'translateX(-50%)';
                     this.sliderTooltip.style.display = 'block';
@@ -245,6 +245,23 @@ export class DataTraversalAndInteractionsPanel {
         this.sliderTooltip.style.left = `calc(${percent}% - ${this.sliderTooltip.offsetWidth / 2}px)`;
     }
 
+    public updateRangeLabels(): void {
+        if (!this.sampleSlider) return;
+
+        const startIndex = this.getStartIndex();
+        const endIndex = startIndex + this.getLeftSamples() - 1;
+
+        const sliderRangeStart = document.getElementById('slider-range-start');
+        const sliderRangeEnd = document.getElementById('slider-range-end');
+
+        if (sliderRangeStart) {
+            sliderRangeStart.textContent = String(startIndex);
+        }
+        if (sliderRangeEnd) {
+            sliderRangeEnd.textContent = String(endIndex);
+        }
+    }
+
 
 
     public updateSliderStep(step: number): void {
@@ -269,6 +286,10 @@ export class DataTraversalAndInteractionsPanel {
     public setStartIndex(index: number): void {
         if (this.sampleSlider) {
             this.sampleSlider.value = index.toString();
+
+            // Update range labels immediately for visual feedback
+            this.updateRangeLabels();
+
             // Programmatically trigger the update to refresh data
             if (this.onUpdateCallback) {
                 this.onUpdateCallback();
@@ -355,12 +376,45 @@ export class DataTraversalAndInteractionsPanel {
             this.sampleSlider.max = availableSamples.toString();
         }
 
-        if (this.sliderMaxLabel) {
-            this.sliderMaxLabel.innerHTML = `${availableSamples}<br><small style="font-size: 0.8em; color: #888;">(${totalSamples})</small>`;
-        }
-
         if (this.startIndexSlider) {
             this.startIndexSlider.max = availableSamples.toString();
         }
+    }
+
+    public navigateLeft(): void {
+        if (!this.sampleSlider) return;
+        const gridCount = parseInt(this.sampleSlider.step, 10) || 1;
+        const currentIndex = this.getStartIndex();
+        const newIndex = Math.max(0, currentIndex - gridCount);
+        this.setStartIndex(newIndex);
+    }
+
+    public navigateRight(): void {
+        if (!this.sampleSlider) return;
+        const gridCount = parseInt(this.sampleSlider.step, 10) || 1;
+        const currentIndex = this.getStartIndex();
+        const maxIndex = Math.max(0, this.maxSampleId - gridCount);
+        const newIndex = Math.min(maxIndex, currentIndex + gridCount);
+        this.setStartIndex(newIndex);
+    }
+
+    public setupKeyboardShortcuts(): void {
+        document.addEventListener('keydown', (e: KeyboardEvent) => {
+            // Don't navigate if user is typing in an input field
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+                return;
+            }
+
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                this.navigateLeft();
+                console.debug('[Keyboard] Navigate left');
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                this.navigateRight();
+                console.debug('[Keyboard] Navigate right');
+            }
+        });
     }
 }

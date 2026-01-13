@@ -216,12 +216,18 @@
     <!-- BOTTOM NAVIGATION BAR -->
     <div class="bottom-bar">
       <div class="slider-container">
-        <span id="slider-min-label">0</span>
+        <div class="slider-label-group left">
+          <span id="slider-min-label">0</span>
+          <span id="slider-range-start" class="slider-range-label">0</span>
+        </div>
         <div class="slider-wrapper">
           <input type="range" min="0" max="100" value="0" class="slider" id="sample-slider">
           <span id="slider-tooltip">0</span>
         </div>
-        <span id="slider-max-label">100</span>
+        <div class="slider-label-group right">
+          <span id="slider-max-label">100</span>
+          <span id="slider-range-end" class="slider-range-label">0</span>
+        </div>
       </div>
     </div>
 

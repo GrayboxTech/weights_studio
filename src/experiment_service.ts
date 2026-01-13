@@ -690,7 +690,7 @@ export interface DataQueryResponse {
      */
     message: string;
     /**
-     * @generated from protobuf field: int32 number_of_all_samples = 3
+     * @generated from protobuf field: int64 number_of_all_samples = 3
      */
     numberOfAllSamples: number;
     /**
@@ -3186,7 +3186,7 @@ class DataQueryResponse$Type extends MessageType<DataQueryResponse> {
                     message.message = reader.string();
                     break;
                 case /* int32 number_of_all_samples */ 3:
-                    message.numberOfAllSamples = reader.int32();
+                    message.numberOfAllSamples = reader.int64();
                     break;
                 case /* int32 number_of_samples_in_the_loop */ 4:
                     message.numberOfSamplesInTheLoop = reader.int32();
@@ -3223,7 +3223,7 @@ class DataQueryResponse$Type extends MessageType<DataQueryResponse> {
             writer.tag(2, WireType.LengthDelimited).string(message.message);
         /* int32 number_of_all_samples = 3; */
         if (message.numberOfAllSamples !== 0)
-            writer.tag(3, WireType.Varint).int32(message.numberOfAllSamples);
+            writer.tag(3, WireType.Varint).int64(message.numberOfAllSamples);
         /* int32 number_of_samples_in_the_loop = 4; */
         if (message.numberOfSamplesInTheLoop !== 0)
             writer.tag(4, WireType.Varint).int32(message.numberOfSamplesInTheLoop);

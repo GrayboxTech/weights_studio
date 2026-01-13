@@ -73,6 +73,7 @@ const MAX_PREFETCH_BATCHES = (() => {
 })();
 const MAX_CACHE_ENTRIES = MAX_PREFETCH_BATCHES + 4; // Keep extra batches in memory (+2 for first/last batches)
 let prefetchInProgress = false;
+let lastFetchedBatchStart: number = 0; // Track navigation direction
 
 function getCacheKey(startIndex: number, count: number, resizeWidth: number, resizeHeight: number): string {
     return `${startIndex}-${count}-${resizeWidth}-${resizeHeight}`;
@@ -202,7 +203,7 @@ async function fetchAndDisplaySamples() {
 
     const start = traversalPanel.getStartIndex();
     const count = traversalPanel.getLeftSamples();
-    const batchSize = 32;
+    const batchSize = Math.min(gridManager.calculateGridDimensions().gridCount, 128);
 
     const requestId = ++currentFetchRequestId;
 
@@ -235,6 +236,9 @@ async function fetchAndDisplaySamples() {
             }
         });
         console.debug(`[Cache] Displayed ${cachedResponse.dataRecords.length} cached records`);
+
+        // Update range labels on scrollbar
+        traversalPanel.updateRangeLabels();
 
         // Trigger prefetch of multiple batches ahead in background
         prefetchMultipleBatches(start, count, resizeWidth, resizeHeight);
@@ -334,12 +338,130 @@ async function fetchAndDisplaySamples() {
             setCachedResponse(start, count, resizeWidth, resizeHeight, completeResponse);
         }
 
-        // Trigger prefetch of multiple batches ahead (2, 3, 4)
-        prefetchMultipleBatches(start, count, resizeWidth, resizeHeight);
+        // Update range labels on scrollbar
+        traversalPanel.updateRangeLabels();
+
+        // Trigger prefetch of batches both ahead and behind based on navigation direction
+        prefetchBidirectionalBatches(start, count, resizeWidth, resizeHeight, lastFetchedBatchStart);
+        lastFetchedBatchStart = start; // Update for next navigation
 
     } catch (error) {
         // Error is already logged by fetchSamples, so we just catch to prevent unhandled promise rejection.
         console.debug("fetchAndDisplaySamples failed. See error above.");
+    }
+}
+
+async function prefetchBidirectionalBatches(currentStart: number, count: number, resizeWidth: number, resizeHeight: number, lastStart: number = 0, totalBatches: number = MAX_PREFETCH_BATCHES): Promise<void> {
+    if (prefetchInProgress) {
+        console.debug('[Prefetch] Already in progress, skipping');
+        return;
+    }
+
+    prefetchInProgress = true;
+    const maxSampleId = traversalPanel.getMaxSampleId();
+    const batchesToPrefetch: number[] = [];
+
+    // Calculate how many batches we can go backward and forward
+    const maxBackwardBatches = Math.floor(currentStart / count);
+    const maxForwardBatches = Math.floor((maxSampleId - currentStart) / count);
+
+    // Split prefetch batches: aim for totalBatches/2 before and after
+    let targetBackward = Math.floor(totalBatches / 2);
+    let targetForward = Math.ceil(totalBatches / 2);
+
+    // Adjust if we're near boundaries
+    const availableBackward = Math.min(targetBackward, maxBackwardBatches);
+    const availableForward = Math.min(targetForward, maxForwardBatches);
+
+    // If we can't reach target in one direction, use extra in the other
+    if (availableBackward < targetBackward) {
+        // Near the beginning: use more forward batches
+        targetForward = Math.min(totalBatches - availableBackward, maxForwardBatches);
+    } else if (availableForward < targetForward) {
+        // Near the end: use more backward batches
+        targetBackward = Math.min(totalBatches - availableForward, maxBackwardBatches);
+    }
+
+    console.debug(`[Prefetch] Position: ${currentStart}, Direction: forward=${availableForward} backward=${availableBackward}, Targets: F=${targetForward} B=${targetBackward}`);
+
+    // Collect backward batches
+    for (let i = 1; i <= targetBackward; i++) {
+        const batchStart = currentStart - (count * i);
+        if (batchStart < 0) break;
+
+        const cached = getCachedResponse(batchStart, count, resizeWidth, resizeHeight);
+        if (!cached) {
+            batchesToPrefetch.push(batchStart);
+            console.debug('[Prefetch] Adding backward batch at', batchStart);
+        }
+    }
+
+    // Collect forward batches
+    for (let i = 1; i <= targetForward; i++) {
+        const batchStart = currentStart + (count * i);
+        if (batchStart > maxSampleId) break;
+
+        const cached = getCachedResponse(batchStart, count, resizeWidth, resizeHeight);
+        if (!cached) {
+            batchesToPrefetch.push(batchStart);
+            console.debug('[Prefetch] Adding forward batch at', batchStart);
+        }
+    }
+
+    if (batchesToPrefetch.length === 0) {
+        console.debug('[Prefetch] All needed batches already cached');
+        prefetchInProgress = false;
+        return;
+    }
+
+    console.debug(`[Prefetch] Loading ${batchesToPrefetch.length} batches: ${batchesToPrefetch.join(', ')}`);
+
+    try {
+        const batchSize = Math.min(gridManager.calculateGridDimensions().gridCount, 128);
+
+        // Prefetch each batch
+        for (const batchStart of batchesToPrefetch) {
+            const allRecords: any[] = [];
+
+            for (let i = 0; i < count; i += batchSize) {
+                const currentBatchSize = Math.min(batchSize, count - i);
+                const request: DataSamplesRequest = {
+                    startIndex: batchStart + i,
+                    recordsCnt: currentBatchSize,
+                    includeRawData: true,
+                    includeTransformedData: false,
+                    statsToRetrieve: [],
+                    resizeWidth: resizeWidth,
+                    resizeHeight: resizeHeight
+                };
+
+                const response = await fetchSamples(request);
+
+                if (response.success && response.dataRecords.length > 0) {
+                    allRecords.push(...response.dataRecords);
+
+                    if (response.dataRecords.length < currentBatchSize) {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            if (allRecords.length > 0) {
+                const completeResponse: DataSamplesResponse = {
+                    success: true,
+                    message: '',
+                    dataRecords: allRecords
+                };
+                setCachedResponse(batchStart, count, resizeWidth, resizeHeight, completeResponse);
+                console.debug(`[Prefetch] Cached batch at ${batchStart} (${allRecords.length} records)`);
+            }
+        }
+    } catch (error) {
+        console.debug('[Prefetch] Failed:', error);
+    } finally {
+        prefetchInProgress = false;
     }
 }
 
@@ -361,7 +483,7 @@ async function prefetchMultipleBatches(currentStart: number, count: number, resi
             console.debug(`[Prefetch] Batch ${batchStart} exceeds max sample ID ${maxSampleId}, stopping`);
             break;
         }
-        
+
         // Only add if not already cached
         const cached = getCachedResponse(batchStart, count, resizeWidth, resizeHeight);
         if (!cached) {
@@ -379,7 +501,7 @@ async function prefetchMultipleBatches(currentStart: number, count: number, resi
     console.debug(`[Prefetch] Loading ${batchesToPrefetch.length} batches ahead: ${batchesToPrefetch.join(', ')}`);
 
     try {
-        const batchSize = 32;
+        const batchSize = Math.min(gridManager.calculateGridDimensions().gridCount, 128);
 
         // Prefetch each batch
         for (const batchStart of batchesToPrefetch) {
@@ -544,7 +666,7 @@ async function refreshDynamicStatsOnly() {
 
     const start = traversalPanel.getStartIndex();
     const count = traversalPanel.getLeftSamples();
-    const batchSize = 32;
+    const batchSize = Math.min(gridManager.calculateGridDimensions().gridCount, 128);
 
     for (let i = 0; i < count; i += batchSize) {
         const currentBatchSize = Math.min(batchSize, count - i);
@@ -1145,6 +1267,7 @@ export async function initializeUIElements() {
     }
 
     traversalPanel.initialize();
+    traversalPanel.setupKeyboardShortcuts();
     gridManager = new GridManager(
         cellsContainer, traversalPanel,
         displayOptionsPanel as DataDisplayOptionsPanel);
