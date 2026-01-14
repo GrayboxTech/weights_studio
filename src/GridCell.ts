@@ -357,10 +357,10 @@ export class GridCell {
             if (stat.name === "tags") {
                 // Parse semi-colon separated tags (backend format) and filter out None, empty strings
                 const tagValue = stat.valueString || '';
-                const cleanTags = tagValue
-                    .split(';')
+                const cleanTags = Array.from(new Set(tagValue
+                    .split(/[;,]/)
                     .map(t => t.trim())
-                    .filter(t => t && t !== 'None');
+                    .filter(t => t && t !== 'None')));
 
                 if (cleanTags.length > 0) {
                     formatted = cleanTags.join(', '); // Display nicely with commas

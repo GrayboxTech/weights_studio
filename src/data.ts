@@ -1807,7 +1807,7 @@ contextMenu.addEventListener('click', async (e) => {
                 // The modal will stay on top of the selected items.
                 return;
             case 'remove-tag':
-                removeTag(sample_ids, origins);
+                await removeTag(sample_ids, origins);
                 clearSelection();
                 debouncedFetchAndDisplay();
                 break;
@@ -1815,7 +1815,7 @@ contextMenu.addEventListener('click', async (e) => {
                 selectedCells.forEach(cell => {
                     const gridCell = getGridCell(cell);
                     if (gridCell) {
-                        cell.classList.add('discarded');
+                        gridCell.updateStats({ deny_listed: 1 });
                     }
                 });
 
@@ -2351,7 +2351,7 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
                         const record = gridCell.getRecord();
                         const existingTagsStat = record?.dataStats.find((s: any) => s.name === 'tags');
                         const currentTagsStr = existingTagsStat?.valueString || "";
-                        const newTagsStr = currentTagsStr.split(',').map((t: string) => t.trim()).filter((t: string) => t && t !== tag).join(', ');
+                        const newTagsStr = currentTagsStr.split(/[;,]/).map((t: string) => t.trim()).filter((t: string) => t && t !== tag).join('; ');
                         gridCell.updateStats({ "tags": newTagsStr });
                     }
                 });
@@ -2393,11 +2393,11 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
                         const record = gridCell.getRecord();
                         const existingTagsStat = record?.dataStats.find((s: any) => s.name === 'tags');
                         const currentTagsStr = existingTagsStat?.valueString || "";
-                        const currentTags = currentTagsStr.split(',').map((t: string) => t.trim()).filter((t: string) => t);
+                        const currentTags = currentTagsStr.split(/[;,]/).map((t: string) => t.trim()).filter((t: string) => t);
                         if (!currentTags.includes(tag)) {
                             currentTags.push(tag);
                         }
-                        const newTagsStr = currentTags.join(', ');
+                        const newTagsStr = currentTags.join('; ');
                         gridCell.updateStats({ "tags": newTagsStr });
                     }
                 });
@@ -2463,6 +2463,7 @@ async function removeTag(sampleIds: number[], origins: string[]) {
                     gridCell.updateStats({ "tags": "" });
                 }
             });
+            clearResponseCache();
         } else {
             alert(`Failed to remove tag: ${response.message}`);
         }
@@ -2490,10 +2491,10 @@ async function paintCell(cell: HTMLElement) {
     const currentTagsStr = tagsStat?.valueString || "";
     // Filter out None, empty strings, and whitespace-only strings
     // Backend uses semi-colon separator
-    const currentTags = currentTagsStr
-        .split(';')
+    const currentTags = Array.from(new Set(currentTagsStr
+        .split(/[;,]/)
         .map((t: string) => t.trim())
-        .filter((t: string) => t && t !== 'None');
+        .filter((t: string) => t && t !== 'None')));
 
     if (isPainterRemoveMode) {
         // REMOVE MODE: Remove any selected tags that exist
