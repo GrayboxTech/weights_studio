@@ -319,7 +319,23 @@ export class DataDisplayOptionsPanel {
             sortIcon.className = "sort-icon";
             sortIcon.style.marginLeft = "4px";
             sortIcon.style.color = "var(--accent-color)";
+
+            const lockIcon = document.createElement("span");
+            lockIcon.className = "lock-icon";
+            lockIcon.style.marginLeft = "6px";
+            lockIcon.style.cursor = "pointer";
+            lockIcon.style.display = "none";
+            lockIcon.style.fontSize = "0.85em";
+            lockIcon.style.userSelect = "none";
+
+            lockIcon.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.handleLockToggle(fieldName);
+            });
+
             labelSpan.appendChild(sortIcon);
+            labelSpan.appendChild(lockIcon);
 
             labelSpan.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -454,10 +470,21 @@ export class DataDisplayOptionsPanel {
     }
 
     private sortCallback: ((query: string) => void) | null = null;
-    private sortState: { field: string | null; direction: 'asc' | 'desc' | null } = { field: null, direction: null };
+
+    // Sort logic support: Field, Direction, Locked status
+    private sortState: Array<{ field: string; direction: 'asc' | 'desc'; locked: boolean }> = [];
 
     onSort(callback: (query: string) => void): void {
         this.sortCallback = callback;
+    }
+
+    private handleLockToggle(fieldName: string) {
+        const entry = this.sortState.find(s => s.field === fieldName);
+        if (entry) {
+            entry.locked = !entry.locked;
+            this.updateSortUI();
+            // Lock state change doesn't trigger new query, just changes future behavior
+        }
     }
 
     private handleSort(fieldName: string) {
@@ -478,57 +505,104 @@ export class DataDisplayOptionsPanel {
             return;
         }
 
-        let newDir: 'asc' | 'desc' | null = 'asc';
+        const existingIndex = this.sortState.findIndex(s => s.field === fieldName);
 
-        if (this.sortState.field === fieldName) {
-            if (this.sortState.direction === 'asc') newDir = 'desc';
-            else if (this.sortState.direction === 'desc') newDir = null;
+        if (existingIndex !== -1) {
+            // Already sorted - cycle: Asc -> Desc -> Off
+            // BUT if locked, can we turn it off? Assumed yes, user action overrides.
+            const entry = this.sortState[existingIndex];
+            if (entry.direction === 'asc') {
+                entry.direction = 'desc';
+            } else {
+                // Remove from sort list
+                this.sortState.splice(existingIndex, 1);
+            }
+        } else {
+            // New sort
+            // Logic: Keep all LOCKED fields. Remove sorted UNLOCKED fields. Add New.
+            const keptSorts = this.sortState.filter(s => s.locked);
+
+            // Add new field to the end (it becomes the secondary/tertiary sort key)
+            // Wait, usually "Sort by X" means X becomes Primary?
+            // "Apply another sorting on top of this" -> 
+            // If I have [Tags, Locked], and click Target. 
+            // Result: [Tags, Target]. Group by Tags, then by Target.
+            // This is "stable sort on top".
+            keptSorts.push({ field: fieldName, direction: 'asc', locked: false });
+            this.sortState = keptSorts;
         }
 
-        this.sortState = {
-            field: newDir ? fieldName : null,
-            direction: newDir
-        };
-
         this.updateSortUI();
+        this.triggerSortCallback();
+    }
 
-        if (this.sortCallback) {
+    private triggerSortCallback() {
+        if (!this.sortCallback) return;
+
+        if (this.sortState.length === 0) {
+            this.sortCallback(`sortby index asc`);
+            return;
+        }
+
+        // Build query components
+        const parts = this.sortState.map(s => {
+            let queryCol = s.field;
             // Map UI field names to DB column names
-            let queryCol = fieldName;
-            if (fieldName === 'sampleId') queryCol = 'sample_id';
-            if (fieldName === 'label') queryCol = 'target';
-            if (fieldName === 'pred') queryCol = 'prediction';
+            if (s.field === 'sampleId') queryCol = 'sample_id';
+            if (s.field === 'label') queryCol = 'target';
+            if (s.field === 'pred') queryCol = 'prediction';
 
-            // Quote if necessary (handles spaces in column names)
+            // Quote if necessary
             if (queryCol.includes(' ')) {
                 queryCol = `\`${queryCol}\``;
             }
+            return `${queryCol} ${s.direction}`;
+        });
 
-            // If clearing sort (null), default to index sort (restores original view)
-            const query = newDir
-                ? `sortby ${queryCol} ${newDir}`
-                : `sortby index asc`;
-            this.sortCallback(query);
-        }
+        const query = `sortby ${parts.join(', ')}`;
+        this.sortCallback(query);
     }
 
     private updateSortUI() {
         this.checkboxes.forEach((_, field) => {
             // Find the wrapper for this field
-            // We stored checkboxes, parent is wrapper
             const cb = this.checkboxes.get(field);
             if (!cb) return;
 
             const wrapper = cb.parentElement;
             const sortIcon = wrapper?.querySelector('.sort-icon');
+            const lockIcon = wrapper?.querySelector('.lock-icon') as HTMLElement;
             const labelText = wrapper?.querySelector('.sortable-label');
 
-            if (sortIcon) sortIcon.textContent = '';
-            if (labelText) (labelText as HTMLElement).style.fontWeight = 'normal';
+            if (!sortIcon || !labelText) return;
 
-            if (this.sortState.field === field && this.sortState.direction && sortIcon) {
-                sortIcon.textContent = this.sortState.direction === 'asc' ? ' ▴' : ' ▾';
+            const entry = this.sortState.find(s => s.field === field);
+            const index = this.sortState.findIndex(s => s.field === field);
+
+            if (entry) {
+                // Show sort direction
+                sortIcon.textContent = entry.direction === 'asc' ? ' ▴' : ' ▾';
+
+                // Show order index if multiple?
+                if (this.sortState.length > 1) {
+                    sortIcon.textContent += ` (${index + 1})`;
+                }
+
                 if (labelText) (labelText as HTMLElement).style.fontWeight = 'bold';
+
+                // Show lock icon
+                if (lockIcon) {
+                    lockIcon.style.display = 'inline-block';
+                    lockIcon.textContent = entry.locked ? '🔒' : '🔓';
+                    lockIcon.title = entry.locked ? "Locked (click to unlock)" : "Unlocked (click to lock)";
+                    lockIcon.style.opacity = entry.locked ? "1" : "0.4";
+                    // lockIcon.style.filter = entry.locked ? "grayscale(0%)" : "grayscale(100%)";
+                }
+
+            } else {
+                sortIcon.textContent = '';
+                if (labelText) (labelText as HTMLElement).style.fontWeight = 'normal';
+                if (lockIcon) lockIcon.style.display = 'none';
             }
         });
     }
