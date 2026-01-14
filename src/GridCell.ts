@@ -363,6 +363,7 @@ export class GridCell {
                     .filter(t => t && t !== 'None')));
 
                 if (cleanTags.length > 0) {
+                    cleanTags.sort(); // Ensure consistent alphabetical order
                     formatted = cleanTags.join(', '); // Display nicely with commas
                 } else {
                     continue; // Skip displaying if no valid tags
