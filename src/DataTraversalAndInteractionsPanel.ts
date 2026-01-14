@@ -6,9 +6,10 @@ export class DataTraversalAndInteractionsPanel {
     private imageResolutionAuto: HTMLInputElement | null = null;
     private imageResolutionPercent: HTMLInputElement | null = null;
     private imageResolutionValue: HTMLSpanElement | null = null;
-    private sliderMinLabel: HTMLSpanElement | null = null;
-    private sliderMaxLabel: HTMLSpanElement | null = null;
     private sliderTooltip: HTMLSpanElement | null = null;
+    private statTotalCount: HTMLSpanElement | null = null;
+    private statActiveCount: HTMLSpanElement | null = null;
+
     private gridToggleButton: HTMLButtonElement | null = null;
     private gridContent: HTMLElement | null = null;
 
@@ -34,17 +35,18 @@ export class DataTraversalAndInteractionsPanel {
         this.imageResolutionAuto = document.getElementById('image-resolution-auto') as HTMLInputElement;
         this.imageResolutionPercent = document.getElementById('image-resolution-percent') as HTMLInputElement;
         this.imageResolutionValue = document.getElementById('image-resolution-value') as HTMLSpanElement;
-        this.sliderMinLabel = document.getElementById('slider-min-label') as HTMLSpanElement;
-        this.sliderMaxLabel = document.getElementById('slider-max-label') as HTMLSpanElement;
         this.sliderTooltip = document.getElementById('slider-tooltip') as HTMLSpanElement;
+
+        this.statTotalCount = document.getElementById('stat-total-count') as HTMLSpanElement;
+        this.statActiveCount = document.getElementById('stat-active-count') as HTMLSpanElement;
+
         this.gridContent = document.getElementById('grid-content') as HTMLElement;
 
         this.startIndexSlider = document.getElementById('start-index-slider') as HTMLInputElement;
         this.startIndexTooltip = document.getElementById('start-index-tooltip') as HTMLElement;
 
         if (!this.sampleSlider || !this.cellSize || !this.zoomLevel ||
-            !this.sliderMinLabel || !this.sliderMaxLabel || !this.sliderTooltip ||
-            !this.gridContent) {
+            !this.sliderTooltip || !this.gridContent) {
             console.error('[DataTraversalAndInteractionsPanel] Missing required elements');
             return;
         }
@@ -181,15 +183,16 @@ export class DataTraversalAndInteractionsPanel {
     }
 
     private initializeSlider(): void {
-        if (!this.sampleSlider || !this.sliderMinLabel || !this.sliderMaxLabel) return;
+        if (!this.sampleSlider) return;
 
         this.sampleSlider.min = "0";
         this.sampleSlider.max = this.maxSampleId.toString();
         this.sampleSlider.value = "0";
         this.sampleSlider.step = "1";
 
-        this.sliderMinLabel.textContent = '0';
-        this.sliderMaxLabel.textContent = this.maxSampleId.toString();
+        // Initial defaults
+        if (this.statTotalCount) this.statTotalCount.textContent = this.maxSampleId.toString();
+        if (this.statActiveCount) this.statActiveCount.textContent = this.maxSampleId.toString();
     }
 
     private handleControlsChange(): void {
@@ -246,20 +249,7 @@ export class DataTraversalAndInteractionsPanel {
     }
 
     public updateRangeLabels(): void {
-        if (!this.sampleSlider) return;
-
-        const startIndex = this.getStartIndex();
-        const endIndex = startIndex + this.getLeftSamples() - 1;
-
-        const sliderRangeStart = document.getElementById('slider-range-start');
-        const sliderRangeEnd = document.getElementById('slider-range-end');
-
-        if (sliderRangeStart) {
-            sliderRangeStart.textContent = String(startIndex);
-        }
-        if (sliderRangeEnd) {
-            sliderRangeEnd.textContent = String(endIndex);
-        }
+        // Deprecated: No longer showing start/end range labels
     }
 
 
@@ -302,8 +292,9 @@ export class DataTraversalAndInteractionsPanel {
         if (this.sampleSlider) {
             this.sampleSlider.max = maxId.toString();
         }
-        if (this.sliderMaxLabel) {
-            this.sliderMaxLabel.textContent = maxId.toString();
+        // Stats are updated via updateSampleCounts generally, not just setMaxSampleId
+        if (this.statTotalCount) {
+            this.statTotalCount.textContent = maxId.toString();
         }
         if (this.startIndexSlider) {
             this.startIndexSlider.max = maxId.toString();
@@ -370,7 +361,7 @@ export class DataTraversalAndInteractionsPanel {
 
     public updateSampleCounts(availableSamples: number, totalSamples: number): void {
         this.maxSampleId = availableSamples;
-        this.totalSamples = totalSamples;
+        this.totalSamples = totalSamples; // This is the 'active' count (in loop)
 
         if (this.sampleSlider) {
             this.sampleSlider.max = availableSamples.toString();
@@ -378,6 +369,22 @@ export class DataTraversalAndInteractionsPanel {
 
         if (this.startIndexSlider) {
             this.startIndexSlider.max = availableSamples.toString();
+        }
+
+        // Update stats breakdown
+        if (this.statTotalCount) {
+            this.statTotalCount.textContent = availableSamples.toString();
+        }
+        if (this.statActiveCount) {
+            this.statActiveCount.textContent = totalSamples.toString();
+        }
+    }
+
+    public decrementActiveCount(amount: number): void {
+        if (amount <= 0) return;
+        this.totalSamples = Math.max(0, this.totalSamples - amount);
+        if (this.statActiveCount) {
+            this.statActiveCount.textContent = this.totalSamples.toString();
         }
     }
 

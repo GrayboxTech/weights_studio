@@ -549,31 +549,42 @@ body.segmentation-mode [data-section='segmentation'] {
 .slider-label-group {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0.3rem;
-  min-width: 50px;
-}
-
-.slider-label-group.left {
-  align-items: flex-start;
+  justify-content: center;
+  min-width: 60px;
 }
 
 .slider-label-group.right {
   align-items: flex-end;
+  text-align: right;
+  gap: 3px;
 }
 
-#slider-min-label,
-#slider-max-label {
-  font-size: 0.9rem;
-  color: var(--secondary-text-color);
-  text-align: center;
+.stat-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1;
 }
 
-.slider-range-label {
-  font-size: 0.75rem;
-  color: var(--tertiary-text-color, rgba(128, 128, 128, 0.7));
+.stat-count.primary {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--primary-text-color);
+}
+
+.stat-count.secondary {
+  font-size: 0.85rem;
   font-weight: 500;
-  letter-spacing: 0.3px;
+  color: var(--secondary-text-color);
+  opacity: 0.85;
+}
+
+.stat-label {
+  font-size: 0.65rem;
+  color: var(--muted-text-color);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 500;
 }
 
 .slider-wrapper {

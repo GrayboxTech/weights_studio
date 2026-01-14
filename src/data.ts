@@ -1812,12 +1812,26 @@ contextMenu.addEventListener('click', async (e) => {
                 debouncedFetchAndDisplay();
                 break;
             case 'discard':
+                let newlyDiscardedCount = 0;
                 selectedCells.forEach(cell => {
                     const gridCell = getGridCell(cell);
                     if (gridCell) {
+                        const record = gridCell.getRecord();
+                        // Check if already discarded to avoid double counting
+                        const isDiscardedStat = record?.dataStats.find((s: any) => s.name === 'deny_listed');
+                        const isAlreadyDiscarded = isDiscardedStat?.value?.[0] === 1; // Assuming value is [1] for true
+
+                        if (!isAlreadyDiscarded) {
+                            newlyDiscardedCount++;
+                        }
+
                         gridCell.updateStats({ deny_listed: 1 });
                     }
                 });
+
+                if (newlyDiscardedCount > 0) {
+                    traversalPanel.decrementActiveCount(newlyDiscardedCount);
+                }
 
                 const drequest: DataEditsRequest = {
                     statName: "deny_listed",
