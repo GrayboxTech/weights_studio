@@ -315,27 +315,7 @@ export class DataDisplayOptionsPanel {
             labelSpan.title = "Click to sort";
             labelSpan.style.userSelect = "none";
 
-            const sortIcon = document.createElement("span");
-            sortIcon.className = "sort-icon";
-            sortIcon.style.marginLeft = "4px";
-            sortIcon.style.color = "var(--accent-color)";
-
-            const lockIcon = document.createElement("span");
-            lockIcon.className = "lock-icon";
-            lockIcon.style.marginLeft = "6px";
-            lockIcon.style.cursor = "pointer";
-            lockIcon.style.display = "none";
-            lockIcon.style.fontSize = "0.85em";
-            lockIcon.style.userSelect = "none";
-
-            lockIcon.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                this.handleLockToggle(fieldName);
-            });
-
-            labelSpan.appendChild(sortIcon);
-            labelSpan.appendChild(lockIcon);
+            // NOTE: sort indicators are now handled by updateSortUI via chips and badges
 
             labelSpan.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -462,6 +442,7 @@ export class DataDisplayOptionsPanel {
             classesSlot.appendChild(container);
         }
 
+        this.updateSortUI();
         this.updateCallback?.();
     }
 
@@ -564,52 +545,100 @@ export class DataDisplayOptionsPanel {
     }
 
     private updateSortUI() {
+        // Remove separate container if it exists (cleanup from previous mode)
+        const container = this.element.querySelector('#active-sorts-container');
+        if (container) container.remove();
+
         this.checkboxes.forEach((_, field) => {
-            // Find the wrapper for this field
             const cb = this.checkboxes.get(field);
             if (!cb) return;
 
             const wrapper = cb.parentElement;
-            const sortIcon = wrapper?.querySelector('.sort-icon');
-            const lockIcon = wrapper?.querySelector('.lock-icon') as HTMLElement;
-            const labelText = wrapper?.querySelector('.sortable-label');
+            if (!wrapper) return;
+            const labelText = wrapper.querySelector('.sortable-label') as HTMLElement;
+            if (!labelText) return;
 
-            if (!sortIcon || !labelText) return;
+            // Clean up old stuff
+            const existingIndicators = wrapper.querySelector('.sort-indicators');
+            if (existingIndicators) existingIndicators.remove();
+
+            const badge = wrapper.querySelector('.sort-badge');
+            if (badge) badge.remove();
 
             const entry = this.sortState.find(s => s.field === field);
             const index = this.sortState.findIndex(s => s.field === field);
 
             if (entry) {
-                // Show sort direction
-                sortIcon.textContent = entry.direction === 'asc' ? ' ▴' : ' ▾';
+                labelText.style.fontWeight = 'bold';
+                labelText.style.color = 'var(--accent-color)';
 
-                // Show order index if multiple?
-                if (this.sortState.length > 1) {
-                    sortIcon.textContent += ` (${index + 1})`;
-                }
+                // Create inline indicators container
+                const indicators = document.createElement('span');
+                indicators.className = 'sort-indicators';
+                indicators.style.marginLeft = 'auto'; // Push to right if wrapper is flex
+                indicators.style.display = 'flex';
+                indicators.style.alignItems = 'center';
+                indicators.style.gap = '6px';
+                indicators.style.fontSize = '0.85em';
+                indicators.style.color = 'var(--fg-secondary)'; // Subtle default
 
-                if (labelText) (labelText as HTMLElement).style.fontWeight = 'bold';
+                // 1. Arrow & Rank
+                const sortDetail = document.createElement('span');
+                sortDetail.style.display = 'flex';
+                sortDetail.style.alignItems = 'center';
+                sortDetail.style.gap = '4px';
+                sortDetail.style.cursor = 'pointer';
+                const arrowSvg = entry.direction === 'asc'
+                    ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"></path></svg>`
+                    : `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>`;
+                const rankText = this.sortState.length > 1 ? `<span>${index + 1}</span>` : '';
 
-                // Show lock icon
-                if (lockIcon) {
-                    lockIcon.style.display = 'inline-block';
-                    lockIcon.textContent = entry.locked ? '🔒' : '🔓';
-                    lockIcon.title = entry.locked ? "Locked (click to unlock)" : "Unlocked (click to lock)";
-                    lockIcon.style.opacity = entry.locked ? "1" : "0.4";
-                    // lockIcon.style.filter = entry.locked ? "grayscale(0%)" : "grayscale(100%)";
-                }
+                sortDetail.innerHTML = `${rankText}${arrowSvg}`;
+                sortDetail.style.color = 'var(--accent-color)';
+
+                // Clicking arrow toggles direction
+                sortDetail.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Manual cycle: asc -> desc -> asc
+                    entry.direction = entry.direction === 'asc' ? 'desc' : 'asc';
+                    this.updateSortUI();
+                    this.triggerSortCallback();
+                });
+                indicators.appendChild(sortDetail);
+
+                // 2. Lock
+                const lockBtn = document.createElement('span');
+                lockBtn.style.display = 'flex';
+                lockBtn.style.alignItems = 'center';
+                lockBtn.style.cursor = 'pointer';
+                const lockSvg = entry.locked
+                    ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`
+                    : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.4;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>`;
+
+                lockBtn.innerHTML = lockSvg;
+                lockBtn.style.color = entry.locked ? 'var(--accent-color)' : 'var(--fg-muted, #888)';
+                lockBtn.title = entry.locked ? "Locked (click to unlock)" : "Unlocked (click to lock)";
+
+                lockBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation(); // Vital: prevent triggering sort toggle
+                    entry.locked = !entry.locked;
+                    this.updateSortUI();
+                });
+                indicators.appendChild(lockBtn);
+
+                wrapper.appendChild(indicators);
 
             } else {
-                sortIcon.textContent = '';
-                if (labelText) (labelText as HTMLElement).style.fontWeight = 'normal';
-                if (lockIcon) lockIcon.style.display = 'none';
+                labelText.style.fontWeight = 'normal';
+                labelText.style.color = '';
             }
         });
     }
 
     getDisplayPreferences(): DisplayPreferences {
         const preferences: DisplayPreferences = {};
-        // ... (rest of function unchanged, just need to make sure I don't delete logic)
         for (const [field, checkbox] of this.checkboxes.entries()) {
             preferences[field] = checkbox.checked;
         }
@@ -626,12 +655,8 @@ export class DataDisplayOptionsPanel {
 
         const classPreferences: Record<number, ClassPreference> = {};
         for (const id of this.classIds) {
-            const cb = document.getElementById(
-                `seg-class-enabled-${id}`
-            ) as HTMLInputElement | null;
-            const colorInput = document.getElementById(
-                `seg-class-color-${id}`
-            ) as HTMLInputElement | null;
+            const cb = document.getElementById(`seg-class-enabled-${id}`) as HTMLInputElement | null;
+            const colorInput = document.getElementById(`seg-class-color-${id}`) as HTMLInputElement | null;
 
             classPreferences[id] = {
                 enabled: cb ? cb.checked : id !== 0,
