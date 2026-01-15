@@ -4112,28 +4112,32 @@ body.dark-mode .msg-bubble code {
 
 /* Shake animation for unsortable fields */
 @keyframes shake {
-  0% {
-    transform: translateX(0);
-  }
 
-  25% {
-    transform: translateX(-4px);
-  }
-
-  50% {
-    transform: translateX(4px);
-  }
-
-  75% {
-    transform: translateX(-4px);
-  }
-
+  0%,
   100% {
     transform: translateX(0);
+  }
+
+  20% {
+    transform: translateX(-3px) rotate(-0.5deg);
+  }
+
+  40% {
+    transform: translateX(3px) rotate(0.5deg);
+  }
+
+  60% {
+    transform: translateX(-3px) rotate(-0.5deg);
+  }
+
+  80% {
+    transform: translateX(3px) rotate(0.5deg);
   }
 }
 
 .shake-animation {
-  animation: shake 0.4s ease-in-out;
-  color: var(--destructive-color, #ef4444) !important;
+  animation: shake 0.4s cubic-bezier(.36, .07, .19, .97) both;
+  color: #ff3b30 !important;
+  /* Premium system red */
+  text-shadow: 0 0 10px rgba(255, 59, 48, 0.2);
 }

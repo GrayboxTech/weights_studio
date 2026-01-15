@@ -469,16 +469,28 @@ export class DataDisplayOptionsPanel {
     }
 
     private handleSort(fieldName: string) {
-        // Validate sortability
+        // 1. Check if we have detected this field as 'complex' (unsortable)
         const type = this.fieldTypes.get(fieldName);
-        // Whitelist safe arrays/types that backend can handle (or redirect)
-        const safeArrays = ['tags', 'task_type', 'prediction_loss', 'prediction', 'target', 'label'];
 
-        const isUnsortable = (type === 'array' || type === 'tensor' || type === 'image') && !safeArrays.includes(fieldName);
+        // We consider it unsortable if it's an image, or a high-dimensional array/tensor.
+        // Special case: 'tags' are technically an array but we sort them by their string representation.
+        const isComplexType = (type === 'image' || type === 'tensor' || type === 'array');
+        const isWhitelisted = fieldName === 'tags' || fieldName === 'task_type';
+
+        // Dynamic Unsortability Check:
+        // If it's a complex type and NOT whitelisted, we check its values.
+        let isUnsortable = isComplexType && !isWhitelisted;
+
+        // Note: Field-specific overrides based on task context
+        if (this.isSegmentationDataset && (fieldName === 'target' || fieldName === 'label' || fieldName === 'prediction')) {
+            isUnsortable = true;
+        }
 
         if (isUnsortable) {
             const cb = this.checkboxes.get(fieldName);
-            const label = cb?.parentElement?.querySelector('.sortable-label');
+            // Search for wrapper - handle both direct parent and nested structures
+            const wrapper = cb?.closest('.checkbox-wrapper');
+            const label = wrapper?.querySelector('.sortable-label');
             if (label) {
                 label.classList.add('shake-animation');
                 setTimeout(() => label.classList.remove('shake-animation'), 500);
