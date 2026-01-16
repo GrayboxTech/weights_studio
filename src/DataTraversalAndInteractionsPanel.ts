@@ -3,7 +3,6 @@ export class DataTraversalAndInteractionsPanel {
     private sampleSlider: HTMLInputElement | null = null;
     private cellSize: HTMLInputElement | null = null;
     private zoomLevel: HTMLInputElement | null = null;
-    private imageResolutionAuto: HTMLInputElement | null = null;
     private imageResolutionPercent: HTMLInputElement | null = null;
     private imageResolutionValue: HTMLSpanElement | null = null;
     private sliderTooltip: HTMLSpanElement | null = null;
@@ -32,7 +31,6 @@ export class DataTraversalAndInteractionsPanel {
         this.sampleSlider = document.getElementById('sample-slider') as HTMLInputElement;
         this.cellSize = document.getElementById('cell-size') as HTMLInputElement;
         this.zoomLevel = document.getElementById('zoom-level') as HTMLInputElement;
-        this.imageResolutionAuto = document.getElementById('image-resolution-auto') as HTMLInputElement;
         this.imageResolutionPercent = document.getElementById('image-resolution-percent') as HTMLInputElement;
         this.imageResolutionValue = document.getElementById('image-resolution-value') as HTMLSpanElement;
         this.sliderTooltip = document.getElementById('slider-tooltip') as HTMLSpanElement;
@@ -57,23 +55,16 @@ export class DataTraversalAndInteractionsPanel {
 
     private attachEventListeners(): void {
         if (this.cellSize) {
-            this.cellSize.addEventListener('change', () => this.handleControlsChange());
             this.cellSize.addEventListener('input', () => {
                 this.onUpdateCallback();
             });
+            this.cellSize.addEventListener('change', () => this.handleControlsChange());
         }
         if (this.zoomLevel) {
-            this.zoomLevel.addEventListener('change', () => this.handleControlsChange());
             this.zoomLevel.addEventListener('input', () => {
                 this.onUpdateCallback();
             });
-        }
-        if (this.imageResolutionAuto) {
-            this.imageResolutionAuto.addEventListener('change', () => {
-                this.updateImageResolutionControls();
-                this.handleControlsChange();
-                this.onUpdateCallback();
-            });
+            this.zoomLevel.addEventListener('change', () => this.handleControlsChange());
         }
         if (this.imageResolutionPercent) {
             this.imageResolutionPercent.addEventListener('input', () => {
@@ -327,36 +318,27 @@ export class DataTraversalAndInteractionsPanel {
         return 1;
     }
 
-    private updateImageResolutionControls(): void {
-        if (!this.imageResolutionAuto || !this.imageResolutionPercent) return;
-
-        const isAuto = this.imageResolutionAuto.checked;
-        this.imageResolutionPercent.disabled = isAuto;
-        this.updateImageResolutionValue();
-    }
-
     private updateImageResolutionValue(): void {
-        if (!this.imageResolutionValue || !this.imageResolutionPercent || !this.imageResolutionAuto) return;
+        if (!this.imageResolutionValue || !this.imageResolutionPercent) return;
 
-        if (this.imageResolutionAuto.checked) {
+        const value = parseInt(this.imageResolutionPercent.value, 10);
+        if (value === 0) {
             this.imageResolutionValue.textContent = 'Auto';
             this.imageResolutionValue.style.color = 'var(--accent-color)';
+            this.imageResolutionValue.style.opacity = '1';
         } else {
-            this.imageResolutionValue.textContent = `${this.imageResolutionPercent.value}%`;
+            this.imageResolutionValue.textContent = `${value}%`;
             this.imageResolutionValue.style.color = 'var(--secondary-text-color)';
+            this.imageResolutionValue.style.opacity = '1';
         }
     }
 
     public getImageResolutionPercent(): number {
-        if (!this.imageResolutionAuto || !this.imageResolutionPercent) return 0;
+        if (!this.imageResolutionPercent) return 0;
 
+        const value = parseInt(this.imageResolutionPercent.value, 10);
         // 0 means auto mode (use grid cell size)
-        if (this.imageResolutionAuto.checked) {
-            return 0;
-        }
-
-        // Return the percentage value (10-100)
-        return parseInt(this.imageResolutionPercent.value, 10);
+        return value;
     }
 
     public updateSampleCounts(availableSamples: number, totalSamples: number): void {

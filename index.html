@@ -100,10 +100,52 @@
           <div id="options-panel" class="card options-panel">
             <div class="inspector-header">
               <div class="inspector-title">Details</div>
-              <button id="details-toggle" class="collapse-btn" aria-label="Toggle details">^</button>
+              <div class="inspector-header-actions">
+                <button id="grid-settings-toggle" class="icon-btn" title="Grid Settings">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path
+                      d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                    </path>
+                  </svg>
+                  <span class="btn-label">Grid</span>
+                </button>
+                <button id="details-toggle" class="collapse-btn" aria-label="Toggle details">^</button>
+              </div>
             </div>
 
             <div id="details-body">
+              <div id="grid-settings-overlay" class="grid-settings-overlay collapsed">
+                <div class="view-controls" id="view-controls">
+                  <div class="control-group">
+                    <label for="cell-size">Cell size</label>
+                    <input type="number" id="cell-size" value="150" min="10">
+                  </div>
+
+                  <div class="control-group">
+                    <label for="zoom-level">Zoom</label>
+                    <select id="zoom-level">
+                      <option value="1">1x</option>
+                      <option value="2">2x</option>
+                      <option value="3">3x</option>
+                    </select>
+                  </div>
+
+                  <div class="control-group resolution-group">
+                    <div class="res-row-header">
+                      <label>Resolution</label>
+                    </div>
+                    <div class="res-row-controls">
+                      <div class="slider-wrapper">
+                        <input type="range" id="image-resolution-percent" min="0" max="100" value="0" step="5">
+                      </div>
+                      <span id="image-resolution-value" class="res-value">Auto</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div class="inspector-section combined">
                 <div class="section-title">Overlays</div>
                 <div class="inspector-group" data-section="segmentation">
@@ -177,36 +219,6 @@
           </div>
 
           <div class="grid-wrapper">
-            <button class="grid-settings-toggle" id="grid-settings-toggle">
-              <span id="settings-toggle-text">Grid Settings</span>
-            </button>
-
-            <div class="view-controls" id="view-controls">
-              <div class="control-group">
-                <label for="cell-size">Cell size</label>
-                <input type="number" id="cell-size" value="150" min="10">
-              </div>
-
-              <div class="control-group">
-                <label for="zoom-level">Zoom</label>
-                <select id="zoom-level">
-                  <option value="1">1x</option>
-                  <option value="2">2x</option>
-                  <option value="3">3x</option>
-                </select>
-              </div>
-
-              <div class="control-group image-res-group">
-                <label>
-                  <input type="checkbox" id="image-resolution-auto" checked>
-                  Auto Res
-                </label>
-                <input type="range" id="image-resolution-percent" min="5" max="100" value="100" step="5" disabled
-                  title="Image resolution % of original">
-                <span id="image-resolution-value">100%</span>
-              </div>
-            </div>
-
             <div id="cells-grid"></div>
           </div>
         </div>

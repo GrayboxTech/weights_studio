@@ -854,11 +854,12 @@ export async function initializeUIElements() {
 
         // Close grid settings panel when clicking outside
         const gridSettingsToggle = document.getElementById('grid-settings-toggle');
-        const viewControls = document.getElementById('view-controls');
-        if (viewControls && !viewControls.classList.contains('collapsed')) {
-            // If click is NOT inside view controls AND NOT the toggle button itself, collapse it
-            if (!viewControls.contains(target) && target !== gridSettingsToggle && !gridSettingsToggle?.contains(target)) {
-                viewControls.classList.add('collapsed');
+        const gridSettingsOverlay = document.getElementById('grid-settings-overlay');
+        if (gridSettingsOverlay && !gridSettingsOverlay.classList.contains('collapsed')) {
+            // If click is NOT inside overlay AND NOT the toggle button itself, collapse it
+            if (!gridSettingsOverlay.contains(target) && target !== gridSettingsToggle && !gridSettingsToggle?.contains(target)) {
+                gridSettingsOverlay.classList.add('collapsed');
+                gridSettingsToggle?.classList.remove('active');
             }
         }
 
@@ -1201,30 +1202,6 @@ export async function initializeUIElements() {
             });
         }
 
-        // Setup listeners for cell size and zoom - these need full layout update
-        const cellSizeSlider = document.getElementById('cell-size') as HTMLInputElement;
-        const zoomSlider = document.getElementById('zoom-level') as HTMLInputElement;
-
-        if (cellSizeSlider) {
-            cellSizeSlider.addEventListener('input', () => {
-                const cellSizeValue = document.getElementById('cell-size-value');
-                if (cellSizeValue) {
-                    cellSizeValue.textContent = cellSizeSlider.value;
-                }
-                updateLayout();
-            });
-        }
-
-        if (zoomSlider) {
-            zoomSlider.addEventListener('input', () => {
-                const zoomValue = document.getElementById('zoom-value');
-                if (zoomValue) {
-                    zoomValue.textContent = `${zoomSlider.value}%`;
-                }
-                updateLayout();
-            });
-        }
-
         // Listen for color changes and persist to localStorage
         const trainColorInput = document.getElementById('train-color') as HTMLInputElement;
         const evalColorInput = document.getElementById('eval-color') as HTMLInputElement;
@@ -1258,15 +1235,13 @@ export async function initializeUIElements() {
 
     // Grid settings toggle functionality
     const gridSettingsToggle = document.getElementById('grid-settings-toggle') as HTMLButtonElement;
-    const viewControls = document.getElementById('view-controls') as HTMLElement;
+    const gridSettingsOverlay = document.getElementById('grid-settings-overlay') as HTMLElement;
 
-    if (gridSettingsToggle && viewControls) {
-        let isSettingsExpanded = false; // Start collapsed
-        viewControls.classList.add('collapsed'); // Start collapsed
-
-        gridSettingsToggle.addEventListener('click', () => {
-            isSettingsExpanded = !isSettingsExpanded;
-            viewControls.classList.toggle('collapsed', !isSettingsExpanded);
+    if (gridSettingsToggle && gridSettingsOverlay) {
+        gridSettingsToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isCollapsed = gridSettingsOverlay.classList.toggle('collapsed');
+            gridSettingsToggle.classList.toggle('active', !isCollapsed);
         });
     }
 
