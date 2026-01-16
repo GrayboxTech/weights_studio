@@ -55,6 +55,7 @@ function hslToHex(h: number, s: number, l: number): string {
 export class DataDisplayOptionsPanel {
     private element: HTMLElement;
     private checkboxes: Map<string, HTMLInputElement> = new Map();
+    private fieldTypes: Map<string, string> = new Map();
     private availableStats: string[] = [];
     private updateCallback: (() => void) | null = null;
     private classIds: number[] = [];
@@ -190,8 +191,13 @@ export class DataDisplayOptionsPanel {
         }
 
         // 1) Collect all fields seen across all provided records
+        this.fieldTypes.clear();
+
         availableFields.add("sampleId");
+        this.fieldTypes.set("sampleId", "string");
+
         availableFields.add("tags");
+        this.fieldTypes.set("tags", "array");
 
         dataRecords.forEach(record => {
             if (record.dataStats) {
@@ -205,6 +211,7 @@ export class DataDisplayOptionsPanel {
                         return;
                     }
                     availableFields.add(stat.name);
+                    this.fieldTypes.set(stat.name, stat.type);
                 });
             }
         });
@@ -299,14 +306,32 @@ export class DataDisplayOptionsPanel {
 
             checkbox.checked = defaultCheckedFields.has(fieldName);
 
-            const label = document.createElement("label");
-            label.htmlFor = checkbox.id;
-            label.textContent = this.formatFieldName(fieldName);
+            const labelSpan = document.createElement("span");
+            labelSpan.className = "sortable-label";
+            labelSpan.textContent = this.formatFieldName(fieldName);
+            labelSpan.style.cursor = "pointer";
+            labelSpan.style.flexGrow = "1"; // Fill space
+            labelSpan.style.marginLeft = "8px"; // Gap
+            labelSpan.title = "Click to sort";
+            labelSpan.style.userSelect = "none";
+
+            // NOTE: sort indicators are now handled by updateSortUI via chips and badges
+
+            labelSpan.addEventListener('click', (e) => {
+                e.preventDefault();
+                // If the user clicks the label, they intend to sort, not toggle visibility
+                this.handleSort(fieldName);
+            });
 
             const wrapper = document.createElement("div");
             wrapper.className = "checkbox-wrapper";
+            // Ensure wrapper is flex for alignment
+            wrapper.style.display = "flex";
+            wrapper.style.alignItems = "center";
+            wrapper.style.padding = "2px 0";
+
             wrapper.appendChild(checkbox);
-            wrapper.appendChild(label);
+            wrapper.appendChild(labelSpan);
 
             this.element.appendChild(wrapper);
             this.checkboxes.set(fieldName, checkbox);
@@ -417,6 +442,7 @@ export class DataDisplayOptionsPanel {
             classesSlot.appendChild(container);
         }
 
+        this.updateSortUI();
         this.updateCallback?.();
     }
 
@@ -424,9 +450,207 @@ export class DataDisplayOptionsPanel {
         return name.replace(/([A-Z])/g, " $1").replace(/^./, str => str.toUpperCase());
     }
 
+    private sortCallback: ((query: string) => void) | null = null;
+
+    // Sort logic support: Field, Direction, Locked status
+    private sortState: Array<{ field: string; direction: 'asc' | 'desc'; locked: boolean }> = [];
+
+    onSort(callback: (query: string) => void): void {
+        this.sortCallback = callback;
+    }
+
+    private handleLockToggle(fieldName: string) {
+        const entry = this.sortState.find(s => s.field === fieldName);
+        if (entry) {
+            entry.locked = !entry.locked;
+            this.updateSortUI();
+            // Lock state change doesn't trigger new query, just changes future behavior
+        }
+    }
+
+    private handleSort(fieldName: string) {
+        // 1. Check if we have detected this field as 'complex' (unsortable)
+        const type = this.fieldTypes.get(fieldName);
+
+        // We consider it unsortable if it's an image, or a high-dimensional array/tensor.
+        // Special case: 'tags' are technically an array but we sort them by their string representation.
+        const isComplexType = (type === 'image' || type === 'tensor' || type === 'array');
+        const isWhitelisted = fieldName === 'tags' || fieldName === 'task_type';
+
+        // Dynamic Unsortability Check:
+        // If it's a complex type and NOT whitelisted, we check its values.
+        let isUnsortable = isComplexType && !isWhitelisted;
+
+        // Note: Field-specific overrides based on task context
+        if (this.isSegmentationDataset && (fieldName === 'target' || fieldName === 'label' || fieldName === 'prediction')) {
+            isUnsortable = true;
+        }
+
+        if (isUnsortable) {
+            const cb = this.checkboxes.get(fieldName);
+            // Search for wrapper - handle both direct parent and nested structures
+            const wrapper = cb?.closest('.checkbox-wrapper');
+            const label = wrapper?.querySelector('.sortable-label');
+            if (label) {
+                label.classList.add('shake-animation');
+                setTimeout(() => label.classList.remove('shake-animation'), 500);
+            }
+            return;
+        }
+
+        const existingIndex = this.sortState.findIndex(s => s.field === fieldName);
+
+        if (existingIndex !== -1) {
+            // Already sorted - cycle: Asc -> Desc -> Off
+            // BUT if locked, can we turn it off? Assumed yes, user action overrides.
+            const entry = this.sortState[existingIndex];
+            if (entry.direction === 'asc') {
+                entry.direction = 'desc';
+            } else {
+                // Remove from sort list
+                this.sortState.splice(existingIndex, 1);
+            }
+        } else {
+            // New sort
+            // Logic: Keep all LOCKED fields. Remove sorted UNLOCKED fields. Add New.
+            const keptSorts = this.sortState.filter(s => s.locked);
+
+            // Add new field to the end (it becomes the secondary/tertiary sort key)
+            // Wait, usually "Sort by X" means X becomes Primary?
+            // "Apply another sorting on top of this" -> 
+            // If I have [Tags, Locked], and click Target. 
+            // Result: [Tags, Target]. Group by Tags, then by Target.
+            // This is "stable sort on top".
+            keptSorts.push({ field: fieldName, direction: 'asc', locked: false });
+            this.sortState = keptSorts;
+        }
+
+        this.updateSortUI();
+        this.triggerSortCallback();
+    }
+
+    private triggerSortCallback() {
+        if (!this.sortCallback) return;
+
+        if (this.sortState.length === 0) {
+            this.sortCallback(`sortby index asc`);
+            return;
+        }
+
+        // Build query components
+        const parts = this.sortState.map(s => {
+            let queryCol = s.field;
+            // Map UI field names to DB column names
+            if (s.field === 'sampleId') queryCol = 'sample_id';
+            if (s.field === 'label') queryCol = 'target';
+            if (s.field === 'pred') queryCol = 'prediction';
+
+            // Quote if necessary
+            if (queryCol.includes(' ')) {
+                queryCol = `\`${queryCol}\``;
+            }
+            return `${queryCol} ${s.direction}`;
+        });
+
+        const query = `sortby ${parts.join(', ')}`;
+        this.sortCallback(query);
+    }
+
+    private updateSortUI() {
+        // Remove separate container if it exists (cleanup from previous mode)
+        const container = this.element.querySelector('#active-sorts-container');
+        if (container) container.remove();
+
+        this.checkboxes.forEach((_, field) => {
+            const cb = this.checkboxes.get(field);
+            if (!cb) return;
+
+            const wrapper = cb.parentElement;
+            if (!wrapper) return;
+            const labelText = wrapper.querySelector('.sortable-label') as HTMLElement;
+            if (!labelText) return;
+
+            // Clean up old stuff
+            const existingIndicators = wrapper.querySelector('.sort-indicators');
+            if (existingIndicators) existingIndicators.remove();
+
+            const badge = wrapper.querySelector('.sort-badge');
+            if (badge) badge.remove();
+
+            const entry = this.sortState.find(s => s.field === field);
+            const index = this.sortState.findIndex(s => s.field === field);
+
+            if (entry) {
+                labelText.style.fontWeight = 'bold';
+                labelText.style.color = 'var(--accent-color)';
+
+                // Create inline indicators container
+                const indicators = document.createElement('span');
+                indicators.className = 'sort-indicators';
+                indicators.style.marginLeft = 'auto'; // Push to right if wrapper is flex
+                indicators.style.display = 'flex';
+                indicators.style.alignItems = 'center';
+                indicators.style.gap = '6px';
+                indicators.style.fontSize = '0.85em';
+                indicators.style.color = 'var(--fg-secondary)'; // Subtle default
+
+                // 1. Arrow & Rank
+                const sortDetail = document.createElement('span');
+                sortDetail.style.display = 'flex';
+                sortDetail.style.alignItems = 'center';
+                sortDetail.style.gap = '4px';
+                sortDetail.style.cursor = 'pointer';
+                const arrowSvg = entry.direction === 'asc'
+                    ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"></path></svg>`
+                    : `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>`;
+                const rankText = this.sortState.length > 1 ? `<span>${index + 1}</span>` : '';
+
+                sortDetail.innerHTML = `${rankText}${arrowSvg}`;
+                sortDetail.style.color = 'var(--accent-color)';
+
+                // Clicking arrow toggles direction
+                sortDetail.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Manual cycle: asc -> desc -> asc
+                    entry.direction = entry.direction === 'asc' ? 'desc' : 'asc';
+                    this.updateSortUI();
+                    this.triggerSortCallback();
+                });
+                indicators.appendChild(sortDetail);
+
+                // 2. Lock
+                const lockBtn = document.createElement('span');
+                lockBtn.style.display = 'flex';
+                lockBtn.style.alignItems = 'center';
+                lockBtn.style.cursor = 'pointer';
+                const lockSvg = entry.locked
+                    ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`
+                    : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.4;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>`;
+
+                lockBtn.innerHTML = lockSvg;
+                lockBtn.style.color = entry.locked ? 'var(--accent-color)' : 'var(--fg-muted, #888)';
+                lockBtn.title = entry.locked ? "Locked (click to unlock)" : "Unlocked (click to lock)";
+
+                lockBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation(); // Vital: prevent triggering sort toggle
+                    entry.locked = !entry.locked;
+                    this.updateSortUI();
+                });
+                indicators.appendChild(lockBtn);
+
+                wrapper.appendChild(indicators);
+
+            } else {
+                labelText.style.fontWeight = 'normal';
+                labelText.style.color = '';
+            }
+        });
+    }
+
     getDisplayPreferences(): DisplayPreferences {
         const preferences: DisplayPreferences = {};
-
         for (const [field, checkbox] of this.checkboxes.entries()) {
             preferences[field] = checkbox.checked;
         }
@@ -443,12 +667,8 @@ export class DataDisplayOptionsPanel {
 
         const classPreferences: Record<number, ClassPreference> = {};
         for (const id of this.classIds) {
-            const cb = document.getElementById(
-                `seg-class-enabled-${id}`
-            ) as HTMLInputElement | null;
-            const colorInput = document.getElementById(
-                `seg-class-color-${id}`
-            ) as HTMLInputElement | null;
+            const cb = document.getElementById(`seg-class-enabled-${id}`) as HTMLInputElement | null;
+            const colorInput = document.getElementById(`seg-class-color-${id}`) as HTMLInputElement | null;
 
             classPreferences[id] = {
                 enabled: cb ? cb.checked : id !== 0,

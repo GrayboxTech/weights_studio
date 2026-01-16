@@ -3,12 +3,12 @@ export class DataTraversalAndInteractionsPanel {
     private sampleSlider: HTMLInputElement | null = null;
     private cellSize: HTMLInputElement | null = null;
     private zoomLevel: HTMLInputElement | null = null;
-    private imageResolutionAuto: HTMLInputElement | null = null;
     private imageResolutionPercent: HTMLInputElement | null = null;
     private imageResolutionValue: HTMLSpanElement | null = null;
-    private sliderMinLabel: HTMLSpanElement | null = null;
-    private sliderMaxLabel: HTMLSpanElement | null = null;
     private sliderTooltip: HTMLSpanElement | null = null;
+    private statTotalCount: HTMLSpanElement | null = null;
+    private statActiveCount: HTMLSpanElement | null = null;
+
     private gridToggleButton: HTMLButtonElement | null = null;
     private gridContent: HTMLElement | null = null;
 
@@ -31,20 +31,20 @@ export class DataTraversalAndInteractionsPanel {
         this.sampleSlider = document.getElementById('sample-slider') as HTMLInputElement;
         this.cellSize = document.getElementById('cell-size') as HTMLInputElement;
         this.zoomLevel = document.getElementById('zoom-level') as HTMLInputElement;
-        this.imageResolutionAuto = document.getElementById('image-resolution-auto') as HTMLInputElement;
         this.imageResolutionPercent = document.getElementById('image-resolution-percent') as HTMLInputElement;
         this.imageResolutionValue = document.getElementById('image-resolution-value') as HTMLSpanElement;
-        this.sliderMinLabel = document.getElementById('slider-min-label') as HTMLSpanElement;
-        this.sliderMaxLabel = document.getElementById('slider-max-label') as HTMLSpanElement;
         this.sliderTooltip = document.getElementById('slider-tooltip') as HTMLSpanElement;
+
+        this.statTotalCount = document.getElementById('stat-total-count') as HTMLSpanElement;
+        this.statActiveCount = document.getElementById('stat-active-count') as HTMLSpanElement;
+
         this.gridContent = document.getElementById('grid-content') as HTMLElement;
 
         this.startIndexSlider = document.getElementById('start-index-slider') as HTMLInputElement;
         this.startIndexTooltip = document.getElementById('start-index-tooltip') as HTMLElement;
 
         if (!this.sampleSlider || !this.cellSize || !this.zoomLevel ||
-            !this.sliderMinLabel || !this.sliderMaxLabel || !this.sliderTooltip ||
-            !this.gridContent) {
+            !this.sliderTooltip || !this.gridContent) {
             console.error('[DataTraversalAndInteractionsPanel] Missing required elements');
             return;
         }
@@ -55,23 +55,16 @@ export class DataTraversalAndInteractionsPanel {
 
     private attachEventListeners(): void {
         if (this.cellSize) {
-            this.cellSize.addEventListener('change', () => this.handleControlsChange());
             this.cellSize.addEventListener('input', () => {
                 this.onUpdateCallback();
             });
+            this.cellSize.addEventListener('change', () => this.handleControlsChange());
         }
         if (this.zoomLevel) {
-            this.zoomLevel.addEventListener('change', () => this.handleControlsChange());
             this.zoomLevel.addEventListener('input', () => {
                 this.onUpdateCallback();
             });
-        }
-        if (this.imageResolutionAuto) {
-            this.imageResolutionAuto.addEventListener('change', () => {
-                this.updateImageResolutionControls();
-                this.handleControlsChange();
-                this.onUpdateCallback();
-            });
+            this.zoomLevel.addEventListener('change', () => this.handleControlsChange());
         }
         if (this.imageResolutionPercent) {
             this.imageResolutionPercent.addEventListener('input', () => {
@@ -181,16 +174,16 @@ export class DataTraversalAndInteractionsPanel {
     }
 
     private initializeSlider(): void {
-        if (!this.sampleSlider || !this.sliderMinLabel || !this.sliderMaxLabel) return;
+        if (!this.sampleSlider) return;
 
         this.sampleSlider.min = "0";
         this.sampleSlider.max = this.maxSampleId.toString();
         this.sampleSlider.value = "0";
         this.sampleSlider.step = "1";
 
-        this.sliderMinLabel.textContent = '0';
-        // Don't set default value - wait for actual data to arrive via setMaxSampleId
-        this.sliderMaxLabel.textContent = '';
+        // Initial defaults
+        if (this.statTotalCount) this.statTotalCount.textContent = this.maxSampleId.toString();
+        if (this.statActiveCount) this.statActiveCount.textContent = this.maxSampleId.toString();
     }
 
     private handleControlsChange(): void {
@@ -247,20 +240,7 @@ export class DataTraversalAndInteractionsPanel {
     }
 
     public updateRangeLabels(): void {
-        if (!this.sampleSlider) return;
-
-        const startIndex = this.getStartIndex();
-        const endIndex = startIndex + this.getLeftSamples() - 1;
-
-        const sliderRangeStart = document.getElementById('slider-range-start');
-        const sliderRangeEnd = document.getElementById('slider-range-end');
-
-        if (sliderRangeStart) {
-            sliderRangeStart.textContent = String(startIndex);
-        }
-        if (sliderRangeEnd) {
-            sliderRangeEnd.textContent = String(endIndex);
-        }
+        // Deprecated: No longer showing start/end range labels
     }
 
 
@@ -303,8 +283,9 @@ export class DataTraversalAndInteractionsPanel {
         if (this.sampleSlider) {
             this.sampleSlider.max = maxId.toString();
         }
-        if (this.sliderMaxLabel) {
-            this.sliderMaxLabel.textContent = maxId.toString();
+        // Stats are updated via updateSampleCounts generally, not just setMaxSampleId
+        if (this.statTotalCount) {
+            this.statTotalCount.textContent = maxId.toString();
         }
         if (this.startIndexSlider) {
             this.startIndexSlider.max = maxId.toString();
@@ -337,41 +318,32 @@ export class DataTraversalAndInteractionsPanel {
         return 1;
     }
 
-    private updateImageResolutionControls(): void {
-        if (!this.imageResolutionAuto || !this.imageResolutionPercent) return;
-
-        const isAuto = this.imageResolutionAuto.checked;
-        this.imageResolutionPercent.disabled = isAuto;
-        this.updateImageResolutionValue();
-    }
-
     private updateImageResolutionValue(): void {
-        if (!this.imageResolutionValue || !this.imageResolutionPercent || !this.imageResolutionAuto) return;
+        if (!this.imageResolutionValue || !this.imageResolutionPercent) return;
 
-        if (this.imageResolutionAuto.checked) {
+        const value = parseInt(this.imageResolutionPercent.value, 10);
+        if (value === 0) {
             this.imageResolutionValue.textContent = 'Auto';
             this.imageResolutionValue.style.color = 'var(--accent-color)';
+            this.imageResolutionValue.style.opacity = '1';
         } else {
-            this.imageResolutionValue.textContent = `${this.imageResolutionPercent.value}%`;
+            this.imageResolutionValue.textContent = `${value}%`;
             this.imageResolutionValue.style.color = 'var(--secondary-text-color)';
+            this.imageResolutionValue.style.opacity = '1';
         }
     }
 
     public getImageResolutionPercent(): number {
-        if (!this.imageResolutionAuto || !this.imageResolutionPercent) return 0;
+        if (!this.imageResolutionPercent) return 0;
 
+        const value = parseInt(this.imageResolutionPercent.value, 10);
         // 0 means auto mode (use grid cell size)
-        if (this.imageResolutionAuto.checked) {
-            return 0;
-        }
-
-        // Return the percentage value (10-100)
-        return parseInt(this.imageResolutionPercent.value, 10);
+        return value;
     }
 
     public updateSampleCounts(availableSamples: number, totalSamples: number): void {
         this.maxSampleId = availableSamples;
-        this.totalSamples = totalSamples;
+        this.totalSamples = totalSamples; // This is the 'active' count (in loop)
 
         if (this.sampleSlider) {
             this.sampleSlider.max = availableSamples.toString();
@@ -383,6 +355,22 @@ export class DataTraversalAndInteractionsPanel {
 
         if (this.startIndexSlider) {
             this.startIndexSlider.max = availableSamples.toString();
+        }
+
+        // Update stats breakdown
+        if (this.statTotalCount) {
+            this.statTotalCount.textContent = availableSamples.toString();
+        }
+        if (this.statActiveCount) {
+            this.statActiveCount.textContent = totalSamples.toString();
+        }
+    }
+
+    public decrementActiveCount(amount: number): void {
+        if (amount <= 0) return;
+        this.totalSamples = Math.max(0, this.totalSamples - amount);
+        if (this.statActiveCount) {
+            this.statActiveCount.textContent = this.totalSamples.toString();
         }
     }
 

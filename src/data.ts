@@ -610,9 +610,9 @@ async function updateDisplayOnly() {
     }
 }
 
-async function handleQuerySubmit(query: string): Promise<void> {
+export async function handleQuerySubmit(query: string, isNaturalLanguage: boolean = true): Promise<void> {
     try {
-        const request: DataQueryRequest = { query, accumulate: false, isNaturalLanguage: true };
+        const request: DataQueryRequest = { query, accumulate: false, isNaturalLanguage };
         const response: DataQueryResponse = await dataClient.applyDataQuery(request).response;
 
         // Handle Analysis Intent (Chat Mode)
@@ -854,11 +854,12 @@ export async function initializeUIElements() {
 
         // Close grid settings panel when clicking outside
         const gridSettingsToggle = document.getElementById('grid-settings-toggle');
-        const viewControls = document.getElementById('view-controls');
-        if (viewControls && !viewControls.classList.contains('collapsed')) {
-            // If click is NOT inside view controls AND NOT the toggle button itself, collapse it
-            if (!viewControls.contains(target) && target !== gridSettingsToggle && !gridSettingsToggle?.contains(target)) {
-                viewControls.classList.add('collapsed');
+        const gridSettingsOverlay = document.getElementById('grid-settings-overlay');
+        if (gridSettingsOverlay && !gridSettingsOverlay.classList.contains('collapsed')) {
+            // If click is NOT inside overlay AND NOT the toggle button itself, collapse it
+            if (!gridSettingsOverlay.contains(target) && target !== gridSettingsToggle && !gridSettingsToggle?.contains(target)) {
+                gridSettingsOverlay.classList.add('collapsed');
+                gridSettingsToggle?.classList.remove('active');
             }
         }
 
@@ -1186,6 +1187,10 @@ export async function initializeUIElements() {
     const detailsOptionsRow = document.querySelector('.details-options-row') as HTMLElement;
     if (detailsOptionsRow) {
         displayOptionsPanel = new DataDisplayOptionsPanel(detailsOptionsRow);
+        displayOptionsPanel.onSort(async (query) => {
+            // Bypass agent for deterministic response (sorting)
+            await handleQuerySubmit(query, false);
+        });
         displayOptionsPanel.initialize();
 
         if (detailsToggle && inspectorPanel) {
@@ -1194,30 +1199,6 @@ export async function initializeUIElements() {
                     inspectorPanel.style.transform = 'translateX(-100%)';
                     inspectorPanel.classList.toggle('details-collapsed');
                 }
-            });
-        }
-
-        // Setup listeners for cell size and zoom - these need full layout update
-        const cellSizeSlider = document.getElementById('cell-size') as HTMLInputElement;
-        const zoomSlider = document.getElementById('zoom-level') as HTMLInputElement;
-
-        if (cellSizeSlider) {
-            cellSizeSlider.addEventListener('input', () => {
-                const cellSizeValue = document.getElementById('cell-size-value');
-                if (cellSizeValue) {
-                    cellSizeValue.textContent = cellSizeSlider.value;
-                }
-                updateLayout();
-            });
-        }
-
-        if (zoomSlider) {
-            zoomSlider.addEventListener('input', () => {
-                const zoomValue = document.getElementById('zoom-value');
-                if (zoomValue) {
-                    zoomValue.textContent = `${zoomSlider.value}%`;
-                }
-                updateLayout();
             });
         }
 
@@ -1254,15 +1235,13 @@ export async function initializeUIElements() {
 
     // Grid settings toggle functionality
     const gridSettingsToggle = document.getElementById('grid-settings-toggle') as HTMLButtonElement;
-    const viewControls = document.getElementById('view-controls') as HTMLElement;
+    const gridSettingsOverlay = document.getElementById('grid-settings-overlay') as HTMLElement;
 
-    if (gridSettingsToggle && viewControls) {
-        let isSettingsExpanded = false; // Start collapsed
-        viewControls.classList.add('collapsed'); // Start collapsed
-
-        gridSettingsToggle.addEventListener('click', () => {
-            isSettingsExpanded = !isSettingsExpanded;
-            viewControls.classList.toggle('collapsed', !isSettingsExpanded);
+    if (gridSettingsToggle && gridSettingsOverlay) {
+        gridSettingsToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isCollapsed = gridSettingsOverlay.classList.toggle('collapsed');
+            gridSettingsToggle.classList.toggle('active', !isCollapsed);
         });
     }
 
@@ -1803,17 +1782,31 @@ contextMenu.addEventListener('click', async (e) => {
                 // The modal will stay on top of the selected items.
                 return;
             case 'remove-tag':
-                removeTag(sample_ids, origins);
+                await removeTag(sample_ids, origins);
                 clearSelection();
                 debouncedFetchAndDisplay();
                 break;
             case 'discard':
+                let newlyDiscardedCount = 0;
                 selectedCells.forEach(cell => {
                     const gridCell = getGridCell(cell);
                     if (gridCell) {
-                        cell.classList.add('discarded');
+                        const record = gridCell.getRecord();
+                        // Check if already discarded to avoid double counting
+                        const isDiscardedStat = record?.dataStats.find((s: any) => s.name === 'deny_listed');
+                        const isAlreadyDiscarded = isDiscardedStat?.value?.[0] === 1; // Assuming value is [1] for true
+
+                        if (!isAlreadyDiscarded) {
+                            newlyDiscardedCount++;
+                        }
+
+                        gridCell.updateStats({ deny_listed: 1 });
                     }
                 });
+
+                if (newlyDiscardedCount > 0) {
+                    traversalPanel.decrementActiveCount(newlyDiscardedCount);
+                }
 
                 const drequest: DataEditsRequest = {
                     statName: "deny_listed",
@@ -2347,7 +2340,7 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
                         const record = gridCell.getRecord();
                         const existingTagsStat = record?.dataStats.find((s: any) => s.name === 'tags');
                         const currentTagsStr = existingTagsStat?.valueString || "";
-                        const newTagsStr = currentTagsStr.split(',').map((t: string) => t.trim()).filter((t: string) => t && t !== tag).join(', ');
+                        const newTagsStr = currentTagsStr.split(/[;,]/).map((t: string) => t.trim()).filter((t: string) => t && t !== tag).join('; ');
                         gridCell.updateStats({ "tags": newTagsStr });
                     }
                 });
@@ -2389,11 +2382,11 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
                         const record = gridCell.getRecord();
                         const existingTagsStat = record?.dataStats.find((s: any) => s.name === 'tags');
                         const currentTagsStr = existingTagsStat?.valueString || "";
-                        const currentTags = currentTagsStr.split(',').map((t: string) => t.trim()).filter((t: string) => t);
+                        const currentTags = currentTagsStr.split(/[;,]/).map((t: string) => t.trim()).filter((t: string) => t);
                         if (!currentTags.includes(tag)) {
                             currentTags.push(tag);
                         }
-                        const newTagsStr = currentTags.join(', ');
+                        const newTagsStr = currentTags.join('; ');
                         gridCell.updateStats({ "tags": newTagsStr });
                     }
                 });
@@ -2459,6 +2452,7 @@ async function removeTag(sampleIds: number[], origins: string[]) {
                     gridCell.updateStats({ "tags": "" });
                 }
             });
+            clearResponseCache();
         } else {
             alert(`Failed to remove tag: ${response.message}`);
         }
@@ -2485,10 +2479,11 @@ async function paintCell(cell: HTMLElement) {
     const tagsStat = record.dataStats.find((s: any) => s.name === 'tags');
     const currentTagsStr = tagsStat?.valueString || "";
     // Filter out None, empty strings, and whitespace-only strings
-    const currentTags = currentTagsStr
-        .split(',')
+    // Backend uses semi-colon separator
+    const currentTags = Array.from(new Set(currentTagsStr
+        .split(/[;,]/)
         .map((t: string) => t.trim())
-        .filter((t: string) => t && t !== 'None');
+        .filter((t: string) => t && t !== 'None')));
 
     if (isPainterRemoveMode) {
         // REMOVE MODE: Remove any selected tags that exist
@@ -2496,7 +2491,7 @@ async function paintCell(cell: HTMLElement) {
         if (tagsToRemove.length === 0) return;
 
         const newTags = currentTags.filter((t: string) => !tagsToRemove.includes(t));
-        const newTagsStr = newTags.join(', ');
+        const newTagsStr = newTags.join(';');
 
         // Optimistic update
         gridCell.updateStats({ "tags": newTagsStr });
@@ -2524,8 +2519,9 @@ async function paintCell(cell: HTMLElement) {
         const tagsToAdd = Array.from(activeBrushTags).filter((t: string) => !currentTags.includes(t));
         if (tagsToAdd.length === 0) return;
 
-        const newTags = [...currentTags, ...tagsToAdd];
-        const newTagsStr = newTags.join(', ');
+        // Deduplicate using Set to be safe
+        const newTags = Array.from(new Set([...currentTags, ...tagsToAdd])).filter(Boolean);
+        const newTagsStr = newTags.join(';');
 
         // Optimistic update
         gridCell.updateStats({ "tags": newTagsStr });
