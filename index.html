@@ -201,8 +201,17 @@
           <div class="content-header">
             <div class="chat-input-container">
               <input type="text" id="chat-input" placeholder="Ask a question or describe a filter..." />
-              <button id="toggle-history" class="toggle-history-button" title="Toggle chat history (Ctrl+H)">💬</button>
-              <button id="chat-send" class="chat-send-button">Send</button>
+              <button id="chat-send" class="chat-send-button">
+                <svg class="send-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                  <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+                <svg class="loading-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                  <circle cx="12" cy="12" r="10" stroke-dasharray="31.4" stroke-dashoffset="10"></circle>
+                </svg>
+              </button>
             </div>
             <!-- Chat History Panel (Floating) -->
             <div id="chat-history-panel" class="chat-history-panel">

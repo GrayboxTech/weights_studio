@@ -735,7 +735,6 @@ export async function initializeUIElements() {
             // Set loading state
             chatSendBtn.disabled = true;
             chatSendBtn.classList.add('loading');
-            chatSendBtn.textContent = 'Working...';
             chatInput.disabled = true;
 
             // 1. Add User Message immediately
@@ -757,7 +756,6 @@ export async function initializeUIElements() {
                 // Reset state
                 chatSendBtn.disabled = false;
                 chatSendBtn.classList.remove('loading');
-                chatSendBtn.textContent = 'Send';
                 chatInput.disabled = false;
                 chatInput.focus();
             }
@@ -796,24 +794,16 @@ export async function initializeUIElements() {
             const panel = document.getElementById('chat-history-panel');
             if (list) list.innerHTML = '';
             if (panel) panel.style.display = 'none';
-
-            // Also deactivate toggle button
-            const toggleBtn = document.getElementById('toggle-history');
-            if (toggleBtn) toggleBtn.classList.remove('active');
         });
     }
 
-    // Toggle History Button
-    const toggleHistoryBtn = document.getElementById('toggle-history');
-    if (toggleHistoryBtn) {
-        toggleHistoryBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
+    // Open History Panel on chat input focus
+    const chatInputForHistory = document.getElementById('chat-input');
+    if (chatInputForHistory) {
+        chatInputForHistory.addEventListener('focus', () => {
             const panel = document.getElementById('chat-history-panel');
             if (!panel) return;
-
-            const isVisible = panel.style.display === 'flex';
-            panel.style.display = isVisible ? 'none' : 'flex';
-            toggleHistoryBtn.classList.toggle('active', !isVisible);
+            panel.style.display = 'flex';
         });
     }
 
@@ -821,17 +811,18 @@ export async function initializeUIElements() {
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key === 'h') {
             e.preventDefault();
-            const toggleBtn = document.getElementById('toggle-history');
-            if (toggleBtn) toggleBtn.click();
+            const panel = document.getElementById('chat-history-panel');
+            if (panel) {
+                const isVisible = panel.style.display === 'flex';
+                panel.style.display = isVisible ? 'none' : 'flex';
+            }
         }
 
         // Escape to close
         if (e.key === 'Escape') {
             const panel = document.getElementById('chat-history-panel');
-            const toggleBtn = document.getElementById('toggle-history');
             if (panel && panel.style.display === 'flex') {
                 panel.style.display = 'none';
-                if (toggleBtn) toggleBtn.classList.remove('active');
             }
         }
     });
@@ -843,12 +834,10 @@ export async function initializeUIElements() {
         // Close chat history panel when clicking outside
         const chatPanel = document.getElementById('chat-history-panel');
         const inputContainer = document.querySelector('.chat-input-container');
-        const toggleHistoryBtn = document.getElementById('toggle-history');
         if (chatPanel && chatPanel.style.display === 'flex' && inputContainer) {
             // If click is NOT inside panel AND NOT inside input container, close it
             if (!chatPanel.contains(target) && !inputContainer.contains(target)) {
                 chatPanel.style.display = 'none';
-                if (toggleHistoryBtn) toggleHistoryBtn.classList.remove('active');
             }
         }
 
