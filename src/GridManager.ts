@@ -44,7 +44,7 @@ export class GridManager {
             const bottomBarHeight = (bottomBar as HTMLElement)?.offsetHeight || 0;
             // The grid should fill the remaining space in main-content after the header
             // And before the fixed bottom-bar
-            availableHeight = mainContentHeight - headerHeight - bottomBarHeight - 30;
+            availableHeight = mainContentHeight - headerHeight - bottomBarHeight - 15;
         }
 
         const cols = Math.max(1, Math.floor(containerWidth / (effectiveCellSize + GRID_GAP)));
