@@ -1242,6 +1242,8 @@ export async function initializeUIElements() {
 
     traversalPanel.onUpdate(() => {
         debouncedFetchAndDisplay();
+        if (fetchTimeout) clearTimeout(fetchTimeout);
+        fetchTimeout = setTimeout(updateLayout, 150);
     });
 
     window.addEventListener('resize', updateLayout);
