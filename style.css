@@ -197,7 +197,6 @@ body.dark-mode .logo-link:hover {
   flex-direction: column;
   gap: 0.2rem;
   width: 100%;
-  max-width: 1400px;
   margin: 6px auto 0;
 }
 
@@ -205,7 +204,6 @@ body.dark-mode .logo-link:hover {
 .grid-wrapper {
   position: relative;
   width: 100%;
-  max-width: 1400px;
   margin: 0 auto;
 }
 
@@ -1127,7 +1125,6 @@ body.dark-mode #toggle-history.active {
   display: grid;
   gap: 14px;
   width: 100%;
-  max-width: 1400px;
   margin: 0 0;
   padding: 12px 14px 14px;
   border: 1px solid var(--border-subtle);
@@ -3918,7 +3915,6 @@ body:not(:has(#painter-toggle:checked)) .mode-label::before {
   justify-content: space-between;
   gap: 1rem;
   width: 100%;
-  max-width: 1400px;
   /* match chat-input-container */
   margin: 0 auto;
   background-color: rgba(255, 255, 255, 0.95);

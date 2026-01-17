@@ -1187,6 +1187,8 @@ export async function initializeUIElements() {
                 if (inspectorPanel) {
                     inspectorPanel.style.transform = 'translateX(-100%)';
                     inspectorPanel.classList.toggle('details-collapsed');
+                    // Small delay to allow for CSS transitions if any
+                    setTimeout(updateLayout, 150);
                 }
             });
         }
