@@ -56,9 +56,22 @@ export class DataTraversalAndInteractionsPanel {
     private attachEventListeners(): void {
         if (this.cellSize) {
             this.cellSize.addEventListener('input', () => {
-                this.onUpdateCallback();
+                const val = parseInt(this.cellSize!.value, 10);
+                if (isNaN(val) || val < 48) {
+                    this.cellSize!.classList.add('invalid-input');
+                    this.cellSize!.title = "Minimum cell size is 48px";
+                } else {
+                    this.cellSize!.classList.remove('invalid-input');
+                    this.cellSize!.title = "";
+                    this.onUpdateCallback();
+                }
             });
-            this.cellSize.addEventListener('change', () => this.handleControlsChange());
+            this.cellSize.addEventListener('change', () => {
+                const val = parseInt(this.cellSize!.value, 10);
+                if (!isNaN(val) && val >= 48) {
+                    this.handleControlsChange();
+                }
+            });
         }
         if (this.zoomLevel) {
             this.zoomLevel.addEventListener('input', () => {
@@ -306,7 +319,11 @@ export class DataTraversalAndInteractionsPanel {
 
     public getImageWidth(): number {
         if (this.cellSize) {
-            return parseInt(this.cellSize.value, 10);
+            const val = parseInt(this.cellSize.value, 10);
+            if (isNaN(val) || val < 48) {
+                return 48; // Clamp to minimum even if display is invalid
+            }
+            return val;
         }
         return 128;
     }
@@ -349,9 +366,6 @@ export class DataTraversalAndInteractionsPanel {
             this.sampleSlider.max = availableSamples.toString();
         }
 
-        if (this.sliderMaxLabel) {
-            this.sliderMaxLabel.textContent = availableSamples.toString();
-        }
 
         if (this.startIndexSlider) {
             this.startIndexSlider.max = availableSamples.toString();

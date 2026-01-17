@@ -4308,3 +4308,11 @@ body.dark-mode .msg-bubble code {
   /* Premium system red */
   text-shadow: 0 0 10px rgba(255, 59, 48, 0.2);
 }
+
+/* Invalid Input Feedback for Cell Size */
+.view-controls input#cell-size.invalid-input {
+  border: 1.5px solid #ff3b30 !important;
+  background-color: #fff1f0 !important;
+  box-shadow: 0 0 0 2px rgba(255, 59, 48, 0.1) !important;
+  animation: shake 0.4s cubic-bezier(.36, .07, .19, .97) both;
+}
