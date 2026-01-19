@@ -1462,16 +1462,6 @@ export async function initializeUIElements() {
         // Fetch splits from backend (if supported) and build color pickers dynamically
         await fetchAndCreateSplitColorPickers();
 
-        if (detailsToggle && inspectorPanel) {
-            detailsToggle.addEventListener('click', () => {
-                if (inspectorPanel) {
-                    inspectorPanel.style.transform = 'translateX(-100%)';
-                    inspectorPanel.classList.toggle('details-collapsed');
-                    // Small delay to allow for CSS transitions if any
-                    setTimeout(updateLayout, 150);
-                }
-            });
-        }
     }
 
     // Initialize Collapsible Widgets
