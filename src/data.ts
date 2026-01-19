@@ -98,6 +98,7 @@ let trainingStatePill: HTMLElement | null = null;
 let trainingSummary: HTMLElement | null = null;
 let detailsToggle: HTMLButtonElement | null = null;
 let detailsBody: HTMLElement | null = null;
+let connectionStatusElement: HTMLElement | null = null;
 let uniqueTags: string[] = [];
 
 // Available data splits reported by backend (train/eval/test/custom)
@@ -111,6 +112,10 @@ let datasetInfoReady = false;
 let isPainterMode = false;
 let isPainterRemoveMode = false;
 let activeBrushTags = new Set<string>();
+
+const MINUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+const PLUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+
 
 // Prefetch Cache for faster navigation
 interface CacheEntry {
@@ -228,7 +233,15 @@ function addChatMessage(text: string, type: 'user' | 'agent', isTyping: boolean 
 
 
 function generateSplitColor(split: string, index: number, _total: number): string {
-    // Use safe hue ranges to avoid muddy / inaccessible colors
+    // Match the hardcoded colors from GridCell.ts
+    const splitLower = split.toLowerCase();
+    if (splitLower === 'train') {
+        return '#c57a09';
+    } else if (splitLower === 'eval' || splitLower === 'val' || splitLower === 'test' || splitLower === 'validation') {
+        return '#16bb07';
+    }
+
+    // For other splits, use safe hue ranges to avoid muddy / inaccessible colors
     const safeRanges: Array<[number, number]> = [
         [10, 40],   // warm orange range
         [80, 150],  // greens
@@ -1064,17 +1077,17 @@ export async function initializeUIElements() {
         const detailsToggle = document.getElementById('details-toggle');
 
         // Only auto-collapse if the panel is visible and click is outside
-        if (optionsPanel && detailsBody && !detailsBody.classList.contains('collapsed')) {
+        if (optionsPanel && !optionsPanel.classList.contains('collapsed')) {
             const inspectorContainer = document.querySelector('.inspector-container');
             // Don't collapse if clicking within the inspector or its controls
             if (inspectorContainer && !inspectorContainer.contains(target)) {
                 // Only collapse if clicking in the main content area (not in training card or other UI)
                 const mainContent = document.querySelector('.main-content');
                 if (mainContent?.contains(target)) {
-                    detailsBody.classList.add('collapsed');
+                    optionsPanel.classList.add('collapsed');
                     if (detailsToggle) {
-                        detailsToggle.textContent = 'v';
-                        detailsToggle.classList.add('collapsed');
+                        detailsToggle.innerHTML = PLUS_ICON;
+                        detailsToggle.title = 'Maximize';
                     }
                 }
             }
@@ -1183,12 +1196,66 @@ export async function initializeUIElements() {
         });
     }
 
+    // Inspector Panel Resize Handle
+    const inspectorResizeHandle = document.getElementById('inspector-resize-handle');
+    const inspectorContainerEl = document.querySelector('.inspector-container') as HTMLElement;
+
+    if (inspectorResizeHandle && inspectorContainerEl) {
+        let isResizingInspector = false;
+        let startXInspector = 0;
+        let startWidthInspector = 0;
+
+        // Restore saved width from localStorage
+        const savedWidth = localStorage.getItem('inspector-width');
+        if (savedWidth) {
+            const width = parseInt(savedWidth, 10);
+            if (width >= 180 && width <= 450) {
+                inspectorContainerEl.style.width = width + 'px';
+            }
+        }
+
+        inspectorResizeHandle.addEventListener('mousedown', (e) => {
+            isResizingInspector = true;
+            startXInspector = e.clientX;
+            startWidthInspector = inspectorContainerEl.offsetWidth;
+            inspectorResizeHandle.classList.add('dragging');
+            document.body.classList.add('resizing-inspector');
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizingInspector) return;
+
+            const dx = e.clientX - startXInspector;
+            const newWidth = startWidthInspector + dx;
+
+            // Clamp to min/max
+            const clampedWidth = Math.max(180, Math.min(450, newWidth));
+            inspectorContainerEl.style.width = clampedWidth + 'px';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizingInspector) {
+                isResizingInspector = false;
+                inspectorResizeHandle.classList.remove('dragging');
+                document.body.classList.remove('resizing-inspector');
+
+                // Save to localStorage
+                localStorage.setItem('inspector-width', inspectorContainerEl.offsetWidth.toString());
+
+                // Trigger layout update
+                updateLayout();
+            }
+        });
+    }
+
 
 
 
     inspectorContainer = document.querySelector('.inspector-container') as HTMLElement | null;
     inspectorPanel = document.getElementById('options-panel') as HTMLElement | null;
     trainingStatePill = document.getElementById('training-state-pill') as HTMLElement | null;
+    connectionStatusElement = document.getElementById('connection-status') as HTMLElement | null;
     trainingSummary = document.getElementById('training-summary') as HTMLElement | null;
     detailsToggle = document.getElementById('details-toggle') as HTMLButtonElement | null;
     detailsBody = document.getElementById('details-body') as HTMLElement | null;
@@ -1202,9 +1269,11 @@ export async function initializeUIElements() {
                 toggleBtn.classList.toggle('paused', !isTraining);
             }
             if (trainingStatePill) {
-                trainingStatePill.textContent = isTraining ? 'Running' : 'Paused';
                 trainingStatePill.classList.toggle('pill-running', isTraining);
                 trainingStatePill.classList.toggle('pill-paused', !isTraining);
+            }
+            if (connectionStatusElement && isTraining !== undefined) {
+                connectionStatusElement.textContent = ''; // Clear connecting text once we have a state
             }
 
             // Fetch training_steps_to_do from hyperparameters
@@ -1309,7 +1378,7 @@ export async function initializeUIElements() {
 
         // Helper function to fetch training state with retry logic
         // More patient settings for server startup
-        async function fetchInitialTrainingState(retries = 5, initialDelay = 1000): Promise<boolean> {
+        async function fetchInitialTrainingState(retries = 5, initialDelay = 2000): Promise<boolean> {
             let delay = initialDelay;
 
             for (let attempt = 0; attempt < retries; attempt++) {
@@ -1344,9 +1413,11 @@ export async function initializeUIElements() {
                     if (attempt < retries - 1) {
                         console.log(`Retry ${attempt + 1}/${retries} to fetch training state in ${delay}ms...`);
 
-                        // Show visual feedback that we're retrying
+                        // Show visual feedback that we're retrying in the separate status label
+                        if (connectionStatusElement) {
+                            connectionStatusElement.textContent = `Connecting... (${attempt + 1}/${retries})`;
+                        }
                         if (trainingStatePill) {
-                            trainingStatePill.textContent = `Connecting... (${attempt + 1}/${retries})`;
                             trainingStatePill.classList.add('pill-paused');
                         }
 
@@ -1401,79 +1472,61 @@ export async function initializeUIElements() {
                 }
             });
         }
+    }
 
-        // Setup listeners for cell size and zoom - these need full layout update
-        const cellSizeSlider = document.getElementById('cell-size') as HTMLInputElement;
-        const zoomSlider = document.getElementById('zoom-level') as HTMLInputElement;
+    // Initialize Collapsible Widgets
+    const setupCollapse = (btnId: string, cardSelector: string) => {
+        const btn = document.getElementById(btnId);
+        const card = document.querySelector(cardSelector);
+        if (btn && card) {
+            // Ensure button type is button to prevent form submission
+            if (btn instanceof HTMLButtonElement) btn.type = 'button';
 
-        let cellSizeTimeout: any = null;
-        let zoomTimeout: any = null;
-
-        if (cellSizeSlider) {
-            cellSizeSlider.addEventListener('input', () => {
-                const cellSizeValue = document.getElementById('cell-size-value');
-                if (cellSizeValue) {
-                    cellSizeValue.textContent = cellSizeSlider.value;
-                }
-
-                // Debounce: wait 300ms after user stops adjusting before updating layout
-                if (cellSizeTimeout) {
-                    clearTimeout(cellSizeTimeout);
-                }
-                cellSizeTimeout = setTimeout(() => {
-                    updateLayout();
-                }, 750);
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const isCollapsed = card.classList.toggle('collapsed');
+                btn.innerHTML = isCollapsed ? PLUS_ICON : MINUS_ICON;
+                btn.title = isCollapsed ? 'Maximize' : 'Minimize';
+                // Trigger layout update
+                setTimeout(updateLayout, 150);
             });
         }
+    };
 
-        if (zoomSlider) {
-            zoomSlider.addEventListener('input', () => {
-                const zoomValue = document.getElementById('zoom-value');
-                if (zoomValue) {
-                    zoomValue.textContent = `${zoomSlider.value}%`;
-                }
+    setupCollapse('training-collapse-btn', '.training-card');
+    setupCollapse('tags-collapse-btn', '.tagger-card');
+    setupCollapse('details-toggle', '#options-panel');
 
-                // Debounce: wait 300ms after user stops adjusting before updating layout
-                if (zoomTimeout) {
-                    clearTimeout(zoomTimeout);
-                }
-                zoomTimeout = setTimeout(() => {
-                    updateLayout();
-                }, 300);
-            });
-        }
+    // Listen for color changes and persist to localStorage
+    const trainColorInput = document.getElementById('train-color') as HTMLInputElement;
+    const evalColorInput = document.getElementById('eval-color') as HTMLInputElement;
 
-        // If dynamic split pickers were not built (e.g., older HTML), fallback to legacy train/eval inputs
-        const dynamicPickers = document.querySelectorAll('.split-colors .color-picker');
-        if (dynamicPickers.length === 0) {
-            const trainColorInput = document.getElementById('train-color') as HTMLInputElement;
-            const evalColorInput = document.getElementById('eval-color') as HTMLInputElement;
+    // Restore saved colors from localStorage
+    const savedTrainColor = localStorage.getItem('train-color');
+    const savedEvalColor = localStorage.getItem('eval-color');
+    if (savedTrainColor && trainColorInput) {
+        trainColorInput.value = savedTrainColor;
+    }
+    if (savedEvalColor && evalColorInput) {
+        evalColorInput.value = savedEvalColor;
+    }
 
-            // Restore saved colors from localStorage
-            const savedTrainColor = localStorage.getItem('train-color');
-            const savedEvalColor = localStorage.getItem('eval-color');
-            if (savedTrainColor && trainColorInput) {
-                trainColorInput.value = savedTrainColor;
-            }
-            if (savedEvalColor && evalColorInput) {
-                evalColorInput.value = savedEvalColor;
-            }
+    if (trainColorInput) {
+        trainColorInput.addEventListener('input', () => {
+            localStorage.setItem('train-color', trainColorInput.value);
+            updateDisplayOnly();
+        });
+    }
+    if (evalColorInput) {
+        evalColorInput.addEventListener('input', () => {
+            localStorage.setItem('eval-color', evalColorInput.value);
+            updateDisplayOnly();
+        });
+    }
 
-            if (trainColorInput) {
-                trainColorInput.addEventListener('input', () => {
-                    localStorage.setItem('train-color', trainColorInput.value);
-                    updateDisplayOnly();
-                });
-            }
-            if (evalColorInput) {
-                evalColorInput.addEventListener('input', () => {
-                    localStorage.setItem('eval-color', evalColorInput.value);
-                    updateDisplayOnly();
-                });
-            }
-        }
-
-        // Checkbox changes only need display update, not layout recalculation
+    // Checkbox changes only need display update, not layout recalculation
+    if (displayOptionsPanel) {
         displayOptionsPanel.onUpdate(updateDisplayOnly);
     }
 
@@ -1602,10 +1655,16 @@ export async function initializeUIElements() {
     const painterTagsList = document.getElementById('painter-tags-list') as HTMLElement;
     const painterNewTagBtn = document.getElementById('painter-new-tag') as HTMLButtonElement;
     const newTagInput = document.getElementById('new-tag-input') as HTMLInputElement;
+    const modeSwitcherContainer = document.getElementById('mode-switcher-container') as HTMLElement;
 
     if (painterToggle) {
         painterToggle.addEventListener('change', () => {
             isPainterMode = painterToggle.checked;
+
+            // Show/hide the mode switcher (+/-) based on Painter toggle
+            if (modeSwitcherContainer) {
+                modeSwitcherContainer.style.display = isPainterMode ? 'flex' : 'none';
+            }
 
             // Enable/disable tag interactions based on mode
             if (isPainterMode) {
@@ -2128,34 +2187,41 @@ contextMenu.addEventListener('click', async (e) => {
                 clearSelection();
                 debouncedFetchAndDisplay();
                 break;
-            case 'restore':
-                // Remove from locally-tracked discarded samples
-                sample_ids.forEach(id => {
-                    if (typeof id === 'number') {
-                        locallyDiscardedSampleIds.delete(id);
-                    }
-                });
-
+            case 'undiscard':
+                let newlyRestoredCount = 0;
                 selectedCells.forEach(cell => {
                     const gridCell = getGridCell(cell);
                     if (gridCell) {
-                        cell.classList.remove('discarded');
+                        const record = gridCell.getRecord();
+                        // Check if currently discarded
+                        const isDiscardedStat = record?.dataStats.find((s: any) => s.name === 'deny_listed');
+                        const isCurrentlyDiscarded = isDiscardedStat?.value?.[0] === 1;
+
+                        if (isCurrentlyDiscarded) {
+                            newlyRestoredCount++;
+                        }
+
+                        gridCell.updateStats({ deny_listed: 0 });
                     }
                 });
 
-                const rrequest: DataEditsRequest = {
+                if (newlyRestoredCount > 0) {
+                    traversalPanel.incrementActiveCount(newlyRestoredCount);
+                }
+
+                const urequest: DataEditsRequest = {
                     statName: "deny_listed",
                     floatValue: 0,
                     stringValue: '',
-                    boolValue: false,
+                    boolValue: false,  // false to un-discard/restore
                     type: SampleEditType.EDIT_OVERRIDE,
                     samplesIds: sample_ids,
                     sampleOrigins: origins
-                }
+                };
                 try {
-                    const rresponse = await dataClient.editDataSample(rrequest).response;
-                    if (!rresponse.success) {
-                        console.error("Failed to restore:", rresponse.message);
+                    const uresponse = await dataClient.editDataSample(urequest).response;
+                    if (!uresponse.success) {
+                        console.error("Failed to restore:", uresponse.message);
                     }
                 } catch (error) {
                     console.error("Error restoring:", error);
@@ -2564,10 +2630,23 @@ function updateUniqueTags(tags: string[]) {
     // 2. Update Painter Mode Tag List (Chips)
     const tagsContainer = document.getElementById('painter-tags-list');
     if (tagsContainer) {
+        // Preserve the inline input before clearing
+        const inlineInput = tagsContainer.querySelector('.inline-tag-input');
+
+        // Clear only the chips (avoid wiping the inline input if it exists)
+        // We can do this by removing all children distinct from inlineInput
+        Array.from(tagsContainer.children).forEach(child => {
+            if (child !== inlineInput) {
+                child.remove();
+            }
+        });
+
         if (uniqueTags.length === 0) {
-            tagsContainer.innerHTML = '<div class="empty-state">No tags found</div>';
+            // If no tags, maybe show a small text? or just show nothing before the input
+            // For now, let's just leave it clean or add a placeholder text if needed
+            // tagsContainer.insertAdjacentHTML('afterbegin', '<span class="empty-text">No tags</span>');
         } else {
-            tagsContainer.innerHTML = '';
+            // Sort tags if needed, they usually come sorted
             uniqueTags.forEach(tag => {
                 const chip = document.createElement('div');
                 chip.className = 'tag-chip';
@@ -2579,7 +2658,12 @@ function updateUniqueTags(tags: string[]) {
                     setActiveBrush(tag);
                 };
 
-                tagsContainer.appendChild(chip);
+                // Insert before the input (if it exists), or append
+                if (inlineInput) {
+                    tagsContainer.insertBefore(chip, inlineInput);
+                } else {
+                    tagsContainer.appendChild(chip);
+                }
             });
         }
     }

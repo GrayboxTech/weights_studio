@@ -388,6 +388,14 @@ export class DataTraversalAndInteractionsPanel {
         }
     }
 
+    public incrementActiveCount(amount: number): void {
+        if (amount <= 0) return;
+        this.totalSamples += amount;
+        if (this.statActiveCount) {
+            this.statActiveCount.textContent = this.totalSamples.toString();
+        }
+    }
+
     public navigateLeft(): void {
         if (!this.sampleSlider) return;
         const gridCount = parseInt(this.sampleSlider.step, 10) || 1;

@@ -31,6 +31,7 @@ export class ContextMenu {
             menu.style.display = 'none';
             menu.innerHTML = `
                 <div class="context-menu-item" data-action="discard">Discard</div>
+                <div class="context-menu-item" data-action="undiscard">Restore</div>
                 <div class="context-menu-item" data-action="add-tag">Add Tag</div>
             `;
             document.body.appendChild(menu);
@@ -41,17 +42,17 @@ export class ContextMenu {
     private setupEventListeners(): void {
         // Handle right-click on grid - use capture phase to get it before SelectionManager
         this.gridElement.addEventListener('contextmenu', (e) => this.handleContextMenu(e), true);
-        
+
         // Handle clicks on menu items
         this.menu.addEventListener('click', (e) => this.handleMenuClick(e));
-        
+
         // Close menu on any left click outside
         document.addEventListener('mousedown', (e) => {
             if (e.button === 0) { // Left click only
                 this.handleDocumentClick(e);
             }
         });
-        
+
         // Close menu on right-click outside
         document.addEventListener('contextmenu', (e) => this.handleDocumentContextMenu(e), true);
     }
@@ -63,9 +64,9 @@ export class ContextMenu {
         if (cellElement) {
             e.preventDefault();
             e.stopPropagation();
-            
+
             const cell = (cellElement as any).__gridCell as GridCell | null;
-            
+
             if (cell) {
                 // If right-clicking on a non-selected cell, select only that cell
                 if (!this.selectionManager.getSelectedCells().includes(cell)) {
@@ -82,7 +83,7 @@ export class ContextMenu {
     private handleMenuClick(e: MouseEvent): void {
         const target = e.target as HTMLElement;
         const action = target.dataset.action;
-        
+
         if (action) {
             switch (action) {
                 case 'discard':
@@ -97,14 +98,14 @@ export class ContextMenu {
                     }
                     break;
             }
-            
+
             this.hideMenu();
         }
     }
 
     private handleDocumentClick(e: MouseEvent): void {
         if (!this.isVisible) return;
-        
+
         const target = e.target as HTMLElement;
         // Close menu if clicking outside of it
         if (!target.closest('.context-menu')) {
@@ -114,7 +115,7 @@ export class ContextMenu {
 
     private handleDocumentContextMenu(e: MouseEvent): void {
         if (!this.isVisible) return;
-        
+
         const target = e.target as HTMLElement;
         // Close menu if right-clicking outside of it
         if (!target.closest('.context-menu') && !target.closest('.cell')) {
@@ -124,11 +125,11 @@ export class ContextMenu {
 
     private async handleDiscard(): Promise<void> {
         const selectedCells = this.selectionManager.getSelectedCells();
-        
+
         // Log before discarding
         console.log('[ContextMenu] About to discard cells:');
         this.selectionManager.logCurrentState();
-        
+
         if (selectedCells.length > 0 && this.options.onDiscard) {
             await this.options.onDiscard(selectedCells);
             this.selectionManager.clearSelection();
@@ -140,10 +141,10 @@ export class ContextMenu {
         // Ensure menu doesn't go off screen
         const menuWidth = 150; // approximate
         const menuHeight = 80; // approximate
-        
+
         const finalX = Math.min(x, window.innerWidth - menuWidth);
         const finalY = Math.min(y, window.innerHeight - menuHeight);
-        
+
         this.menu.style.left = `${finalX}px`;
         this.menu.style.top = `${finalY}px`;
         this.menu.style.display = 'block';

@@ -132,12 +132,13 @@ export class DataDisplayOptionsPanel {
         document.body.classList.toggle("segmentation-mode", this.isSegmentationDataset);
         document.body.classList.toggle("classification-mode", !this.isSegmentationDataset);
 
-        const segmentationSection = document.querySelector(
+        // Hide all segmentation-specific groups (Classes, Overlays toggles, and section title)
+        const segmentationGroups = document.querySelectorAll(
             '[data-section="segmentation"]'
-        ) as HTMLElement | null;
-        if (segmentationSection) {
-            segmentationSection.style.display = this.isSegmentationDataset ? "block" : "none";
-        }
+        ) as NodeListOf<HTMLElement>;
+        segmentationGroups.forEach(group => {
+            group.style.display = this.isSegmentationDataset ? "block" : "none";
+        });
     }
 
     private detectSegmentation(records: DataRecord[]): boolean {
@@ -184,11 +185,9 @@ export class DataDisplayOptionsPanel {
         const availableFields = new Set<string>();
 
         // 0) Detect mode (check all records in batch for better detection)
-        const wasSegmentation = this.isSegmentationDataset;
         this.isSegmentationDataset = this.detectSegmentation(dataRecords);
-        if (this.isSegmentationDataset !== wasSegmentation) {
-            this.updateGlobalModeFlags();
-        }
+        // Always update visibility to ensure correct state on every data load
+        this.updateGlobalModeFlags();
 
         // 1) Collect all fields seen across all provided records
         this.fieldTypes.clear();
