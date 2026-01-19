@@ -4,6 +4,7 @@ import { SelectionManager } from "./SelectionManager";
 
 export interface ContextMenuOptions {
     onDiscard?: (cells: GridCell[]) => void;
+    onUndiscard?: (cells: GridCell[]) => void;
     onAddTag?: (cells: GridCell[], tag: string) => void;
 }
 
@@ -89,6 +90,9 @@ export class ContextMenu {
                 case 'discard':
                     this.handleDiscard();
                     break;
+                case 'undiscard':
+                    this.handleUndiscard();
+                    break;
                 case 'add-tag':
                     if (this.options.onAddTag) {
                         const tag = prompt('Enter tag:');
@@ -132,6 +136,20 @@ export class ContextMenu {
 
         if (selectedCells.length > 0 && this.options.onDiscard) {
             await this.options.onDiscard(selectedCells);
+            this.selectionManager.clearSelection();
+        }
+        this.hideMenu();
+    }
+
+    private async handleUndiscard(): Promise<void> {
+        const selectedCells = this.selectionManager.getSelectedCells();
+
+        // Log before restoring
+        console.log('[ContextMenu] About to restore cells:');
+        this.selectionManager.logCurrentState();
+
+        if (selectedCells.length > 0 && this.options.onUndiscard) {
+            await this.options.onUndiscard(selectedCells);
             this.selectionManager.clearSelection();
         }
         this.hideMenu();

@@ -233,7 +233,7 @@ function addChatMessage(text: string, type: 'user' | 'agent', isTyping: boolean 
 
 
 function generateSplitColor(split: string, index: number, _total: number): string {
-    // Match the hardcoded colors from GridCell.ts
+    // Match the hardcoded colors from GridCell.ts (without alpha for color pickers)
     const splitLower = split.toLowerCase();
     if (splitLower === 'train') {
         return '#c57a09';
@@ -1481,6 +1481,11 @@ export async function initializeUIElements() {
         if (btn && card) {
             // Ensure button type is button to prevent form submission
             if (btn instanceof HTMLButtonElement) btn.type = 'button';
+
+            // Initialize button with correct icon based on current state
+            const isCurrentlyCollapsed = card.classList.contains('collapsed');
+            btn.innerHTML = isCurrentlyCollapsed ? PLUS_ICON : MINUS_ICON;
+            btn.title = isCurrentlyCollapsed ? 'Maximize' : 'Minimize';
 
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
