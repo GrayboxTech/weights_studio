@@ -1298,10 +1298,16 @@ export async function initializeUIElements() {
     const painterTagsList = document.getElementById('painter-tags-list') as HTMLElement;
     const painterNewTagBtn = document.getElementById('painter-new-tag') as HTMLButtonElement;
     const newTagInput = document.getElementById('new-tag-input') as HTMLInputElement;
+    const modeSwitcherContainer = document.getElementById('mode-switcher-container') as HTMLElement;
 
     if (painterToggle) {
         painterToggle.addEventListener('change', () => {
             isPainterMode = painterToggle.checked;
+
+            // Show/hide the mode switcher (+/-) based on Painter toggle
+            if (modeSwitcherContainer) {
+                modeSwitcherContainer.style.display = isPainterMode ? 'flex' : 'none';
+            }
 
             // Enable/disable tag interactions based on mode
             if (isPainterMode) {
@@ -2260,10 +2266,23 @@ function updateUniqueTags(tags: string[]) {
     // 2. Update Painter Mode Tag List (Chips)
     const tagsContainer = document.getElementById('painter-tags-list');
     if (tagsContainer) {
+        // Preserve the inline input before clearing
+        const inlineInput = tagsContainer.querySelector('.inline-tag-input');
+
+        // Clear only the chips (avoid wiping the inline input if it exists)
+        // We can do this by removing all children distinct from inlineInput
+        Array.from(tagsContainer.children).forEach(child => {
+            if (child !== inlineInput) {
+                child.remove();
+            }
+        });
+
         if (uniqueTags.length === 0) {
-            tagsContainer.innerHTML = '<div class="empty-state">No tags found</div>';
+            // If no tags, maybe show a small text? or just show nothing before the input
+            // For now, let's just leave it clean or add a placeholder text if needed
+            // tagsContainer.insertAdjacentHTML('afterbegin', '<span class="empty-text">No tags</span>');
         } else {
-            tagsContainer.innerHTML = '';
+            // Sort tags if needed, they usually come sorted
             uniqueTags.forEach(tag => {
                 const chip = document.createElement('div');
                 chip.className = 'tag-chip';
@@ -2275,7 +2294,12 @@ function updateUniqueTags(tags: string[]) {
                     setActiveBrush(tag);
                 };
 
-                tagsContainer.appendChild(chip);
+                // Insert before the input (if it exists), or append
+                if (inlineInput) {
+                    tagsContainer.insertBefore(chip, inlineInput);
+                } else {
+                    tagsContainer.appendChild(chip);
+                }
             });
         }
     }

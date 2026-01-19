@@ -63,32 +63,44 @@
           <div class="card tagger-card">
             <div class="card-header tagger-header compact-header">
               <div class="inspector-title">Tags</div>
-              <div class="header-controls">
-                <div class="mode-switcher">
-                  <button id="mode-add" class="mode-btn active" title="Add Tags">+</button>
-                  <button id="mode-remove" class="mode-btn" title="Remove Tags">−</button>
-                </div>
-                <span class="mode-label">Painter</span>
-                <label class="switch compact" title="Toggle Painter Mode">
-                  <input type="checkbox" id="painter-toggle">
-                  <span></span>
-                </label>
-              </div>
             </div>
             <div class="card-body tagger-body compact-body">
-              <!-- Tag List -->
-              <div id="painter-tags-list" class="tags-list compact-list">
-                <div class="empty-state">No tags</div>
-              </div>
-
-              <!-- Add New Tag Footer -->
-              <div class="tagger-footer">
-                <div class="add-tag-input-wrapper compact-input">
+              <!-- Tags + Inline Input (wrapping flex row) -->
+              <div id="painter-tags-list" class="tags-flow-container">
+                <!-- Tag chips will be injected here -->
+                <!-- Inline input as last item -->
+                <div class="inline-tag-input">
                   <input type="text" id="new-tag-input" class="new-tag-input" placeholder="New tag...">
-                  <button id="painter-new-tag" class="add-tag-btn" title="Add">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                  <button id="painter-new-tag" class="add-tag-btn-inline" title="Add">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                       stroke-linecap="round" stroke-linejoin="round">
                       <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Painter Controls Footer -->
+              <div class="painter-controls-row">
+                <div class="painter-toggle-group">
+                  <span class="mode-label">Painter</span>
+                  <label class="switch compact" title="Toggle Painter Mode">
+                    <input type="checkbox" id="painter-toggle">
+                    <span></span>
+                  </label>
+                </div>
+                <div class="segmented-control" id="mode-switcher-container" style="display: none;">
+                  <button id="mode-add" class="segment active" title="Add Tags">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      stroke-width="2.5">
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                  </button>
+                  <button id="mode-remove" class="segment" title="Remove Tags">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      stroke-width="2.5">
                       <line x1="5" y1="12" x2="19" y2="12"></line>
                     </svg>
                   </button>
