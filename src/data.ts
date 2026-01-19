@@ -879,6 +879,13 @@ export async function handleQuerySubmit(query: string, isNaturalLanguage: boolea
 
 async function refreshDynamicStatsOnly() {
     if (!displayOptionsPanel) return;
+
+    const refreshBtn = document.getElementById('refresh-stats');
+    if (refreshBtn) refreshBtn.classList.add('refreshing');
+
+    // Ensure icon spins at least once (0.5s) even if fetch is instant
+    const minSpinDuration = new Promise(resolve => setTimeout(resolve, 500));
+
     console.debug('[Refresh Stats] Updating dynamic stats for visible samples...');
 
     const displayPreferences = displayOptionsPanel.getDisplayPreferences();
@@ -933,6 +940,11 @@ async function refreshDynamicStatsOnly() {
             break;
         }
     }
+
+    // Wait for the minimum spin time if it hasn't elapsed yet
+    await minSpinDuration;
+
+    if (refreshBtn) refreshBtn.classList.remove('refreshing');
 }
 
 
@@ -1574,6 +1586,12 @@ export async function initializeUIElements() {
         if (refreshIntervalId) {
             clearInterval(refreshIntervalId);
         }
+
+        const refreshBtn = document.getElementById('refresh-stats');
+        if (refreshBtn) {
+            refreshBtn.classList.toggle('is-polling', refreshIntervalMs > 0);
+        }
+
         if (refreshIntervalMs > 0) {
             refreshIntervalId = setInterval(() => {
                 refreshDynamicStatsOnly();
@@ -1595,30 +1613,80 @@ export async function initializeUIElements() {
             startRefreshInterval(); // Reset the timer
         });
 
-        // Right click: Configure interval
-        refreshBtn.addEventListener('contextmenu', (e) => {
+        // Right click OR Clock click: Configure interval (Custom Popover)
+        const refreshPopover = document.getElementById('refresh-config-popover');
+        const refreshInput = document.getElementById('refresh-interval-input') as HTMLInputElement;
+        const refreshAutoToggle = document.getElementById('refresh-auto-toggle') as HTMLInputElement;
+        const refreshInputWrapper = document.getElementById('refresh-input-wrapper');
+        const refreshSaveBtn = document.getElementById('refresh-config-save');
+        const refreshTrigger = document.getElementById('refresh-config-trigger');
+
+        const openConfig = (e: Event) => {
             e.preventDefault();
-            const currentSeconds = Math.round(refreshIntervalMs / 1000);
-            const input = prompt(
-                `Enter refresh interval in seconds (0 to disable):\nCurrent: ${currentSeconds}s`,
-                currentSeconds.toString()
-            );
+            if (refreshPopover && refreshInput && refreshAutoToggle) {
+                const currentSeconds = Math.round(refreshIntervalMs / 1000);
 
-            if (input !== null) {
-                const newSeconds = parseInt(input);
-                if (!isNaN(newSeconds) && newSeconds >= 0) {
-                    refreshIntervalMs = newSeconds * 1000;
-                    localStorage.setItem('refresh-interval', refreshIntervalMs.toString());
-                    startRefreshInterval();
+                // Initialize UI state
+                refreshAutoToggle.checked = refreshIntervalMs > 0;
+                refreshInput.value = currentSeconds > 0 ? currentSeconds.toString() : "5";
 
-                    if (refreshIntervalMs > 0) {
-                        alert(`Refresh interval set to ${newSeconds} seconds`);
-                    } else {
-                        alert('Auto-refresh disabled');
-                    }
-                } else {
-                    alert('Invalid input. Please enter a positive number.');
+                if (refreshInputWrapper) {
+                    refreshInputWrapper.classList.toggle('disabled', !refreshAutoToggle.checked);
                 }
+
+                refreshPopover.classList.remove('hidden');
+
+                if (refreshAutoToggle.checked) {
+                    refreshInput.focus();
+                    refreshInput.select();
+                }
+            }
+        };
+
+        if (refreshTrigger) {
+            refreshTrigger.addEventListener('click', openConfig);
+        }
+
+        if (refreshAutoToggle && refreshInputWrapper) {
+            refreshAutoToggle.addEventListener('change', () => {
+                refreshInputWrapper.classList.toggle('disabled', !refreshAutoToggle.checked);
+            });
+        }
+
+        if (refreshSaveBtn && refreshPopover && refreshInput && refreshAutoToggle) {
+            refreshSaveBtn.addEventListener('click', () => {
+                if (!refreshAutoToggle.checked) {
+                    refreshIntervalMs = 0;
+                } else {
+                    const newSeconds = parseInt(refreshInput.value);
+                    if (!isNaN(newSeconds) && newSeconds > 0) {
+                        refreshIntervalMs = newSeconds * 1000;
+                    } else {
+                        // Fallback/Default if they checked it but entered something weird
+                        refreshIntervalMs = 5000;
+                    }
+                }
+
+                localStorage.setItem('refresh-interval', refreshIntervalMs.toString());
+                startRefreshInterval();
+                refreshPopover.classList.add('hidden');
+            });
+
+            // Close on Escape or Save on Enter
+            refreshInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') refreshSaveBtn.click();
+                if (e.key === 'Escape') refreshPopover.classList.add('hidden');
+            });
+        }
+
+        // Close popover when clicking outside
+        document.addEventListener('click', (e) => {
+            const isOutsidePopover = refreshPopover && !refreshPopover.contains(e.target as Node);
+            const isNotMainBtn = refreshBtn !== e.target && !refreshBtn.contains(e.target as Node);
+            const isNotTrigger = refreshTrigger !== e.target && !refreshTrigger.contains(e.target as Node);
+
+            if (isOutsidePopover && isNotMainBtn && isNotTrigger) {
+                refreshPopover.classList.add('hidden');
             }
         });
     }
