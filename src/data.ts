@@ -1821,6 +1821,48 @@ contextMenu.addEventListener('click', async (e) => {
                 clearSelection();
                 debouncedFetchAndDisplay();
                 break;
+            case 'undiscard':
+                let newlyRestoredCount = 0;
+                selectedCells.forEach(cell => {
+                    const gridCell = getGridCell(cell);
+                    if (gridCell) {
+                        const record = gridCell.getRecord();
+                        // Check if currently discarded
+                        const isDiscardedStat = record?.dataStats.find((s: any) => s.name === 'deny_listed');
+                        const isCurrentlyDiscarded = isDiscardedStat?.value?.[0] === 1;
+
+                        if (isCurrentlyDiscarded) {
+                            newlyRestoredCount++;
+                        }
+
+                        gridCell.updateStats({ deny_listed: 0 });
+                    }
+                });
+
+                if (newlyRestoredCount > 0) {
+                    traversalPanel.incrementActiveCount(newlyRestoredCount);
+                }
+
+                const urequest: DataEditsRequest = {
+                    statName: "deny_listed",
+                    floatValue: 0,
+                    stringValue: '',
+                    boolValue: false,  // false to un-discard/restore
+                    type: SampleEditType.EDIT_OVERRIDE,
+                    samplesIds: sample_ids,
+                    sampleOrigins: origins
+                };
+                try {
+                    const uresponse = await dataClient.editDataSample(urequest).response;
+                    if (!uresponse.success) {
+                        console.error("Failed to restore:", uresponse.message);
+                    }
+                } catch (error) {
+                    console.error("Error restoring:", error);
+                }
+                clearSelection();
+                debouncedFetchAndDisplay();
+                break;
         }
     }
 });
