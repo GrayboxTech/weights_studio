@@ -60,6 +60,10 @@ let isPainterMode = false;
 let isPainterRemoveMode = false;
 let activeBrushTags = new Set<string>();
 
+const MINUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+const PLUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+
+
 // Prefetch Cache for faster navigation
 interface CacheEntry {
     response: DataSamplesResponse;
@@ -859,17 +863,17 @@ export async function initializeUIElements() {
         const detailsToggle = document.getElementById('details-toggle');
 
         // Only auto-collapse if the panel is visible and click is outside
-        if (optionsPanel && detailsBody && !detailsBody.classList.contains('collapsed')) {
+        if (optionsPanel && !optionsPanel.classList.contains('collapsed')) {
             const inspectorContainer = document.querySelector('.inspector-container');
             // Don't collapse if clicking within the inspector or its controls
             if (inspectorContainer && !inspectorContainer.contains(target)) {
                 // Only collapse if clicking in the main content area (not in training card or other UI)
                 const mainContent = document.querySelector('.main-content');
                 if (mainContent?.contains(target)) {
-                    detailsBody.classList.add('collapsed');
+                    optionsPanel.classList.add('collapsed');
                     if (detailsToggle) {
-                        detailsToggle.textContent = 'v';
-                        detailsToggle.classList.add('collapsed');
+                        detailsToggle.innerHTML = PLUS_ICON;
+                        detailsToggle.title = 'Maximize';
                     }
                 }
             }
@@ -975,6 +979,59 @@ export async function initializeUIElements() {
 
         document.addEventListener('mouseup', () => {
             isResizing = false;
+        });
+    }
+
+    // Inspector Panel Resize Handle
+    const inspectorResizeHandle = document.getElementById('inspector-resize-handle');
+    const inspectorContainerEl = document.querySelector('.inspector-container') as HTMLElement;
+
+    if (inspectorResizeHandle && inspectorContainerEl) {
+        let isResizingInspector = false;
+        let startXInspector = 0;
+        let startWidthInspector = 0;
+
+        // Restore saved width from localStorage
+        const savedWidth = localStorage.getItem('inspector-width');
+        if (savedWidth) {
+            const width = parseInt(savedWidth, 10);
+            if (width >= 180 && width <= 450) {
+                inspectorContainerEl.style.width = width + 'px';
+            }
+        }
+
+        inspectorResizeHandle.addEventListener('mousedown', (e) => {
+            isResizingInspector = true;
+            startXInspector = e.clientX;
+            startWidthInspector = inspectorContainerEl.offsetWidth;
+            inspectorResizeHandle.classList.add('dragging');
+            document.body.classList.add('resizing-inspector');
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizingInspector) return;
+
+            const dx = e.clientX - startXInspector;
+            const newWidth = startWidthInspector + dx;
+
+            // Clamp to min/max
+            const clampedWidth = Math.max(180, Math.min(450, newWidth));
+            inspectorContainerEl.style.width = clampedWidth + 'px';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizingInspector) {
+                isResizingInspector = false;
+                inspectorResizeHandle.classList.remove('dragging');
+                document.body.classList.remove('resizing-inspector');
+
+                // Save to localStorage
+                localStorage.setItem('inspector-width', inspectorContainerEl.offsetWidth.toString());
+
+                // Trigger layout update
+                updateLayout();
+            }
         });
     }
 
@@ -1188,61 +1245,61 @@ export async function initializeUIElements() {
         });
         displayOptionsPanel.initialize();
 
-        // Initialize Collapsible Widgets
-        const MINUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
-        const PLUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+    }
 
-        const setupCollapse = (btnId: string, cardSelector: string) => {
-            const btn = document.getElementById(btnId);
-            const card = document.querySelector(cardSelector);
-            if (btn && card) {
-                // Ensure button type is button to prevent form submission
-                if (btn instanceof HTMLButtonElement) btn.type = 'button';
+    // Initialize Collapsible Widgets
+    const setupCollapse = (btnId: string, cardSelector: string) => {
+        const btn = document.getElementById(btnId);
+        const card = document.querySelector(cardSelector);
+        if (btn && card) {
+            // Ensure button type is button to prevent form submission
+            if (btn instanceof HTMLButtonElement) btn.type = 'button';
 
-                btn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const isCollapsed = card.classList.toggle('collapsed');
-                    btn.innerHTML = isCollapsed ? PLUS_ICON : MINUS_ICON;
-                    btn.title = isCollapsed ? 'Maximize' : 'Minimize';
-                    // Trigger layout update
-                    setTimeout(updateLayout, 150);
-                });
-            }
-        };
-
-        setupCollapse('training-collapse-btn', '.training-card');
-        setupCollapse('tags-collapse-btn', '.tagger-card');
-        setupCollapse('details-toggle', '#options-panel');
-
-        // Listen for color changes and persist to localStorage
-        const trainColorInput = document.getElementById('train-color') as HTMLInputElement;
-        const evalColorInput = document.getElementById('eval-color') as HTMLInputElement;
-
-        // Restore saved colors from localStorage
-        const savedTrainColor = localStorage.getItem('train-color');
-        const savedEvalColor = localStorage.getItem('eval-color');
-        if (savedTrainColor && trainColorInput) {
-            trainColorInput.value = savedTrainColor;
-        }
-        if (savedEvalColor && evalColorInput) {
-            evalColorInput.value = savedEvalColor;
-        }
-
-        if (trainColorInput) {
-            trainColorInput.addEventListener('input', () => {
-                localStorage.setItem('train-color', trainColorInput.value);
-                updateDisplayOnly();
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const isCollapsed = card.classList.toggle('collapsed');
+                btn.innerHTML = isCollapsed ? PLUS_ICON : MINUS_ICON;
+                btn.title = isCollapsed ? 'Maximize' : 'Minimize';
+                // Trigger layout update
+                setTimeout(updateLayout, 150);
             });
         }
-        if (evalColorInput) {
-            evalColorInput.addEventListener('input', () => {
-                localStorage.setItem('eval-color', evalColorInput.value);
-                updateDisplayOnly();
-            });
-        }
+    };
 
-        // Checkbox changes only need display update, not layout recalculation
+    setupCollapse('training-collapse-btn', '.training-card');
+    setupCollapse('tags-collapse-btn', '.tagger-card');
+    setupCollapse('details-toggle', '#options-panel');
+
+    // Listen for color changes and persist to localStorage
+    const trainColorInput = document.getElementById('train-color') as HTMLInputElement;
+    const evalColorInput = document.getElementById('eval-color') as HTMLInputElement;
+
+    // Restore saved colors from localStorage
+    const savedTrainColor = localStorage.getItem('train-color');
+    const savedEvalColor = localStorage.getItem('eval-color');
+    if (savedTrainColor && trainColorInput) {
+        trainColorInput.value = savedTrainColor;
+    }
+    if (savedEvalColor && evalColorInput) {
+        evalColorInput.value = savedEvalColor;
+    }
+
+    if (trainColorInput) {
+        trainColorInput.addEventListener('input', () => {
+            localStorage.setItem('train-color', trainColorInput.value);
+            updateDisplayOnly();
+        });
+    }
+    if (evalColorInput) {
+        evalColorInput.addEventListener('input', () => {
+            localStorage.setItem('eval-color', evalColorInput.value);
+            updateDisplayOnly();
+        });
+    }
+
+    // Checkbox changes only need display update, not layout recalculation
+    if (displayOptionsPanel) {
         displayOptionsPanel.onUpdate(updateDisplayOnly);
     }
 

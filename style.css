@@ -1921,8 +1921,71 @@ body.dark-mode .context-menu-separator {
 /* Inspector / Details panel */
 .workspace-row {
   display: flex;
-  gap: 10px;
+  gap: 0;
+  /* No gap, resize handle provides visual separation */
   align-items: flex-start;
+}
+
+/* Inspector Resize Handle - absolute position to right edge of widgets */
+#inspector-resize-handle {
+  position: absolute;
+  right: -8px;
+  /* Centered on the border */
+  top: 0;
+  width: 16px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ew-resize;
+  user-select: none;
+  background: transparent;
+  transition: background 0.2s ease;
+  z-index: 100;
+}
+
+#inspector-resize-handle:hover,
+#inspector-resize-handle.dragging {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+#inspector-resize-handle .resize-dots {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  opacity: 0.3;
+  transition: opacity 0.2s ease;
+}
+
+#inspector-resize-handle:hover .resize-dots,
+#inspector-resize-handle.dragging .resize-dots {
+  opacity: 0.6;
+}
+
+#inspector-resize-handle .resize-dots span {
+  width: 4px;
+  height: 4px;
+  background: var(--secondary-text-color, #6b7280);
+  border-radius: 50%;
+}
+
+body.dark-mode #inspector-resize-handle:hover,
+body.dark-mode #inspector-resize-handle.dragging {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+body.dark-mode #inspector-resize-handle .resize-dots span {
+  background: var(--secondary-text-color, #9ca3af);
+}
+
+/* Prevent text selection during resize */
+body.resizing-inspector {
+  cursor: ew-resize !important;
+  user-select: none !important;
+}
+
+body.resizing-inspector * {
+  cursor: ew-resize !important;
 }
 
 .inspector-container {
@@ -1932,14 +1995,21 @@ body.dark-mode .context-menu-separator {
   flex-direction: column;
   gap: 10px;
   width: 260px;
-  /* Explicit narrower width */
-  min-width: 250px;
-  max-width: 280px;
+  min-width: 180px;
+  /* Allow narrower for resize */
+  max-width: 450px;
+  /* Allow wider for resize */
   height: calc(100vh - 160px);
   overflow-x: hidden;
   overflow-y: visible;
-  transition: width 0.2s ease, opacity 0.2s ease;
+  transition: opacity 0.2s ease;
+  /* Width transition handled by JS during resize */
   flex-shrink: 0;
+}
+
+/* Disable transitions during active resize for smoother experience */
+body.resizing-inspector .inspector-container {
+  transition: none !important;
 }
 
 .inspector-container.lowered {
