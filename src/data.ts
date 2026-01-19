@@ -1071,27 +1071,7 @@ export async function initializeUIElements() {
             }
         }
 
-        // Close inspector details panel when clicking outside (optional - only if it's in a modal/floating state)
-        const optionsPanel = document.getElementById('options-panel');
-        const detailsBody = document.getElementById('details-body');
-        const detailsToggle = document.getElementById('details-toggle');
 
-        // Only auto-collapse if the panel is visible and click is outside
-        if (optionsPanel && !optionsPanel.classList.contains('collapsed')) {
-            const inspectorContainer = document.querySelector('.inspector-container');
-            // Don't collapse if clicking within the inspector or its controls
-            if (inspectorContainer && !inspectorContainer.contains(target)) {
-                // Only collapse if clicking in the main content area (not in training card or other UI)
-                const mainContent = document.querySelector('.main-content');
-                if (mainContent?.contains(target)) {
-                    optionsPanel.classList.add('collapsed');
-                    if (detailsToggle) {
-                        detailsToggle.innerHTML = PLUS_ICON;
-                        detailsToggle.title = 'Maximize';
-                    }
-                }
-            }
-        }
     });
 
     // Custom Resize Handles for Chat History Panel
