@@ -1103,7 +1103,7 @@ export async function initializeUIElements() {
 
         // Helper function to fetch training state with retry logic
         // More patient settings for server startup
-        async function fetchInitialTrainingState(retries = 5, initialDelay = 1000): Promise<boolean> {
+        async function fetchInitialTrainingState(retries = 5, initialDelay = 2000): Promise<boolean> {
             let delay = initialDelay;
 
             for (let attempt = 0; attempt < retries; attempt++) {
