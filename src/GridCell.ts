@@ -355,15 +355,16 @@ export class GridCell {
 
             let formatted = ""
             if (stat.name === "tags") {
-                // Parse comma-separated tags and filter out None, empty strings
+                // Parse semi-colon separated tags (backend format) and filter out None, empty strings
                 const tagValue = stat.valueString || '';
-                const cleanTags = tagValue
-                    .split(',')
+                const cleanTags = Array.from(new Set(tagValue
+                    .split(/[;,]/)
                     .map(t => t.trim())
-                    .filter(t => t && t !== 'None');
+                    .filter(t => t && t !== 'None')));
 
                 if (cleanTags.length > 0) {
-                    formatted = cleanTags.join(', ');
+                    cleanTags.sort(); // Ensure consistent alphabetical order
+                    formatted = cleanTags.join(', '); // Display nicely with commas
                 } else {
                     continue; // Skip displaying if no valid tags
                 }
@@ -383,7 +384,11 @@ export class GridCell {
         }
 
         const originStat = this.record.dataStats.find(stat => stat.name === 'origin');
-        const isEval = originStat?.valueString === 'eval';
+        const valLower = originStat?.valueString?.toLowerCase() || '';
+        // Looser check: if it contains eval, test, or val (e.g. "val_set", "my_test")
+        const isEval = valLower.includes('eval') ||
+            valLower.includes('test') ||
+            valLower.includes('val');
         const isDiscarded = this.element.classList.contains('discarded');
         const splitColors = this.displayPreferences.splitColors;
 

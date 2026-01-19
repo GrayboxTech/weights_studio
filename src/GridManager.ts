@@ -6,7 +6,6 @@ import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteraction
 import { SelectionManager } from "./SelectionManager";
 
 const GRID_GAP = 4;
-const CONTROLS_HEIGHT = 100;
 
 
 export class GridManager {
@@ -32,10 +31,24 @@ export class GridManager {
 
         const effectiveCellSize = Math.round(size * zoom);
         const containerWidth = this.cellsContainer.clientWidth;
-        const containerHeight = window.innerHeight - CONTROLS_HEIGHT;
+
+        // Dynamically calculate available height
+        const mainContent = this.cellsContainer.closest('.main-content');
+        const contentHeader = mainContent?.querySelector('.content-header');
+        const bottomBar = document.querySelector('.bottom-bar');
+
+        let availableHeight = window.innerHeight - 150; // Fallback
+        if (mainContent && contentHeader) {
+            const mainContentHeight = mainContent.clientHeight;
+            const headerHeight = (contentHeader as HTMLElement).offsetHeight;
+            const bottomBarHeight = (bottomBar as HTMLElement)?.offsetHeight || 0;
+            // The grid should fill the remaining space in main-content after the header
+            // And before the fixed bottom-bar
+            availableHeight = mainContentHeight - headerHeight - bottomBarHeight - 15;
+        }
 
         const cols = Math.max(1, Math.floor(containerWidth / (effectiveCellSize + GRID_GAP)));
-        const rows = Math.max(1, Math.floor(containerHeight / (effectiveCellSize + GRID_GAP)));
+        const rows = Math.max(1, Math.floor(availableHeight / (effectiveCellSize + GRID_GAP)));
         const gridCount = rows * cols;
 
         return { rows, cols, gridCount, cellSize: effectiveCellSize };

@@ -74,7 +74,29 @@ Follow these steps to set up the environment for both `weightslab` (backend) and
 - Check Envoy administration page is reachable: http://localhost:9091/
 - Check OLLAMA is reachable: http://localhost:11435/
 - Check if Weights Studio page is reachable: http://localhost:5173/
+### Agent Configuration
 
+The WeightsLab Agent allows you to manipulate data using natural language. It supports local models (via Ollama) and remote APIs (OpenRouter, Google Gemini, OpenAI).
+
+#### 1. Global Settings (`agent_config.yaml`)
+Behavioral settings (provider and model selection) are managed in `weightslab/agent_config.yaml`.
+
+```yaml
+agent:
+  provider: ollama  # options: ollama, openrouter, google, openai
+  ollama_model: qwen2.5:3b-instruct
+  fallback_to_local: true
+```
+
+#### 2. Private Keys (`.env`)
+API keys and secrets must be kept private in the `.env` file (which is ignored by Git).
+
+1. Copy the template:
+   ```bash
+   cd weightslab
+   cp .env.template .env
+   ```
+2. Edit `.env` and add your keys (e.g., `OPENROUTER_API_KEY`).
 
 ### Usage
 Access the UI at `http://localhost:5173`.

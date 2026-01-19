@@ -73,6 +73,7 @@ const MAX_PREFETCH_BATCHES = (() => {
 })();
 const MAX_CACHE_ENTRIES = MAX_PREFETCH_BATCHES + 4; // Keep extra batches in memory (+2 for first/last batches)
 let prefetchInProgress = false;
+let lastFetchedBatchStart: number = 0; // Track navigation direction
 
 function getCacheKey(startIndex: number, count: number, resizeWidth: number, resizeHeight: number): string {
     return `${startIndex}-${count}-${resizeWidth}-${resizeHeight}`;
@@ -202,7 +203,7 @@ async function fetchAndDisplaySamples() {
 
     const start = traversalPanel.getStartIndex();
     const count = traversalPanel.getLeftSamples();
-    const batchSize = 32;
+    const batchSize = Math.min(gridManager.calculateGridDimensions().gridCount, 128);
 
     const requestId = ++currentFetchRequestId;
 
@@ -235,6 +236,9 @@ async function fetchAndDisplaySamples() {
             }
         });
         console.debug(`[Cache] Displayed ${cachedResponse.dataRecords.length} cached records`);
+
+        // Update range labels on scrollbar
+        traversalPanel.updateRangeLabels();
 
         // Trigger prefetch of multiple batches ahead in background
         prefetchMultipleBatches(start, count, resizeWidth, resizeHeight);
@@ -334,12 +338,130 @@ async function fetchAndDisplaySamples() {
             setCachedResponse(start, count, resizeWidth, resizeHeight, completeResponse);
         }
 
-        // Trigger prefetch of multiple batches ahead (2, 3, 4)
-        prefetchMultipleBatches(start, count, resizeWidth, resizeHeight);
+        // Update range labels on scrollbar
+        traversalPanel.updateRangeLabels();
+
+        // Trigger prefetch of batches both ahead and behind based on navigation direction
+        prefetchBidirectionalBatches(start, count, resizeWidth, resizeHeight, lastFetchedBatchStart);
+        lastFetchedBatchStart = start; // Update for next navigation
 
     } catch (error) {
         // Error is already logged by fetchSamples, so we just catch to prevent unhandled promise rejection.
         console.debug("fetchAndDisplaySamples failed. See error above.");
+    }
+}
+
+async function prefetchBidirectionalBatches(currentStart: number, count: number, resizeWidth: number, resizeHeight: number, lastStart: number = 0, totalBatches: number = MAX_PREFETCH_BATCHES): Promise<void> {
+    if (prefetchInProgress) {
+        console.debug('[Prefetch] Already in progress, skipping');
+        return;
+    }
+
+    prefetchInProgress = true;
+    const maxSampleId = traversalPanel.getMaxSampleId();
+    const batchesToPrefetch: number[] = [];
+
+    // Calculate how many batches we can go backward and forward
+    const maxBackwardBatches = Math.floor(currentStart / count);
+    const maxForwardBatches = Math.floor((maxSampleId - currentStart) / count);
+
+    // Split prefetch batches: aim for totalBatches/2 before and after
+    let targetBackward = Math.floor(totalBatches / 2);
+    let targetForward = Math.ceil(totalBatches / 2);
+
+    // Adjust if we're near boundaries
+    const availableBackward = Math.min(targetBackward, maxBackwardBatches);
+    const availableForward = Math.min(targetForward, maxForwardBatches);
+
+    // If we can't reach target in one direction, use extra in the other
+    if (availableBackward < targetBackward) {
+        // Near the beginning: use more forward batches
+        targetForward = Math.min(totalBatches - availableBackward, maxForwardBatches);
+    } else if (availableForward < targetForward) {
+        // Near the end: use more backward batches
+        targetBackward = Math.min(totalBatches - availableForward, maxBackwardBatches);
+    }
+
+    console.debug(`[Prefetch] Position: ${currentStart}, Direction: forward=${availableForward} backward=${availableBackward}, Targets: F=${targetForward} B=${targetBackward}`);
+
+    // Collect backward batches
+    for (let i = 1; i <= targetBackward; i++) {
+        const batchStart = currentStart - (count * i);
+        if (batchStart < 0) break;
+
+        const cached = getCachedResponse(batchStart, count, resizeWidth, resizeHeight);
+        if (!cached) {
+            batchesToPrefetch.push(batchStart);
+            console.debug('[Prefetch] Adding backward batch at', batchStart);
+        }
+    }
+
+    // Collect forward batches
+    for (let i = 1; i <= targetForward; i++) {
+        const batchStart = currentStart + (count * i);
+        if (batchStart > maxSampleId) break;
+
+        const cached = getCachedResponse(batchStart, count, resizeWidth, resizeHeight);
+        if (!cached) {
+            batchesToPrefetch.push(batchStart);
+            console.debug('[Prefetch] Adding forward batch at', batchStart);
+        }
+    }
+
+    if (batchesToPrefetch.length === 0) {
+        console.debug('[Prefetch] All needed batches already cached');
+        prefetchInProgress = false;
+        return;
+    }
+
+    console.debug(`[Prefetch] Loading ${batchesToPrefetch.length} batches: ${batchesToPrefetch.join(', ')}`);
+
+    try {
+        const batchSize = Math.min(gridManager.calculateGridDimensions().gridCount, 128);
+
+        // Prefetch each batch
+        for (const batchStart of batchesToPrefetch) {
+            const allRecords: any[] = [];
+
+            for (let i = 0; i < count; i += batchSize) {
+                const currentBatchSize = Math.min(batchSize, count - i);
+                const request: DataSamplesRequest = {
+                    startIndex: batchStart + i,
+                    recordsCnt: currentBatchSize,
+                    includeRawData: true,
+                    includeTransformedData: false,
+                    statsToRetrieve: [],
+                    resizeWidth: resizeWidth,
+                    resizeHeight: resizeHeight
+                };
+
+                const response = await fetchSamples(request);
+
+                if (response.success && response.dataRecords.length > 0) {
+                    allRecords.push(...response.dataRecords);
+
+                    if (response.dataRecords.length < currentBatchSize) {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            if (allRecords.length > 0) {
+                const completeResponse: DataSamplesResponse = {
+                    success: true,
+                    message: '',
+                    dataRecords: allRecords
+                };
+                setCachedResponse(batchStart, count, resizeWidth, resizeHeight, completeResponse);
+                console.debug(`[Prefetch] Cached batch at ${batchStart} (${allRecords.length} records)`);
+            }
+        }
+    } catch (error) {
+        console.debug('[Prefetch] Failed:', error);
+    } finally {
+        prefetchInProgress = false;
     }
 }
 
@@ -361,7 +483,7 @@ async function prefetchMultipleBatches(currentStart: number, count: number, resi
             console.debug(`[Prefetch] Batch ${batchStart} exceeds max sample ID ${maxSampleId}, stopping`);
             break;
         }
-        
+
         // Only add if not already cached
         const cached = getCachedResponse(batchStart, count, resizeWidth, resizeHeight);
         if (!cached) {
@@ -379,7 +501,7 @@ async function prefetchMultipleBatches(currentStart: number, count: number, resi
     console.debug(`[Prefetch] Loading ${batchesToPrefetch.length} batches ahead: ${batchesToPrefetch.join(', ')}`);
 
     try {
-        const batchSize = 32;
+        const batchSize = Math.min(gridManager.calculateGridDimensions().gridCount, 128);
 
         // Prefetch each batch
         for (const batchStart of batchesToPrefetch) {
@@ -488,9 +610,9 @@ async function updateDisplayOnly() {
     }
 }
 
-async function handleQuerySubmit(query: string): Promise<void> {
+export async function handleQuerySubmit(query: string, isNaturalLanguage: boolean = true): Promise<void> {
     try {
-        const request: DataQueryRequest = { query, accumulate: false, isNaturalLanguage: true };
+        const request: DataQueryRequest = { query, accumulate: false, isNaturalLanguage };
         const response: DataQueryResponse = await dataClient.applyDataQuery(request).response;
 
         // Handle Analysis Intent (Chat Mode)
@@ -544,7 +666,7 @@ async function refreshDynamicStatsOnly() {
 
     const start = traversalPanel.getStartIndex();
     const count = traversalPanel.getLeftSamples();
-    const batchSize = 32;
+    const batchSize = Math.min(gridManager.calculateGridDimensions().gridCount, 128);
 
     for (let i = 0; i < count; i += batchSize) {
         const currentBatchSize = Math.min(batchSize, count - i);
@@ -613,7 +735,6 @@ export async function initializeUIElements() {
             // Set loading state
             chatSendBtn.disabled = true;
             chatSendBtn.classList.add('loading');
-            chatSendBtn.textContent = 'Working...';
             chatInput.disabled = true;
 
             // 1. Add User Message immediately
@@ -635,7 +756,6 @@ export async function initializeUIElements() {
                 // Reset state
                 chatSendBtn.disabled = false;
                 chatSendBtn.classList.remove('loading');
-                chatSendBtn.textContent = 'Send';
                 chatInput.disabled = false;
                 chatInput.focus();
             }
@@ -674,24 +794,16 @@ export async function initializeUIElements() {
             const panel = document.getElementById('chat-history-panel');
             if (list) list.innerHTML = '';
             if (panel) panel.style.display = 'none';
-
-            // Also deactivate toggle button
-            const toggleBtn = document.getElementById('toggle-history');
-            if (toggleBtn) toggleBtn.classList.remove('active');
         });
     }
 
-    // Toggle History Button
-    const toggleHistoryBtn = document.getElementById('toggle-history');
-    if (toggleHistoryBtn) {
-        toggleHistoryBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
+    // Open History Panel on chat input focus
+    const chatInputForHistory = document.getElementById('chat-input');
+    if (chatInputForHistory) {
+        chatInputForHistory.addEventListener('focus', () => {
             const panel = document.getElementById('chat-history-panel');
             if (!panel) return;
-
-            const isVisible = panel.style.display === 'flex';
-            panel.style.display = isVisible ? 'none' : 'flex';
-            toggleHistoryBtn.classList.toggle('active', !isVisible);
+            panel.style.display = 'flex';
         });
     }
 
@@ -699,17 +811,18 @@ export async function initializeUIElements() {
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key === 'h') {
             e.preventDefault();
-            const toggleBtn = document.getElementById('toggle-history');
-            if (toggleBtn) toggleBtn.click();
+            const panel = document.getElementById('chat-history-panel');
+            if (panel) {
+                const isVisible = panel.style.display === 'flex';
+                panel.style.display = isVisible ? 'none' : 'flex';
+            }
         }
 
         // Escape to close
         if (e.key === 'Escape') {
             const panel = document.getElementById('chat-history-panel');
-            const toggleBtn = document.getElementById('toggle-history');
             if (panel && panel.style.display === 'flex') {
                 panel.style.display = 'none';
-                if (toggleBtn) toggleBtn.classList.remove('active');
             }
         }
     });
@@ -721,22 +834,21 @@ export async function initializeUIElements() {
         // Close chat history panel when clicking outside
         const chatPanel = document.getElementById('chat-history-panel');
         const inputContainer = document.querySelector('.chat-input-container');
-        const toggleHistoryBtn = document.getElementById('toggle-history');
         if (chatPanel && chatPanel.style.display === 'flex' && inputContainer) {
             // If click is NOT inside panel AND NOT inside input container, close it
             if (!chatPanel.contains(target) && !inputContainer.contains(target)) {
                 chatPanel.style.display = 'none';
-                if (toggleHistoryBtn) toggleHistoryBtn.classList.remove('active');
             }
         }
 
         // Close grid settings panel when clicking outside
         const gridSettingsToggle = document.getElementById('grid-settings-toggle');
-        const viewControls = document.getElementById('view-controls');
-        if (viewControls && !viewControls.classList.contains('collapsed')) {
-            // If click is NOT inside view controls AND NOT the toggle button itself, collapse it
-            if (!viewControls.contains(target) && target !== gridSettingsToggle && !gridSettingsToggle?.contains(target)) {
-                viewControls.classList.add('collapsed');
+        const gridSettingsOverlay = document.getElementById('grid-settings-overlay');
+        if (gridSettingsOverlay && !gridSettingsOverlay.classList.contains('collapsed')) {
+            // If click is NOT inside overlay AND NOT the toggle button itself, collapse it
+            if (!gridSettingsOverlay.contains(target) && target !== gridSettingsToggle && !gridSettingsToggle?.contains(target)) {
+                gridSettingsOverlay.classList.add('collapsed');
+                gridSettingsToggle?.classList.remove('active');
             }
         }
 
@@ -1064,6 +1176,10 @@ export async function initializeUIElements() {
     const detailsOptionsRow = document.querySelector('.details-options-row') as HTMLElement;
     if (detailsOptionsRow) {
         displayOptionsPanel = new DataDisplayOptionsPanel(detailsOptionsRow);
+        displayOptionsPanel.onSort(async (query) => {
+            // Bypass agent for deterministic response (sorting)
+            await handleQuerySubmit(query, false);
+        });
         displayOptionsPanel.initialize();
 
         if (detailsToggle && inspectorPanel) {
@@ -1071,31 +1187,9 @@ export async function initializeUIElements() {
                 if (inspectorPanel) {
                     inspectorPanel.style.transform = 'translateX(-100%)';
                     inspectorPanel.classList.toggle('details-collapsed');
+                    // Small delay to allow for CSS transitions if any
+                    setTimeout(updateLayout, 150);
                 }
-            });
-        }
-
-        // Setup listeners for cell size and zoom - these need full layout update
-        const cellSizeSlider = document.getElementById('cell-size') as HTMLInputElement;
-        const zoomSlider = document.getElementById('zoom-level') as HTMLInputElement;
-
-        if (cellSizeSlider) {
-            cellSizeSlider.addEventListener('input', () => {
-                const cellSizeValue = document.getElementById('cell-size-value');
-                if (cellSizeValue) {
-                    cellSizeValue.textContent = cellSizeSlider.value;
-                }
-                updateLayout();
-            });
-        }
-
-        if (zoomSlider) {
-            zoomSlider.addEventListener('input', () => {
-                const zoomValue = document.getElementById('zoom-value');
-                if (zoomValue) {
-                    zoomValue.textContent = `${zoomSlider.value}%`;
-                }
-                updateLayout();
             });
         }
 
@@ -1132,25 +1226,26 @@ export async function initializeUIElements() {
 
     // Grid settings toggle functionality
     const gridSettingsToggle = document.getElementById('grid-settings-toggle') as HTMLButtonElement;
-    const viewControls = document.getElementById('view-controls') as HTMLElement;
+    const gridSettingsOverlay = document.getElementById('grid-settings-overlay') as HTMLElement;
 
-    if (gridSettingsToggle && viewControls) {
-        let isSettingsExpanded = false; // Start collapsed
-        viewControls.classList.add('collapsed'); // Start collapsed
-
-        gridSettingsToggle.addEventListener('click', () => {
-            isSettingsExpanded = !isSettingsExpanded;
-            viewControls.classList.toggle('collapsed', !isSettingsExpanded);
+    if (gridSettingsToggle && gridSettingsOverlay) {
+        gridSettingsToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isCollapsed = gridSettingsOverlay.classList.toggle('collapsed');
+            gridSettingsToggle.classList.toggle('active', !isCollapsed);
         });
     }
 
     traversalPanel.initialize();
+    traversalPanel.setupKeyboardShortcuts();
     gridManager = new GridManager(
         cellsContainer, traversalPanel,
         displayOptionsPanel as DataDisplayOptionsPanel);
 
     traversalPanel.onUpdate(() => {
         debouncedFetchAndDisplay();
+        if (fetchTimeout) clearTimeout(fetchTimeout);
+        fetchTimeout = setTimeout(updateLayout, 150);
     });
 
     window.addEventListener('resize', updateLayout);
@@ -1680,17 +1775,31 @@ contextMenu.addEventListener('click', async (e) => {
                 // The modal will stay on top of the selected items.
                 return;
             case 'remove-tag':
-                removeTag(sample_ids, origins);
+                await removeTag(sample_ids, origins);
                 clearSelection();
                 debouncedFetchAndDisplay();
                 break;
             case 'discard':
+                let newlyDiscardedCount = 0;
                 selectedCells.forEach(cell => {
                     const gridCell = getGridCell(cell);
                     if (gridCell) {
-                        cell.classList.add('discarded');
+                        const record = gridCell.getRecord();
+                        // Check if already discarded to avoid double counting
+                        const isDiscardedStat = record?.dataStats.find((s: any) => s.name === 'deny_listed');
+                        const isAlreadyDiscarded = isDiscardedStat?.value?.[0] === 1; // Assuming value is [1] for true
+
+                        if (!isAlreadyDiscarded) {
+                            newlyDiscardedCount++;
+                        }
+
+                        gridCell.updateStats({ deny_listed: 1 });
                     }
                 });
+
+                if (newlyDiscardedCount > 0) {
+                    traversalPanel.decrementActiveCount(newlyDiscardedCount);
+                }
 
                 const drequest: DataEditsRequest = {
                     statName: "deny_listed",
@@ -2224,7 +2333,7 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
                         const record = gridCell.getRecord();
                         const existingTagsStat = record?.dataStats.find((s: any) => s.name === 'tags');
                         const currentTagsStr = existingTagsStat?.valueString || "";
-                        const newTagsStr = currentTagsStr.split(',').map((t: string) => t.trim()).filter((t: string) => t && t !== tag).join(', ');
+                        const newTagsStr = currentTagsStr.split(/[;,]/).map((t: string) => t.trim()).filter((t: string) => t && t !== tag).join('; ');
                         gridCell.updateStats({ "tags": newTagsStr });
                     }
                 });
@@ -2266,11 +2375,11 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
                         const record = gridCell.getRecord();
                         const existingTagsStat = record?.dataStats.find((s: any) => s.name === 'tags');
                         const currentTagsStr = existingTagsStat?.valueString || "";
-                        const currentTags = currentTagsStr.split(',').map((t: string) => t.trim()).filter((t: string) => t);
+                        const currentTags = currentTagsStr.split(/[;,]/).map((t: string) => t.trim()).filter((t: string) => t);
                         if (!currentTags.includes(tag)) {
                             currentTags.push(tag);
                         }
-                        const newTagsStr = currentTags.join(', ');
+                        const newTagsStr = currentTags.join('; ');
                         gridCell.updateStats({ "tags": newTagsStr });
                     }
                 });
@@ -2336,6 +2445,7 @@ async function removeTag(sampleIds: number[], origins: string[]) {
                     gridCell.updateStats({ "tags": "" });
                 }
             });
+            clearResponseCache();
         } else {
             alert(`Failed to remove tag: ${response.message}`);
         }
@@ -2362,10 +2472,11 @@ async function paintCell(cell: HTMLElement) {
     const tagsStat = record.dataStats.find((s: any) => s.name === 'tags');
     const currentTagsStr = tagsStat?.valueString || "";
     // Filter out None, empty strings, and whitespace-only strings
-    const currentTags = currentTagsStr
-        .split(',')
+    // Backend uses semi-colon separator
+    const currentTags = Array.from(new Set(currentTagsStr
+        .split(/[;,]/)
         .map((t: string) => t.trim())
-        .filter((t: string) => t && t !== 'None');
+        .filter((t: string) => t && t !== 'None')));
 
     if (isPainterRemoveMode) {
         // REMOVE MODE: Remove any selected tags that exist
@@ -2373,7 +2484,7 @@ async function paintCell(cell: HTMLElement) {
         if (tagsToRemove.length === 0) return;
 
         const newTags = currentTags.filter((t: string) => !tagsToRemove.includes(t));
-        const newTagsStr = newTags.join(', ');
+        const newTagsStr = newTags.join(';');
 
         // Optimistic update
         gridCell.updateStats({ "tags": newTagsStr });
@@ -2401,8 +2512,9 @@ async function paintCell(cell: HTMLElement) {
         const tagsToAdd = Array.from(activeBrushTags).filter((t: string) => !currentTags.includes(t));
         if (tagsToAdd.length === 0) return;
 
-        const newTags = [...currentTags, ...tagsToAdd];
-        const newTagsStr = newTags.join(', ');
+        // Deduplicate using Set to be safe
+        const newTags = Array.from(new Set([...currentTags, ...tagsToAdd])).filter(Boolean);
+        const newTagsStr = newTags.join(';');
 
         // Optimistic update
         gridCell.updateStats({ "tags": newTagsStr });

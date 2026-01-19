@@ -3,12 +3,12 @@ export class DataTraversalAndInteractionsPanel {
     private sampleSlider: HTMLInputElement | null = null;
     private cellSize: HTMLInputElement | null = null;
     private zoomLevel: HTMLInputElement | null = null;
-    private imageResolutionAuto: HTMLInputElement | null = null;
     private imageResolutionPercent: HTMLInputElement | null = null;
     private imageResolutionValue: HTMLSpanElement | null = null;
-    private sliderMinLabel: HTMLSpanElement | null = null;
-    private sliderMaxLabel: HTMLSpanElement | null = null;
     private sliderTooltip: HTMLSpanElement | null = null;
+    private statTotalCount: HTMLSpanElement | null = null;
+    private statActiveCount: HTMLSpanElement | null = null;
+
     private gridToggleButton: HTMLButtonElement | null = null;
     private gridContent: HTMLElement | null = null;
 
@@ -31,20 +31,20 @@ export class DataTraversalAndInteractionsPanel {
         this.sampleSlider = document.getElementById('sample-slider') as HTMLInputElement;
         this.cellSize = document.getElementById('cell-size') as HTMLInputElement;
         this.zoomLevel = document.getElementById('zoom-level') as HTMLInputElement;
-        this.imageResolutionAuto = document.getElementById('image-resolution-auto') as HTMLInputElement;
         this.imageResolutionPercent = document.getElementById('image-resolution-percent') as HTMLInputElement;
         this.imageResolutionValue = document.getElementById('image-resolution-value') as HTMLSpanElement;
-        this.sliderMinLabel = document.getElementById('slider-min-label') as HTMLSpanElement;
-        this.sliderMaxLabel = document.getElementById('slider-max-label') as HTMLSpanElement;
         this.sliderTooltip = document.getElementById('slider-tooltip') as HTMLSpanElement;
+
+        this.statTotalCount = document.getElementById('stat-total-count') as HTMLSpanElement;
+        this.statActiveCount = document.getElementById('stat-active-count') as HTMLSpanElement;
+
         this.gridContent = document.getElementById('grid-content') as HTMLElement;
 
         this.startIndexSlider = document.getElementById('start-index-slider') as HTMLInputElement;
         this.startIndexTooltip = document.getElementById('start-index-tooltip') as HTMLElement;
 
         if (!this.sampleSlider || !this.cellSize || !this.zoomLevel ||
-            !this.sliderMinLabel || !this.sliderMaxLabel || !this.sliderTooltip ||
-            !this.gridContent) {
+            !this.sliderTooltip || !this.gridContent) {
             console.error('[DataTraversalAndInteractionsPanel] Missing required elements');
             return;
         }
@@ -55,23 +55,29 @@ export class DataTraversalAndInteractionsPanel {
 
     private attachEventListeners(): void {
         if (this.cellSize) {
-            this.cellSize.addEventListener('change', () => this.handleControlsChange());
             this.cellSize.addEventListener('input', () => {
-                this.onUpdateCallback();
+                const val = parseInt(this.cellSize!.value, 10);
+                if (isNaN(val) || val < 48) {
+                    this.cellSize!.classList.add('invalid-input');
+                    this.cellSize!.title = "Minimum cell size is 48px";
+                } else {
+                    this.cellSize!.classList.remove('invalid-input');
+                    this.cellSize!.title = "";
+                    this.onUpdateCallback();
+                }
+            });
+            this.cellSize.addEventListener('change', () => {
+                const val = parseInt(this.cellSize!.value, 10);
+                if (!isNaN(val) && val >= 48) {
+                    this.handleControlsChange();
+                }
             });
         }
         if (this.zoomLevel) {
-            this.zoomLevel.addEventListener('change', () => this.handleControlsChange());
             this.zoomLevel.addEventListener('input', () => {
                 this.onUpdateCallback();
             });
-        }
-        if (this.imageResolutionAuto) {
-            this.imageResolutionAuto.addEventListener('change', () => {
-                this.updateImageResolutionControls();
-                this.handleControlsChange();
-                this.onUpdateCallback();
-            });
+            this.zoomLevel.addEventListener('change', () => this.handleControlsChange());
         }
         if (this.imageResolutionPercent) {
             this.imageResolutionPercent.addEventListener('input', () => {
@@ -86,26 +92,26 @@ export class DataTraversalAndInteractionsPanel {
             this.sampleSlider.addEventListener('input', () => {
                 this.handleControlsChange();
                 this.onUpdateCallback();
-                
+
                 // Update tooltip to show range at current slider position
                 if (this.sliderTooltip) {
                     const value = parseFloat(this.sampleSlider!.value);
                     const gridCount = parseInt(this.sampleSlider!.step, 10) || 1;
-                    
+
                     const rawIndex = Math.round(value);
                     const batchNumber = Math.floor(rawIndex / gridCount);
                     const startIndex = batchNumber * gridCount;
                     const endIndex = Math.min(startIndex + gridCount - 1, this.maxSampleId);
-                    
+
                     this.sliderTooltip.textContent = `${startIndex}-${endIndex}`;
-                    
+
                     // Position at slider thumb
                     const sliderRect = this.sampleSlider!.getBoundingClientRect();
                     const min = parseFloat(this.sampleSlider!.min);
                     const max = parseFloat(this.sampleSlider!.max);
                     const percent = (value - min) / (max - min);
                     const thumbX = sliderRect.width * percent;
-                    
+
                     this.sliderTooltip.style.left = `${thumbX}px`;
                     this.sliderTooltip.style.transform = 'translateX(-50%)';
                     this.sliderTooltip.style.display = 'block';
@@ -181,15 +187,16 @@ export class DataTraversalAndInteractionsPanel {
     }
 
     private initializeSlider(): void {
-        if (!this.sampleSlider || !this.sliderMinLabel || !this.sliderMaxLabel) return;
+        if (!this.sampleSlider) return;
 
         this.sampleSlider.min = "0";
         this.sampleSlider.max = this.maxSampleId.toString();
         this.sampleSlider.value = "0";
         this.sampleSlider.step = "1";
 
-        this.sliderMinLabel.textContent = '0';
-        this.sliderMaxLabel.textContent = this.maxSampleId.toString();
+        // Initial defaults
+        if (this.statTotalCount) this.statTotalCount.textContent = this.maxSampleId.toString();
+        if (this.statActiveCount) this.statActiveCount.textContent = this.maxSampleId.toString();
     }
 
     private handleControlsChange(): void {
@@ -245,6 +252,10 @@ export class DataTraversalAndInteractionsPanel {
         this.sliderTooltip.style.left = `calc(${percent}% - ${this.sliderTooltip.offsetWidth / 2}px)`;
     }
 
+    public updateRangeLabels(): void {
+        // Deprecated: No longer showing start/end range labels
+    }
+
 
 
     public updateSliderStep(step: number): void {
@@ -269,6 +280,10 @@ export class DataTraversalAndInteractionsPanel {
     public setStartIndex(index: number): void {
         if (this.sampleSlider) {
             this.sampleSlider.value = index.toString();
+
+            // Update range labels immediately for visual feedback
+            this.updateRangeLabels();
+
             // Programmatically trigger the update to refresh data
             if (this.onUpdateCallback) {
                 this.onUpdateCallback();
@@ -281,8 +296,9 @@ export class DataTraversalAndInteractionsPanel {
         if (this.sampleSlider) {
             this.sampleSlider.max = maxId.toString();
         }
-        if (this.sliderMaxLabel) {
-            this.sliderMaxLabel.textContent = maxId.toString();
+        // Stats are updated via updateSampleCounts generally, not just setMaxSampleId
+        if (this.statTotalCount) {
+            this.statTotalCount.textContent = maxId.toString();
         }
         if (this.startIndexSlider) {
             this.startIndexSlider.max = maxId.toString();
@@ -303,7 +319,11 @@ export class DataTraversalAndInteractionsPanel {
 
     public getImageWidth(): number {
         if (this.cellSize) {
-            return parseInt(this.cellSize.value, 10);
+            const val = parseInt(this.cellSize.value, 10);
+            if (isNaN(val) || val < 48) {
+                return 48; // Clamp to minimum even if display is invalid
+            }
+            return val;
         }
         return 128;
     }
@@ -315,52 +335,93 @@ export class DataTraversalAndInteractionsPanel {
         return 1;
     }
 
-    private updateImageResolutionControls(): void {
-        if (!this.imageResolutionAuto || !this.imageResolutionPercent) return;
-
-        const isAuto = this.imageResolutionAuto.checked;
-        this.imageResolutionPercent.disabled = isAuto;
-        this.updateImageResolutionValue();
-    }
-
     private updateImageResolutionValue(): void {
-        if (!this.imageResolutionValue || !this.imageResolutionPercent || !this.imageResolutionAuto) return;
+        if (!this.imageResolutionValue || !this.imageResolutionPercent) return;
 
-        if (this.imageResolutionAuto.checked) {
+        const value = parseInt(this.imageResolutionPercent.value, 10);
+        if (value === 0) {
             this.imageResolutionValue.textContent = 'Auto';
             this.imageResolutionValue.style.color = 'var(--accent-color)';
+            this.imageResolutionValue.style.opacity = '1';
         } else {
-            this.imageResolutionValue.textContent = `${this.imageResolutionPercent.value}%`;
+            this.imageResolutionValue.textContent = `${value}%`;
             this.imageResolutionValue.style.color = 'var(--secondary-text-color)';
+            this.imageResolutionValue.style.opacity = '1';
         }
     }
 
     public getImageResolutionPercent(): number {
-        if (!this.imageResolutionAuto || !this.imageResolutionPercent) return 0;
+        if (!this.imageResolutionPercent) return 0;
 
+        const value = parseInt(this.imageResolutionPercent.value, 10);
         // 0 means auto mode (use grid cell size)
-        if (this.imageResolutionAuto.checked) {
-            return 0;
-        }
-
-        // Return the percentage value (10-100)
-        return parseInt(this.imageResolutionPercent.value, 10);
+        return value;
     }
 
     public updateSampleCounts(availableSamples: number, totalSamples: number): void {
         this.maxSampleId = availableSamples;
-        this.totalSamples = totalSamples;
+        this.totalSamples = totalSamples; // This is the 'active' count (in loop)
 
         if (this.sampleSlider) {
             this.sampleSlider.max = availableSamples.toString();
         }
 
-        if (this.sliderMaxLabel) {
-            this.sliderMaxLabel.innerHTML = `${availableSamples}<br><small style="font-size: 0.8em; color: #888;">(${totalSamples})</small>`;
-        }
 
         if (this.startIndexSlider) {
             this.startIndexSlider.max = availableSamples.toString();
         }
+
+        // Update stats breakdown
+        if (this.statTotalCount) {
+            this.statTotalCount.textContent = availableSamples.toString();
+        }
+        if (this.statActiveCount) {
+            this.statActiveCount.textContent = totalSamples.toString();
+        }
+    }
+
+    public decrementActiveCount(amount: number): void {
+        if (amount <= 0) return;
+        this.totalSamples = Math.max(0, this.totalSamples - amount);
+        if (this.statActiveCount) {
+            this.statActiveCount.textContent = this.totalSamples.toString();
+        }
+    }
+
+    public navigateLeft(): void {
+        if (!this.sampleSlider) return;
+        const gridCount = parseInt(this.sampleSlider.step, 10) || 1;
+        const currentIndex = this.getStartIndex();
+        const newIndex = Math.max(0, currentIndex - gridCount);
+        this.setStartIndex(newIndex);
+    }
+
+    public navigateRight(): void {
+        if (!this.sampleSlider) return;
+        const gridCount = parseInt(this.sampleSlider.step, 10) || 1;
+        const currentIndex = this.getStartIndex();
+        const maxIndex = Math.max(0, this.maxSampleId - gridCount);
+        const newIndex = Math.min(maxIndex, currentIndex + gridCount);
+        this.setStartIndex(newIndex);
+    }
+
+    public setupKeyboardShortcuts(): void {
+        document.addEventListener('keydown', (e: KeyboardEvent) => {
+            // Don't navigate if user is typing in an input field
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+                return;
+            }
+
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                this.navigateLeft();
+                console.debug('[Keyboard] Navigate left');
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                this.navigateRight();
+                console.debug('[Keyboard] Navigate right');
+            }
+        });
     }
 }
