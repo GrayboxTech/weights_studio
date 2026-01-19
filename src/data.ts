@@ -49,6 +49,7 @@ let trainingStatePill: HTMLElement | null = null;
 let trainingSummary: HTMLElement | null = null;
 let detailsToggle: HTMLButtonElement | null = null;
 let detailsBody: HTMLElement | null = null;
+let connectionStatusElement: HTMLElement | null = null;
 let uniqueTags: string[] = [];
 
 let fetchTimeout: any = null;
@@ -983,6 +984,7 @@ export async function initializeUIElements() {
     inspectorContainer = document.querySelector('.inspector-container') as HTMLElement | null;
     inspectorPanel = document.getElementById('options-panel') as HTMLElement | null;
     trainingStatePill = document.getElementById('training-state-pill') as HTMLElement | null;
+    connectionStatusElement = document.getElementById('connection-status') as HTMLElement | null;
     trainingSummary = document.getElementById('training-summary') as HTMLElement | null;
     detailsToggle = document.getElementById('details-toggle') as HTMLButtonElement | null;
     detailsBody = document.getElementById('details-body') as HTMLElement | null;
@@ -996,9 +998,11 @@ export async function initializeUIElements() {
                 toggleBtn.classList.toggle('paused', !isTraining);
             }
             if (trainingStatePill) {
-                trainingStatePill.textContent = isTraining ? 'Running' : 'Paused';
                 trainingStatePill.classList.toggle('pill-running', isTraining);
                 trainingStatePill.classList.toggle('pill-paused', !isTraining);
+            }
+            if (connectionStatusElement && isTraining !== undefined) {
+                connectionStatusElement.textContent = ''; // Clear connecting text once we have a state
             }
 
             // Fetch training_steps_to_do from hyperparameters
@@ -1138,9 +1142,11 @@ export async function initializeUIElements() {
                     if (attempt < retries - 1) {
                         console.log(`Retry ${attempt + 1}/${retries} to fetch training state in ${delay}ms...`);
 
-                        // Show visual feedback that we're retrying
+                        // Show visual feedback that we're retrying in the separate status label
+                        if (connectionStatusElement) {
+                            connectionStatusElement.textContent = `Connecting... (${attempt + 1}/${retries})`;
+                        }
                         if (trainingStatePill) {
-                            trainingStatePill.textContent = `Connecting... (${attempt + 1}/${retries})`;
                             trainingStatePill.classList.add('pill-paused');
                         }
 
@@ -1182,16 +1188,32 @@ export async function initializeUIElements() {
         });
         displayOptionsPanel.initialize();
 
-        if (detailsToggle && inspectorPanel) {
-            detailsToggle.addEventListener('click', () => {
-                if (inspectorPanel) {
-                    inspectorPanel.style.transform = 'translateX(-100%)';
-                    inspectorPanel.classList.toggle('details-collapsed');
-                    // Small delay to allow for CSS transitions if any
+        // Initialize Collapsible Widgets
+        const MINUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+        const PLUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+
+        const setupCollapse = (btnId: string, cardSelector: string) => {
+            const btn = document.getElementById(btnId);
+            const card = document.querySelector(cardSelector);
+            if (btn && card) {
+                // Ensure button type is button to prevent form submission
+                if (btn instanceof HTMLButtonElement) btn.type = 'button';
+
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const isCollapsed = card.classList.toggle('collapsed');
+                    btn.innerHTML = isCollapsed ? PLUS_ICON : MINUS_ICON;
+                    btn.title = isCollapsed ? 'Maximize' : 'Minimize';
+                    // Trigger layout update
                     setTimeout(updateLayout, 150);
-                }
-            });
-        }
+                });
+            }
+        };
+
+        setupCollapse('training-collapse-btn', '.training-card');
+        setupCollapse('tags-collapse-btn', '.tagger-card');
+        setupCollapse('details-toggle', '#options-panel');
 
         // Listen for color changes and persist to localStorage
         const trainColorInput = document.getElementById('train-color') as HTMLInputElement;

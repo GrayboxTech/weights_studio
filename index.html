@@ -33,8 +33,17 @@
         <div class="inspector-container open lowered">
           <div class="card training-card">
             <div class="card-header">
-              <div class="inspector-title">Training</div>
-              <span id="training-state-pill" class="pill pill-paused">Paused</span>
+              <div class="inspector-title">
+                Training
+                <span id="training-state-pill" class="pill pill-paused"></span>
+                <span id="connection-status" class="connection-status"></span>
+              </div>
+              <button id="training-collapse-btn" class="collapse-btn" title="Minimize">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+              </button>
             </div>
             <div class="card-body">
               <div id="training-summary" class="training-summary">
@@ -63,6 +72,12 @@
           <div class="card tagger-card">
             <div class="card-header tagger-header compact-header">
               <div class="inspector-title">Tags</div>
+              <button id="tags-collapse-btn" class="collapse-btn" title="Minimize">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+              </button>
             </div>
             <div class="card-body tagger-body compact-body">
               <!-- Tags + Inline Input (wrapping flex row) -->
@@ -123,7 +138,12 @@
                   </svg>
                   <span class="btn-label">Grid</span>
                 </button>
-                <button id="details-toggle" class="collapse-btn" aria-label="Toggle details">^</button>
+                <button id="details-toggle" class="collapse-btn" aria-label="Toggle details">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                </button>
               </div>
             </div>
 
