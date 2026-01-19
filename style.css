@@ -1366,6 +1366,35 @@ body.dark-mode .options-panel {
   cursor: pointer;
   padding: 6px;
   display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.split-colors .row-controls {
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.row-controls.list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  max-height: 320px; /* ~10 items at 32px each */
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Small helper text */
+.help {
+  font-size: 0.8rem;
+  color: var(--muted-text-color);
+  margin-bottom: 6px;
+}
+
+/* Switch (recommended for overlays) */
+.switch {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-sm);
@@ -2653,6 +2682,12 @@ body.dark-mode .quick-tag-btn {
   border-color: rgba(239, 68, 68, 0.2);
   box-shadow: none;
   transform: translateY(-1px);
+}
+
+#refresh-stats {
+  font-size: 1.5rem;
+  padding: 0.4rem 0.8rem;
+  line-height: 1;
 }
 
 body.dark-mode .control-button {

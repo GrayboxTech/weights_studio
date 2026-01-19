@@ -101,7 +101,7 @@ export class GridCell {
 
         // Check if the record is discarded
         const isDiscardedStat = record.dataStats.find(stat => stat.name === 'deny_listed');
-        if (isDiscardedStat?.value[0] === 1) {
+        if (isDiscardedStat?.value[0] === 1 || isDiscardedStat?.valueString === '1') {
             this.element.classList.add('discarded');
         } else {
             this.element.classList.remove('discarded');
@@ -294,15 +294,20 @@ export class GridCell {
 
     private formatFieldValue(value: any): string {
         if (Array.isArray(value)) {
-            return value.map(item => this.formatFieldValue(item)).join(',');
+            const formatted = value
+                .map(item => this.formatFieldValue(item))
+                .filter(s => s !== '' && s.toLowerCase() !== 'nan');
+            return formatted.join(',');
         }
         if (typeof value === 'number') {
+            if (Number.isNaN(value)) return '';
             return value % 1 !== 0 ? value.toFixed(3) : value.toString();
         }
         if (typeof value === 'boolean') {
             return value ? 'T' : 'F';
         }
-        return value?.toString() || '';
+        const s = value?.toString() || '';
+        return s.toLowerCase() === 'nan' ? '' : s;
     }
 
     public updateLabel(): void {
@@ -369,9 +374,17 @@ export class GridCell {
                     continue; // Skip displaying if no valid tags
                 }
             } else {
-                formatted = this.formatFieldValue(stat.value);
+                // Prefer valueString when present and meaningful; fallback to numeric/array value
+                const hasMeaningfulString = typeof stat.valueString === 'string' && stat.valueString.trim().toLowerCase() !== 'nan' && stat.valueString.trim() !== '' && stat.valueString.trim().toLowerCase() !== 'none';
+                if (hasMeaningfulString) {
+                    formatted = this.formatFieldValue(stat.valueString);
+                } else {
+                    formatted = this.formatFieldValue(stat.value);
+                }
             }
-            parts.push(formatted);
+            if (formatted && formatted.trim() !== '') {
+                parts.push(formatted);
+            }
 
         }
         this.label.textContent = parts.join(' | ');
@@ -390,12 +403,10 @@ export class GridCell {
             valLower.includes('test') ||
             valLower.includes('val');
         const isDiscarded = this.element.classList.contains('discarded');
-        const splitColors = this.displayPreferences.splitColors;
+        const splitColors = this.displayPreferences.splitColors || {};
 
-        let borderColor = isEval ? EVAL_BORDER_COLOR : TRAIN_BORDER_COLOR;
-        if (splitColors?.eval && splitColors?.train) {
-            borderColor = isEval ? splitColors.eval : splitColors.train;
-        }
+        // Prefer explicit split color if available, else fall back to train/eval defaults
+        let borderColor = splitColors[origin] || (isEval ? splitColors.eval : splitColors.train) || (isEval ? EVAL_BORDER_COLOR : TRAIN_BORDER_COLOR);
 
         // If discarded, reduce opacity to 40% (60% transparent)
         if (isDiscarded && borderColor) {

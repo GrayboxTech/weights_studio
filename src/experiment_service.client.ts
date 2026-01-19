@@ -9,6 +9,7 @@ import type { DataEditsResponse } from "./experiment_service";
 import type { DataEditsRequest } from "./experiment_service";
 import type { DataSamplesResponse } from "./experiment_service";
 import type { DataSamplesRequest } from "./experiment_service";
+import type { DataSplitsResponse } from "./experiment_service";
 import type { DataQueryResponse } from "./experiment_service";
 import type { DataQueryRequest } from "./experiment_service";
 import type { BatchSampleResponse } from "./experiment_service";
@@ -61,6 +62,10 @@ export interface IExperimentServiceClient {
      * @generated from protobuf rpc: ApplyDataQuery
      */
     applyDataQuery(input: DataQueryRequest, options?: RpcOptions): UnaryCall<DataQueryRequest, DataQueryResponse>;
+    /**
+     * @generated from protobuf rpc: GetDataSplits
+     */
+    getDataSplits(input: Empty, options?: RpcOptions): UnaryCall<Empty, DataSplitsResponse>;
     /**
      * @generated from protobuf rpc: GetDataSamples
      */
@@ -119,15 +124,6 @@ export class ExperimentServiceClient implements IExperimentServiceClient, Servic
         return stackIntercept<ActivationRequest, ActivationResponse>("unary", this._transport, method, opt, input);
     }
     /**
-     * @generated from protobuf rpc: GetSamples
-     */
-    getSamples(input: BatchSampleRequest, options?: RpcOptions): UnaryCall<BatchSampleRequest, BatchSampleResponse> {
-        const method = this.methods[5], opt = this._transport.mergeOptions(options);
-        return stackIntercept<BatchSampleRequest, BatchSampleResponse>("unary", this._transport, method, opt, input);
-    }
-    /**
-     * Data Service (for weights_studio UI)
-     *
      * @generated from protobuf rpc: ApplyDataQuery
      */
     applyDataQuery(input: DataQueryRequest, options?: RpcOptions): UnaryCall<DataQueryRequest, DataQueryResponse> {
@@ -135,17 +131,24 @@ export class ExperimentServiceClient implements IExperimentServiceClient, Servic
         return stackIntercept<DataQueryRequest, DataQueryResponse>("unary", this._transport, method, opt, input);
     }
     /**
+     * @generated from protobuf rpc: GetDataSplits
+     */
+    getDataSplits(input: Empty, options?: RpcOptions): UnaryCall<Empty, DataSplitsResponse> {
+        const method = this.methods[7], opt = this._transport.mergeOptions(options);
+        return stackIntercept<Empty, DataSplitsResponse>("unary", this._transport, method, opt, input);
+    }
+    /**
      * @generated from protobuf rpc: GetDataSamples
      */
     getDataSamples(input: DataSamplesRequest, options?: RpcOptions): UnaryCall<DataSamplesRequest, DataSamplesResponse> {
-        const method = this.methods[7], opt = this._transport.mergeOptions(options);
+        const method = this.methods[8], opt = this._transport.mergeOptions(options);
         return stackIntercept<DataSamplesRequest, DataSamplesResponse>("unary", this._transport, method, opt, input);
     }
     /**
      * @generated from protobuf rpc: EditDataSample
      */
     editDataSample(input: DataEditsRequest, options?: RpcOptions): UnaryCall<DataEditsRequest, DataEditsResponse> {
-        const method = this.methods[8], opt = this._transport.mergeOptions(options);
+        const method = this.methods[9], opt = this._transport.mergeOptions(options);
         return stackIntercept<DataEditsRequest, DataEditsResponse>("unary", this._transport, method, opt, input);
     }
     /**

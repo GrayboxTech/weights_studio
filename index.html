@@ -7,6 +7,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" type="image/png" href="./favicon.png">
   <link rel="stylesheet" href="./style.css">
+
+  <!-- Initialize grid settings from cache before rendering -->
+  <script>
+    (function() {
+      // Retrieve cached grid settings immediately on page load
+      const cachedCellSize = localStorage.getItem('grid-cell-size');
+      const cachedZoomLevel = localStorage.getItem('grid-zoom-level');
+      const cachedImageResolutionAuto = localStorage.getItem('grid-image-resolution-auto');
+      const cachedImageResolutionPercent = localStorage.getItem('grid-image-resolution-percent');
+
+      // Store in a global object for later use by data.ts
+      window.__cachedGridSettings = {
+        cellSize: cachedCellSize,
+        zoomLevel: cachedZoomLevel,
+        imageResolutionAuto: cachedImageResolutionAuto,
+        imageResolutionPercent: cachedImageResolutionPercent
+      };
+    })();
+  </script>
 </head>
 
 <body>
@@ -16,6 +35,7 @@
       <div class="app-header">
         <div class="header-controls-left">
           <button id="dark-mode-toggle" class="toggle-button dark-mode-toggle" title="Toggle Dark Mode">◐</button>
+          <button id="refresh-stats" class="control-button secondary" title="Left-click: Refresh now | Right-click: Configure interval">↻</button>
           <button id="toggle-training" class="control-button primary" data-state="paused">Resume</button>
         </div>
 
@@ -260,6 +280,7 @@
       <div class="context-menu-item" data-action="remove-tag">Remove All Tags</div>
       <div class="context-menu-separator"></div>
       <div class="context-menu-item" data-action="discard">Discard</div>
+      <div class="context-menu-item" data-action="restore" style="display: none;">Restore</div>
     </div>
 
     <!-- Image Detail Modal -->

@@ -132,7 +132,8 @@ export class SegmentationRenderer {
         this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, this.gl.RGBA, this.gl.UNSIGNED_BYTE, baseImage);
         this.gl.uniform1i(this.gl.getUniformLocation(this.program, 'u_image'), 0);
 
-        // Upload GT Mask
+        // Upload GT Mask (only if available)
+        const hasGtMask = gtMask !== null;
         if (gtMask) {
             const [h, w] = this.getHW(gtMask.shape);
             this.gl.activeTexture(this.gl.TEXTURE1);
@@ -141,7 +142,8 @@ export class SegmentationRenderer {
             this.gl.uniform1i(this.gl.getUniformLocation(this.program, 'u_mask'), 1);
         }
 
-        // Upload Pred Mask
+        // Upload Pred Mask (only if available)
+        const hasPredMask = predMask !== null;
         if (predMask) {
             const [h, w] = this.getHW(predMask.shape);
             this.gl.activeTexture(this.gl.TEXTURE2);
@@ -175,8 +177,12 @@ export class SegmentationRenderer {
         this.gl.uniform1f(this.gl.getUniformLocation(this.program, 'u_alpha'), options.alpha);
         this.gl.uniform1i(this.gl.getUniformLocation(this.program, 'u_showRaw'), options.showRaw ? 1 : 0);
         this.gl.uniform1i(this.gl.getUniformLocation(this.program, 'u_diffMode'), options.showDiff ? 1 : 0);
-        this.gl.uniform1i(this.gl.getUniformLocation(this.program, 'u_showGt'), options.showGt ? 1 : 0);
-        this.gl.uniform1i(this.gl.getUniformLocation(this.program, 'u_showPred'), options.showPred ? 1 : 0);
+        // Only show GT if it's available
+        this.gl.uniform1i(this.gl.getUniformLocation(this.program, 'u_showGt'), (options.showGt && hasGtMask) ? 1 : 0);
+        // Only show Pred if it's available
+        this.gl.uniform1i(this.gl.getUniformLocation(this.program, 'u_showPred'), (options.showPred && hasPredMask) ? 1 : 0);
+        // Only show Diff if both are available
+        this.gl.uniform1i(this.gl.getUniformLocation(this.program, 'u_hasBothMasks'), (hasGtMask && hasPredMask) ? 1 : 0);
 
         this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
 
@@ -217,6 +223,7 @@ export class SegmentationRenderer {
         uniform bool u_showGt;
         uniform bool u_showPred;
         uniform bool u_diffMode;
+        uniform bool u_hasBothMasks;
         varying vec2 v_texCoord;
 
         void main() {
@@ -224,11 +231,12 @@ export class SegmentationRenderer {
             if (!u_showRaw) {
                 baseColor = vec4(0, 0, 0, 1);
             }
-            
-            if (u_diffMode) {
+
+            if (u_diffMode && u_hasBothMasks) {
+                // Only render diff if both masks are available
                 float gtVal = texture2D(u_mask, v_texCoord).a * 255.0;
                 float predVal = texture2D(u_predMask, v_texCoord).a * 255.0;
-                
+
                 if (abs(gtVal - predVal) < 0.1) {
                     gl_FragColor = baseColor;
                 } else {
@@ -238,6 +246,7 @@ export class SegmentationRenderer {
             } else {
                 vec4 res = baseColor;
                 if (u_showGt) {
+                    // Only render GT if it's being shown and is available
                     float gtId = texture2D(u_mask, v_texCoord).a * 255.0;
                     vec4 gtColor = texture2D(u_palette, vec2((gtId + 0.5) / 256.0, 0.5));
                     if (gtColor.a > 0.0) {
@@ -245,6 +254,7 @@ export class SegmentationRenderer {
                     }
                 }
                 if (u_showPred) {
+                    // Only render Pred if it's being shown and is available
                     float predId = texture2D(u_predMask, v_texCoord).a * 255.0;
                     vec4 predColor = texture2D(u_palette, vec2((predId + 0.5) / 256.0, 0.5));
                     if (predColor.a > 0.0) {
