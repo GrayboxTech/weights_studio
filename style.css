@@ -794,6 +794,12 @@ body.dark-mode #zoom-level:focus {
 }
 
 /* ===== Mode-specific styling (auto-set by TS) ===== */
+
+/* Default: Hide segmentation-specific elements until mode is determined */
+[data-section='segmentation'] {
+  display: none;
+}
+
 body.classification-mode [data-section='segmentation'] {
   display: none;
 }
