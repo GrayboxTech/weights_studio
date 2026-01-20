@@ -2,7 +2,9 @@
   "dependencies": {
     "@protobuf-ts/grpcweb-transport": "^2.11.1",
     "@protobuf-ts/runtime": "^2.11.1",
-    "@protobuf-ts/runtime-rpc": "^2.11.1"
+    "@protobuf-ts/runtime-rpc": "^2.11.1",
+    "chart.js": "^4.4.6",
+    "chartjs-plugin-zoom": "^2.1.0"
   },
   "devDependencies": {
     "@protobuf-ts/plugin": "^2.11.1",

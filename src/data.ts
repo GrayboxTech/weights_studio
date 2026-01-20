@@ -18,6 +18,8 @@ import { DataDisplayOptionsPanel, SplitColors } from "./DataDisplayOptionsPanel"
 import { DataTraversalAndInteractionsPanel } from "./DataTraversalAndInteractionsPanel";
 import { GridManager } from "./GridManager";
 import { initializeDarkMode } from "./darkMode";
+import Chart from "chart.js/auto";
+import zoomPlugin from "chartjs-plugin-zoom";
 
 // Utility function to convert bytes to base64
 function bytesToBase64(bytes: Uint8Array): string {
@@ -100,6 +102,20 @@ let detailsToggle: HTMLButtonElement | null = null;
 let detailsBody: HTMLElement | null = null;
 let connectionStatusElement: HTMLElement | null = null;
 let uniqueTags: string[] = [];
+let signalsContainer: HTMLElement | null = null;
+
+type SignalPoint = { x: number; y: number };
+
+interface SignalChart {
+    chart: Chart;
+    data: SignalPoint[];
+    pending: boolean;
+}
+
+const signalCharts = new Map<string, SignalChart>();
+const SIGNAL_UPDATE_INTERVAL_MS = 5000;
+const SIGNAL_MAX_POINTS = 5000;
+let signalUpdateTimer: number | null = null;
 
 // Available data splits reported by backend (train/eval/test/custom)
 let availableSplits: string[] = ['train', 'eval'];
@@ -190,6 +206,263 @@ function clearResponseCache(): void {
     console.debug('[Cache CLEAR] All cached responses cleared');
 }
 
+// Register zoom plugin
+Chart.register(zoomPlugin);
+
+// --- Signal charts (streamed training signals) ---
+function initSignalsBoard(): void {
+    signalsContainer = document.getElementById('signals-board') as HTMLElement | null;
+}
+
+function ensureSignalsContainer(): HTMLElement | null {
+    if (signalsContainer) return signalsContainer;
+    signalsContainer = document.getElementById('signals-board');
+    return signalsContainer;
+}
+
+function readCssVar(name: string, fallback: string): string {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(name);
+    return value && value.trim() ? value.trim() : fallback;
+}
+
+function startSignalUpdateLoop(): void {
+    if (signalUpdateTimer !== null) return;
+    signalUpdateTimer = window.setInterval(() => {
+        signalCharts.forEach((entry) => {
+            if (entry.pending) {
+                entry.chart.update('none');
+                entry.pending = false;
+            }
+        });
+    }, SIGNAL_UPDATE_INTERVAL_MS);
+}
+
+function getOrCreateSignalChart(signalName: string): SignalChart | null {
+    const existing = signalCharts.get(signalName);
+    if (existing) return existing;
+
+    const container = ensureSignalsContainer();
+    if (!container) {
+        console.warn('Signals container not found in DOM.');
+        return null;
+    }
+
+    const accent = readCssVar('--accent-color', '#007aff');
+    const accentSoft = readCssVar('--accent-soft', 'rgba(0, 122, 255, 0.15)');
+    const gridColor = readCssVar('--border-subtle', 'rgba(0, 0, 0, 0.12)');
+
+    const card = document.createElement('div');
+    card.className = 'signal-card';
+
+    const header = document.createElement('div');
+    header.className = 'signal-card-header';
+
+    const title = document.createElement('div');
+    title.className = 'signal-card-title';
+    title.textContent = signalName;
+
+    const subtitle = document.createElement('div');
+    subtitle.className = 'signal-card-subtitle';
+    subtitle.textContent = 'model_age vs signals';
+
+    const controls = document.createElement('div');
+    controls.className = 'signal-card-controls';
+
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'signal-btn-small';
+    resetBtn.textContent = 'Reset';
+    resetBtn.title = 'Reset zoom';
+
+    const csvBtn = document.createElement('button');
+    csvBtn.className = 'signal-btn-small';
+    csvBtn.textContent = 'CSV';
+    csvBtn.title = 'Export as CSV';
+
+    const jsonBtn = document.createElement('button');
+    jsonBtn.className = 'signal-btn-small';
+    jsonBtn.textContent = 'JSON';
+    jsonBtn.title = 'Export as JSON';
+
+    const colorPicker = document.createElement('input');
+    colorPicker.type = 'color';
+    colorPicker.className = 'signal-color-picker';
+    const savedColor = localStorage.getItem(`signal-color-${signalName}`);
+    colorPicker.value = savedColor || '#ffffff';
+    colorPicker.title = 'Choose curve color';
+
+    controls.appendChild(resetBtn);
+    controls.appendChild(csvBtn);
+    controls.appendChild(jsonBtn);
+    controls.appendChild(colorPicker);
+
+    header.appendChild(title);
+    header.appendChild(subtitle);
+    header.appendChild(controls);
+
+    const canvas = document.createElement('canvas');
+
+    card.appendChild(header);
+    card.appendChild(canvas);
+    container.appendChild(card);
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        console.error('Unable to initialize chart canvas for signal', signalName);
+        return null;
+    }
+
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            datasets: [
+                {
+                    label: signalName,
+                    data: [],
+                    borderColor: colorPicker.value,
+                    backgroundColor: (() => {
+                        const rgb = parseInt(colorPicker.value.slice(1), 16);
+                        const r = (rgb >> 16) & 255;
+                        const g = (rgb >> 8) & 255;
+                        const b = rgb & 255;
+                        return `rgba(${r}, ${g}, ${b}, 0.1)`;
+                    })(),
+                    pointRadius: 0,
+                    borderWidth: 2,
+                    tension: 0,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            parsing: false,
+            animation: false,
+            normalized: true,
+            interaction: { mode: 'nearest', intersect: false },
+            plugins: {
+                legend: { display: false },
+                title: { display: false },
+                decimation: { enabled: true, algorithm: 'lttb', samples: 300 },
+                zoom: {
+                    zoom: {
+                        wheel: { enabled: true, speed: 0.1 },
+                        pinch: { enabled: true },
+                        mode: 'xy',
+                    },
+                    pan: {
+                        enabled: true,
+                        mode: 'xy',
+                        modifierKey: 'shift' as const,
+                    },
+                },
+            },
+            scales: {
+                x: {
+                    type: 'linear',
+                    title: { display: true, text: 'model_age' },
+                    ticks: { autoSkip: true, maxTicksLimit: 6 },
+                    grid: { color: gridColor },
+                },
+                y: {
+                    type: 'linear',
+                    title: { display: true, text: 'signals' },
+                    grid: { color: gridColor },
+                    grace: '5%',
+                },
+            },
+        },
+    } as any);
+
+    resetBtn.onclick = () => {
+        (chart as any).resetZoom();
+    };
+
+    csvBtn.onclick = () => {
+        exportSignalDataCSV(signalName, entry.data);
+    };
+
+    jsonBtn.onclick = () => {
+        exportSignalDataJSON(signalName, entry.data);
+    };
+
+    colorPicker.onclick = (e) => {
+        e.stopPropagation();
+    };
+
+    colorPicker.onchange = () => {
+        const newColor = colorPicker.value;
+        localStorage.setItem(`signal-color-${signalName}`, newColor);
+        chart.data.datasets[0].borderColor = newColor;
+        const rgb = parseInt(newColor.slice(1), 16);
+        const r = (rgb >> 16) & 255;
+        const g = (rgb >> 8) & 255;
+        const b = rgb & 255;
+        chart.data.datasets[0].backgroundColor = `rgba(${r}, ${g}, ${b}, 0.1)`;
+        chart.update('none');
+    };
+
+    const entry: SignalChart = { chart, data: [], pending: false };
+    signalCharts.set(signalName, entry);
+    startSignalUpdateLoop();
+    return entry;
+}
+
+function pushSignalSample(signalName: string, modelAge: number, value: number): void {
+    if (!Number.isFinite(modelAge) || !Number.isFinite(value)) return;
+    const entry = getOrCreateSignalChart(signalName);
+    if (!entry) return;
+
+    entry.data.push({ x: modelAge, y: value });
+    if (entry.data.length > SIGNAL_MAX_POINTS) {
+        entry.data.splice(0, entry.data.length - SIGNAL_MAX_POINTS);
+    }
+
+    entry.chart.data.datasets[0].data = entry.data;
+
+    // Reset scales to auto-fit new data range
+    entry.chart.options.scales!.y!.min = undefined;
+    entry.chart.options.scales!.y!.max = undefined;
+
+    if (entry.data.length === 1) {
+        entry.chart.update('none');
+        entry.pending = false;
+    } else {
+        entry.pending = true;
+    }
+}
+
+function exportSignalDataCSV(signalName: string, data: SignalPoint[]): void {
+    const csv = ['model_age,signal_value'];
+    data.forEach(point => {
+        csv.push(`${point.x},${point.y}`);
+    });
+    const csvContent = csv.join('\n');
+    downloadFile(csvContent, `${signalName}.csv`, 'text/csv');
+}
+
+function exportSignalDataJSON(signalName: string, data: SignalPoint[]): void {
+    const json = {
+        signal_name: signalName,
+        timestamp: new Date().toISOString(),
+        points: data,
+    };
+    const jsonContent = JSON.stringify(json, null, 2);
+    downloadFile(jsonContent, `${signalName}.json`, 'application/json');
+}
+
+function downloadFile(content: string, filename: string, mimeType: string): void {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
+
 
 
 // --- Chat History Helper ---
@@ -275,7 +548,22 @@ async function fetchAndCreateSplitColorPickers(): Promise<void> {
         const response = await dataClient.getDataSplits({}).response;
 
         if (response.success && response.splitNames.length > 0) {
-            availableSplits = response.splitNames;
+            // Sort splits by preferred order using regex patterns: train, val, test/eval, then others
+            const preferredPatterns = [
+                /^train/i,           // train, training, train_set, etc.
+                /^val/i,             // val, validation, val_set, etc.
+                /^test/i,            // test, testing, test_set, etc.
+                /^eval/i,            // eval, evaluation, eval_set, etc.
+            ];
+
+            availableSplits = response.splitNames.sort((a, b) => {
+                const aIdx = preferredPatterns.findIndex(p => p.test(a));
+                const bIdx = preferredPatterns.findIndex(p => p.test(b));
+                if (aIdx === -1 && bIdx === -1) return a.localeCompare(b);
+                if (aIdx === -1) return 1;
+                if (bIdx === -1) return -1;
+                return aIdx - bIdx;
+            });
 
             // Find the split colors container in the HTML
             const splitColorsContainer = document.querySelector('.split-colors .row-controls');
@@ -963,6 +1251,7 @@ async function refreshDynamicStatsOnly() {
 
 export async function initializeUIElements() {
     cellsContainer = document.getElementById('cells-grid') as HTMLElement;
+    initSignalsBoard();
 
     if (!cellsContainer) {
         console.error('cells-container not found');
@@ -1878,6 +2167,54 @@ async function startTrainingStatusStream() {
             console.warn('Could not fetch total steps for stream:', err);
         }
         return false;
+    }
+
+    console.log('🚀 Starting training status stream...');
+
+    startSignalUpdateLoop();
+
+    while (isStreamRunning) {
+        try {
+            await ensureTotalSteps();
+            const stream = dataClient.streamStatus({});
+
+            for await (const status of stream.responses) {
+                if (!isStreamRunning) break;
+
+                const modelAge = typeof status.modelAge === 'number' ? status.modelAge : undefined;
+
+                if (modelAge !== undefined) {
+                    updateProgress(modelAge);
+                }
+
+                if (status.metricsStatus && status.metricsStatus.name) {
+                    const metricName = status.metricsStatus.name;
+                    const metricValue = status.metricsStatus.value;
+
+                    latestMetrics.set(metricName, metricValue);
+                    updateMetrics();
+
+                    if (modelAge !== undefined) {
+                        pushSignalSample(metricName, modelAge, metricValue);
+                    }
+                }
+
+                if (trainingStreamAbortController?.signal.aborted) {
+                    isStreamRunning = false;
+                    break;
+                }
+            }
+        } catch (streamError) {
+            console.warn('📡 Training status stream interrupted:', streamError);
+            if (!isStreamRunning) break;
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            console.log('🔄 Attempting to reconnect training status stream...');
+        }
+
+        if (isStreamRunning) {
+            console.log('📡 Training status stream ended, reconnecting...');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
     }
 }
 
