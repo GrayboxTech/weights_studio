@@ -132,9 +132,9 @@ const MAX_PREFETCH_BATCHES = (() => {
 const MAX_CACHE_ENTRIES = MAX_PREFETCH_BATCHES + 4; // Keep extra batches in memory (+2 for first/last batches)
 let prefetchInProgress = false;
 let lastFetchedBatchStart: number = 0; // Track navigation direction
+// function applyLocalOverrides(record: any) { ... } // Removed
 
-// Track discarded sample IDs locally to persist state across refreshes
-const locallyDiscardedSampleIds = new Set<number>();
+
 
 function getCacheKey(startIndex: number, count: number, resizeWidth: number, resizeHeight: number): string {
     return `${startIndex}-${count}-${resizeWidth}-${resizeHeight}`;
@@ -411,14 +411,6 @@ async function fetchAndDisplaySamples() {
         const preferences = displayOptionsPanel.getDisplayPreferences();
         preferences.splitColors = getSplitColors();
         cachedResponse.dataRecords.forEach((record, index) => {
-            // Apply locally-tracked discard state to maintain consistency across refreshes
-            const denyListedStat = record.dataStats.find(stat => stat.name === 'deny_listed');
-            if (denyListedStat && locallyDiscardedSampleIds.has(record.sampleId)) {
-                denyListedStat.value = [1]; // Ensure deny_listed is 1 if locally tracked
-            } else if (denyListedStat && !locallyDiscardedSampleIds.has(record.sampleId)) {
-                denyListedStat.value = [0]; // Ensure deny_listed is 0 if not locally tracked
-            }
-
             const cell = gridManager.getCellbyIndex(index);
             if (cell) {
                 cell.populate(record, preferences);
@@ -497,14 +489,6 @@ async function fetchAndDisplaySamples() {
                 const preferences = displayOptionsPanel.getDisplayPreferences();
                 preferences.splitColors = getSplitColors();
                 response.dataRecords.forEach((record, index) => {
-                    // Apply locally-tracked discard state to maintain consistency
-                    const denyListedStat = record.dataStats.find(stat => stat.name === 'deny_listed');
-                    if (denyListedStat && locallyDiscardedSampleIds.has(record.sampleId)) {
-                        denyListedStat.value = [1]; // Ensure deny_listed is 1 if locally tracked
-                    } else if (denyListedStat && !locallyDiscardedSampleIds.has(record.sampleId)) {
-                        denyListedStat.value = [0]; // Ensure deny_listed is 0 if not locally tracked
-                    }
-
                     const cell = gridManager.getCellbyIndex(i + index);
                     if (cell) {
                         cell.populate(record, preferences);
@@ -2184,11 +2168,9 @@ contextMenu.addEventListener('click', async (e) => {
             case 'discard':
                 let newlyDiscardedCount = 0;
                 // Track discarded samples locally to maintain state across refreshes
-                sample_ids.forEach(id => {
-                    if (typeof id === 'number') {
-                        locallyDiscardedSampleIds.add(id);
-                    }
-                });
+                // sample_ids.forEach(id => {
+                //      locallyDiscardedSampleIds.add(id);
+                //});
 
                 selectedCells.forEach(cell => {
                     const gridCell = getGridCell(cell);
@@ -2251,6 +2233,7 @@ contextMenu.addEventListener('click', async (e) => {
                 if (newlyRestoredCount > 0) {
                     traversalPanel.incrementActiveCount(newlyRestoredCount);
                 }
+
 
                 const urequest: DataEditsRequest = {
                     statName: "deny_listed",
@@ -2962,6 +2945,7 @@ async function paintCell(cell: HTMLElement) {
         // Optimistic update
         gridCell.updateStats({ "tags": newTagsStr });
 
+
         // Send remove requests
         tagsToRemove.forEach((tag: string) => {
             const request: DataEditsRequest = {
@@ -2991,6 +2975,7 @@ async function paintCell(cell: HTMLElement) {
 
         // Optimistic update
         gridCell.updateStats({ "tags": newTagsStr });
+
 
         // Send add requests
         tagsToAdd.forEach((tag: string) => {

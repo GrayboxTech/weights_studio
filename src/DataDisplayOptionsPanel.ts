@@ -146,6 +146,7 @@ export class DataDisplayOptionsPanel {
             const stats = record.dataStats || [];
             const taskTypeStat = stats.find((s: any) => s.name === "task_type");
             if (taskTypeStat?.valueString === "segmentation") return true;
+            if (taskTypeStat?.valueString === "classification") return false;
         }
 
         const firstRecord = records[0];
