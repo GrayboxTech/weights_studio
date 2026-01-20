@@ -1,8 +1,7 @@
 import { DataRecord } from "./data_service";
 
 export type SplitColors = {
-    train: string;
-    eval: string;
+    [key: string]: string;
 };
 
 type ClassPreference = {
