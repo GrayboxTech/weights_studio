@@ -132,12 +132,13 @@ export class DataDisplayOptionsPanel {
         document.body.classList.toggle("segmentation-mode", this.isSegmentationDataset);
         document.body.classList.toggle("classification-mode", !this.isSegmentationDataset);
 
-        const segmentationSection = document.querySelector(
+        // Hide all segmentation-specific groups (Classes, Overlays toggles, and section title)
+        const segmentationGroups = document.querySelectorAll(
             '[data-section="segmentation"]'
-        ) as HTMLElement | null;
-        if (segmentationSection) {
-            segmentationSection.style.display = this.isSegmentationDataset ? "block" : "none";
-        }
+        ) as NodeListOf<HTMLElement>;
+        segmentationGroups.forEach(group => {
+            group.style.display = this.isSegmentationDataset ? "block" : "none";
+        });
     }
 
     private detectSegmentation(records: DataRecord[]): boolean {
@@ -184,11 +185,9 @@ export class DataDisplayOptionsPanel {
         const availableFields = new Set<string>();
 
         // 0) Detect mode (check all records in batch for better detection)
-        const wasSegmentation = this.isSegmentationDataset;
         this.isSegmentationDataset = this.detectSegmentation(dataRecords);
-        if (this.isSegmentationDataset !== wasSegmentation) {
-            this.updateGlobalModeFlags();
-        }
+        // Always update visibility to ensure correct state on every data load
+        this.updateGlobalModeFlags();
 
         // 1) Collect all fields seen across all provided records
         this.fieldTypes.clear();
@@ -215,6 +214,47 @@ export class DataDisplayOptionsPanel {
                 });
             }
         });
+        const hasMeaningful: Record<string, boolean> = {};
+
+        const isMeaningful = (stat: any): boolean => {
+            if (!stat) return false;
+            if (typeof stat.valueString === 'string') {
+                const s = stat.valueString.trim().toLowerCase();
+                if (s && s !== 'none' && s !== 'nan') return true;
+            }
+            if (Array.isArray(stat.value) && stat.value.length > 0) {
+                for (const v of stat.value) {
+                    if (typeof v === 'number') {
+                        if (!Number.isNaN(v)) return true;
+                    } else if (v !== null && v !== undefined && String(v).trim() !== '') {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+
+        dataRecords.forEach(record => {
+            if (!record.dataStats) return;
+            record.dataStats.forEach((stat: any) => {
+                const name = stat.name;
+                if (name === "raw_data" ||
+                    name === "pred_mask" ||
+                    name === "task_type" ||
+                    /^class(_\d+)?$/i.test(name) ||
+                    (name === "label" && this.isSegmentationDataset && SEGMENTATION_HIDDEN_FIELDS.has(name)) ||
+                    (this.isSegmentationDataset && SEGMENTATION_HIDDEN_FIELDS.has(name))
+                ) {
+                    return;
+                }
+                if (isMeaningful(stat)) {
+                    hasMeaningful[name] = true;
+                }
+            });
+        });
+
+        // Add only meaningful fields for this batch
+        Object.keys(hasMeaningful).forEach(k => availableFields.add(k));
 
         // Determine if we actually have new fields to show
         const existingFields = new Set(this.checkboxes.keys());
@@ -517,8 +557,8 @@ export class DataDisplayOptionsPanel {
 
             // Add new field to the end (it becomes the secondary/tertiary sort key)
             // Wait, usually "Sort by X" means X becomes Primary?
-            // "Apply another sorting on top of this" -> 
-            // If I have [Tags, Locked], and click Target. 
+            // "Apply another sorting on top of this" ->
+            // If I have [Tags, Locked], and click Target.
             // Result: [Tags, Target]. Group by Tags, then by Target.
             // This is "stable sort on top".
             keptSorts.push({ field: fieldName, direction: 'asc', locked: false });
@@ -691,6 +731,7 @@ export class DataDisplayOptionsPanel {
         if (cellSizeSlider && cellSizeValue) {
             cellSizeSlider.addEventListener("input", () => {
                 cellSizeValue.textContent = cellSizeSlider.value;
+                localStorage.setItem('grid-cell-size', cellSizeSlider.value);
                 this.updateCallback?.();
             });
         }
@@ -701,6 +742,7 @@ export class DataDisplayOptionsPanel {
         if (zoomSlider && zoomValue) {
             zoomSlider.addEventListener("input", () => {
                 zoomValue.textContent = `${zoomSlider.value}%`;
+                localStorage.setItem('grid-zoom-level', zoomSlider.value);
                 this.updateCallback?.();
             });
         }
@@ -709,6 +751,22 @@ export class DataDisplayOptionsPanel {
         const gtToggle = document.getElementById("toggle-gt") as HTMLInputElement | null;
         const predToggle = document.getElementById("toggle-pred") as HTMLInputElement | null;
         const diffToggle = document.getElementById("toggle-diff") as HTMLInputElement | null;
+
+        const imageResolutionAuto = document.getElementById("image-resolution-auto") as HTMLInputElement | null;
+        const imageResolutionPercent = document.getElementById("image-resolution-percent") as HTMLInputElement | null;
+
+        if (imageResolutionAuto) {
+            imageResolutionAuto.addEventListener("change", () => {
+                localStorage.setItem('grid-image-resolution-auto', imageResolutionAuto.checked.toString());
+                this.updateCallback?.();
+            });
+        }
+        if (imageResolutionPercent) {
+            imageResolutionPercent.addEventListener("input", () => {
+                localStorage.setItem('grid-image-resolution-percent', imageResolutionPercent.value);
+                this.updateCallback?.();
+            });
+        }
 
         const onToggleChange = () => { this.updateCallback?.(); };
 

@@ -714,6 +714,20 @@ export interface DataQueryResponse {
      */
     analysisResult: string;
 }
+
+/**
+ * @generated from protobuf message DataSplitsResponse
+ */
+export interface DataSplitsResponse {
+    /**
+     * @generated from protobuf field: bool success = 1
+     */
+    success: boolean;
+    /**
+     * @generated from protobuf field: repeated string split_names = 2
+     */
+    splitNames: string[];
+}
 /**
  * @generated from protobuf message DataSamplesRequest
  */
@@ -771,6 +785,10 @@ export interface DataStat {
      * @generated from protobuf field: string value_string = 5
      */
     valueString: string;
+    /**
+     * @generated from protobuf field: bytes thumbnail = 6
+     */
+    thumbnail: Uint8Array;
 }
 /**
  * @generated from protobuf message DataRecord
@@ -3249,6 +3267,62 @@ class DataQueryResponse$Type extends MessageType<DataQueryResponse> {
  * @generated MessageType for protobuf message DataQueryResponse
  */
 export const DataQueryResponse = new DataQueryResponse$Type();
+
+// @generated message type with reflection information, may provide speed optimized methods
+class DataSplitsResponse$Type extends MessageType<DataSplitsResponse> {
+    constructor() {
+        super("DataSplitsResponse", [
+            { no: 1, name: "success", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
+            { no: 2, name: "split_names", kind: "scalar", repeat: 2 /*RepeatType.UNPACKED*/, T: 9 /*ScalarType.STRING*/ }
+        ]);
+    }
+    create(value?: PartialMessage<DataSplitsResponse>): DataSplitsResponse {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        message.success = false;
+        message.splitNames = [];
+        if (value !== undefined)
+            reflectionMergePartial<DataSplitsResponse>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: DataSplitsResponse): DataSplitsResponse {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* bool success */ 1:
+                    message.success = reader.bool();
+                    break;
+                case /* repeated string split_names */ 2:
+                    message.splitNames.push(reader.string());
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: DataSplitsResponse, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* bool success = 1; */
+        if (message.success !== false)
+            writer.tag(1, WireType.Varint).bool(message.success);
+        /* repeated string split_names = 2; */
+        for (let i = 0; i < message.splitNames.length; i++)
+            writer.tag(2, WireType.LengthDelimited).string(message.splitNames[i]);
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+/**
+ * @generated MessageType for protobuf message DataSplitsResponse
+ */
+export const DataSplitsResponse = new DataSplitsResponse$Type();
 // @generated message type with reflection information, may provide speed optimized methods
 class DataSamplesRequest$Type extends MessageType<DataSamplesRequest> {
     constructor() {
@@ -3352,7 +3426,8 @@ class DataStat$Type extends MessageType<DataStat> {
             { no: 2, name: "type", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
             { no: 3, name: "shape", kind: "scalar", repeat: 1 /*RepeatType.PACKED*/, T: 5 /*ScalarType.INT32*/ },
             { no: 4, name: "value", kind: "scalar", repeat: 1 /*RepeatType.PACKED*/, T: 2 /*ScalarType.FLOAT*/ },
-            { no: 5, name: "value_string", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
+            { no: 5, name: "value_string", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
+            { no: 6, name: "thumbnail", kind: "scalar", T: 12 /*ScalarType.BYTES*/ }
         ]);
     }
     create(value?: PartialMessage<DataStat>): DataStat {
@@ -3362,6 +3437,7 @@ class DataStat$Type extends MessageType<DataStat> {
         message.shape = [];
         message.value = [];
         message.valueString = "";
+        message.thumbnail = new Uint8Array();
         if (value !== undefined)
             reflectionMergePartial<DataStat>(this, message, value);
         return message;
@@ -3393,6 +3469,9 @@ class DataStat$Type extends MessageType<DataStat> {
                     break;
                 case /* string value_string */ 5:
                     message.valueString = reader.string();
+                    break;
+                case /* bytes thumbnail */ 6:
+                    message.thumbnail = reader.bytes();
                     break;
                 default:
                     let u = options.readUnknownField;
@@ -3429,6 +3508,9 @@ class DataStat$Type extends MessageType<DataStat> {
         /* string value_string = 5; */
         if (message.valueString !== "")
             writer.tag(5, WireType.LengthDelimited).string(message.valueString);
+        /* bytes thumbnail = 6; */
+        if (message.thumbnail.length)
+            writer.tag(6, WireType.LengthDelimited).bytes(message.thumbnail);
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -3781,6 +3863,7 @@ export const ExperimentService = new ServiceType("ExperimentService", [
     { name: "GetActivations", options: {}, I: ActivationRequest, O: ActivationResponse },
     { name: "GetSamples", options: {}, I: BatchSampleRequest, O: BatchSampleResponse },
     { name: "ApplyDataQuery", options: {}, I: DataQueryRequest, O: DataQueryResponse },
+    { name: "GetDataSplits", options: {}, I: Empty, O: DataSplitsResponse },
     { name: "GetDataSamples", options: {}, I: DataSamplesRequest, O: DataSamplesResponse },
     { name: "EditDataSample", options: {}, I: DataEditsRequest, O: DataEditsResponse },
     { name: "CheckAgentHealth", options: {}, I: Empty, O: AgentHealthResponse }

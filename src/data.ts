@@ -38,6 +38,55 @@ const transport = new GrpcWebFetchTransport(
 const dataClient = new ExperimentServiceClient(transport);
 const traversalPanel = new DataTraversalAndInteractionsPanel();
 
+// Grid settings persistence helpers
+function saveGridSettings(): void {
+    const cellSizeInput = document.getElementById('cell-size') as HTMLInputElement;
+    const zoomLevelInput = document.getElementById('zoom-level') as HTMLInputElement;
+    const imageResolutionAutoInput = document.getElementById('image-resolution-auto') as HTMLInputElement;
+    const imageResolutionPercentInput = document.getElementById('image-resolution-percent') as HTMLInputElement;
+
+    if (cellSizeInput) localStorage.setItem('grid-cell-size', cellSizeInput.value);
+    if (zoomLevelInput) localStorage.setItem('grid-zoom-level', zoomLevelInput.value);
+    if (imageResolutionAutoInput) localStorage.setItem('grid-image-resolution-auto', imageResolutionAutoInput.checked.toString());
+    if (imageResolutionPercentInput) localStorage.setItem('grid-image-resolution-percent', imageResolutionPercentInput.value);
+}
+
+function restoreGridSettings(): void {
+    const cellSizeInput = document.getElementById('cell-size') as HTMLInputElement;
+    const cellSizeValue = document.getElementById('cell-size-value') as HTMLElement;
+    const zoomLevelInput = document.getElementById('zoom-level') as HTMLInputElement;
+    const zoomValue = document.getElementById('zoom-value') as HTMLElement;
+    const imageResolutionAutoInput = document.getElementById('image-resolution-auto') as HTMLInputElement;
+    const imageResolutionPercentInput = document.getElementById('image-resolution-percent') as HTMLInputElement;
+    const imageResolutionValue = document.getElementById('image-resolution-value') as HTMLSpanElement;
+
+    // Use cached values from window object if available (set by HTML script), otherwise use localStorage
+    const cachedSettings = (window as any).__cachedGridSettings || {};
+    const savedCellSize = cachedSettings.cellSize || localStorage.getItem('grid-cell-size');
+    const savedZoomLevel = cachedSettings.zoomLevel || localStorage.getItem('grid-zoom-level');
+    const savedImageResolutionAuto = cachedSettings.imageResolutionAuto || localStorage.getItem('grid-image-resolution-auto');
+    const savedImageResolutionPercent = cachedSettings.imageResolutionPercent || localStorage.getItem('grid-image-resolution-percent');
+
+    if (savedCellSize && cellSizeInput) {
+        cellSizeInput.value = savedCellSize;
+        if (cellSizeValue) cellSizeValue.textContent = savedCellSize;
+    }
+
+    if (savedZoomLevel && zoomLevelInput) {
+        zoomLevelInput.value = savedZoomLevel;
+        if (zoomValue) zoomValue.textContent = `${savedZoomLevel}%`;
+    }
+
+    if (savedImageResolutionAuto && imageResolutionAutoInput) {
+        imageResolutionAutoInput.checked = savedImageResolutionAuto === 'true';
+    }
+
+    if (savedImageResolutionPercent && imageResolutionPercentInput) {
+        imageResolutionPercentInput.value = savedImageResolutionPercent;
+        if (imageResolutionValue) imageResolutionValue.textContent = `${savedImageResolutionPercent}%`;
+    }
+}
+
 let cellsContainer: HTMLElement | null;
 let displayOptionsPanel: DataDisplayOptionsPanel | null = null;
 let gridManager: GridManager;
@@ -49,15 +98,24 @@ let trainingStatePill: HTMLElement | null = null;
 let trainingSummary: HTMLElement | null = null;
 let detailsToggle: HTMLButtonElement | null = null;
 let detailsBody: HTMLElement | null = null;
+let connectionStatusElement: HTMLElement | null = null;
 let uniqueTags: string[] = [];
+
+// Available data splits reported by backend (train/eval/test/custom)
+let availableSplits: string[] = ['train', 'eval'];
 
 let fetchTimeout: any = null;
 let currentFetchRequestId = 0;
+let datasetInfoReady = false;
 
 // Painter Mode State
 let isPainterMode = false;
 let isPainterRemoveMode = false;
 let activeBrushTags = new Set<string>();
+
+const MINUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+const PLUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+
 
 // Prefetch Cache for faster navigation
 interface CacheEntry {
@@ -74,6 +132,9 @@ const MAX_PREFETCH_BATCHES = (() => {
 const MAX_CACHE_ENTRIES = MAX_PREFETCH_BATCHES + 4; // Keep extra batches in memory (+2 for first/last batches)
 let prefetchInProgress = false;
 let lastFetchedBatchStart: number = 0; // Track navigation direction
+
+// Track discarded sample IDs locally to persist state across refreshes
+const locallyDiscardedSampleIds = new Set<number>();
 
 function getCacheKey(startIndex: number, count: number, resizeWidth: number, resizeHeight: number): string {
     return `${startIndex}-${count}-${resizeWidth}-${resizeHeight}`;
@@ -171,10 +232,125 @@ function addChatMessage(text: string, type: 'user' | 'agent', isTyping: boolean 
 }
 
 
+function generateSplitColor(split: string, index: number, _total: number): string {
+    // Match the hardcoded colors from GridCell.ts (without alpha for color pickers)
+    const splitLower = split.toLowerCase();
+    if (splitLower === 'train') {
+        return '#c57a09';
+    } else if (splitLower === 'eval' || splitLower === 'val' || splitLower === 'test' || splitLower === 'validation') {
+        return '#16bb07';
+    }
+
+    // For other splits, use safe hue ranges to avoid muddy / inaccessible colors
+    const safeRanges: Array<[number, number]> = [
+        [10, 40],   // warm orange range
+        [80, 150],  // greens
+        [190, 240], // blues
+        [260, 300], // purples
+    ];
+
+    const rangeIndex = index % safeRanges.length;
+    const [minHue, maxHue] = safeRanges[rangeIndex];
+
+    // Generate random hue within the safe range
+    const hue = Math.floor(Math.random() * (maxHue - minHue + 1)) + minHue;
+    const saturation = 65 + Math.floor(Math.random() * 15); // 65-80%
+    const lightness = 40 + Math.floor(Math.random() * 15);  // 40-55%
+
+    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+}
+
+async function fetchAndCreateSplitColorPickers(): Promise<void> {
+    try {
+        // Gracefully handle older SDKs without GetDataSplits
+        if (typeof (dataClient as any).getDataSplits !== 'function') {
+            console.warn('GetDataSplits RPC not available on client; falling back to defaults');
+            availableSplits = ['train', 'eval'];
+            return;
+        }
+
+        const response = await dataClient.getDataSplits({}).response;
+
+        if (response.success && response.splitNames.length > 0) {
+            availableSplits = response.splitNames;
+
+            // Find the split colors container in the HTML
+            const splitColorsContainer = document.querySelector('.split-colors .row-controls');
+            if (!splitColorsContainer) {
+                console.warn('Split colors container not found');
+                return;
+            }
+
+            // Clear existing color pickers
+            splitColorsContainer.innerHTML = '';
+
+            // Create color picker for each split
+            availableSplits.forEach((split, index) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'color-picker-wrapper';
+
+                const label = document.createElement('span');
+                label.className = 'chip';
+                label.textContent = split.charAt(0).toUpperCase() + split.slice(1);
+
+                const input = document.createElement('input');
+                input.type = 'color';
+                input.id = `${split}-color`;
+                input.className = 'color-picker';
+
+                // Restore from localStorage or use default/generated color
+                const savedColor = localStorage.getItem(`${split}-color`);
+                input.value = savedColor || generateSplitColor(split, index, availableSplits.length);
+
+                // Save to localStorage on change and update display
+                input.addEventListener('input', () => {
+                    localStorage.setItem(`${split}-color`, input.value);
+                    updateDisplayOnly();
+                });
+
+                wrapper.appendChild(label);
+                wrapper.appendChild(input);
+                splitColorsContainer.appendChild(wrapper);
+            });
+
+            console.log(`Created color pickers for splits: ${availableSplits.join(', ')}`);
+        } else {
+            console.warn('No splits returned from server, using defaults');
+            availableSplits = ['train', 'eval'];
+        }
+    } catch (error) {
+        console.error('Failed to fetch data splits:', error);
+        // Fallback to defaults
+        availableSplits = ['train', 'eval'];
+    }
+}
+
 function getSplitColors(): SplitColors {
-    const trainColor = (document.getElementById('train-color') as HTMLInputElement)?.value || '#4CAF50';
-    const evalColor = (document.getElementById('eval-color') as HTMLInputElement)?.value || '#2196F3';
-    return { train: trainColor, eval: evalColor };
+    const colors: SplitColors = {};
+
+    // Build a case-insensitive map and include common aliases
+    const aliasPairs: Array<[string, string]> = [
+        ['eval', 'test'],
+        ['val', 'eval'],
+        ['validation', 'eval'],
+    ];
+
+    const allSplits = availableSplits && availableSplits.length > 0 ? availableSplits : ['train', 'eval'];
+
+    allSplits.forEach((split, index) => {
+        const saved = localStorage.getItem(`${split}-color`);
+        colors[split.toLowerCase()] = saved || generateSplitColor(split, index, allSplits.length);
+    });
+
+    // Ensure aliases resolve to existing colors
+    aliasPairs.forEach(([alias, target]) => {
+        const targetColor = colors[target.toLowerCase()];
+        if (targetColor && !colors[alias.toLowerCase()]) {
+            colors[alias.toLowerCase()] = targetColor;
+        }
+    });
+
+    return colors;
 }
 
 async function fetchSamples(request: DataSamplesRequest): Promise<DataSamplesResponse> {
@@ -196,10 +372,15 @@ async function fetchSamples(request: DataSamplesRequest): Promise<DataSamplesRes
 }
 
 async function fetchAndDisplaySamples() {
+    if (!datasetInfoReady) {
+        console.debug('[fetchAndDisplaySamples] Dataset info not ready; skipping initial fetch.');
+        return;
+    }
     if (!displayOptionsPanel) {
         console.warn('displayOptionsPanel not initialized');
         return;
     }
+    console.debug('[Fetch Samples] Starting fetch and display of samples at ' + new Date().toISOString() + '...');
 
     const start = traversalPanel.getStartIndex();
     const count = traversalPanel.getLeftSamples();
@@ -207,7 +388,7 @@ async function fetchAndDisplaySamples() {
 
     const requestId = ++currentFetchRequestId;
 
-    gridManager.clearAllCells();
+    // gridManager.clearAllCells();
 
     // Get resolution settings once
     const resolutionPercent = traversalPanel.getImageResolutionPercent();
@@ -230,6 +411,14 @@ async function fetchAndDisplaySamples() {
         const preferences = displayOptionsPanel.getDisplayPreferences();
         preferences.splitColors = getSplitColors();
         cachedResponse.dataRecords.forEach((record, index) => {
+            // Apply locally-tracked discard state to maintain consistency across refreshes
+            const denyListedStat = record.dataStats.find(stat => stat.name === 'deny_listed');
+            if (denyListedStat && locallyDiscardedSampleIds.has(record.sampleId)) {
+                denyListedStat.value = [1]; // Ensure deny_listed is 1 if locally tracked
+            } else if (denyListedStat && !locallyDiscardedSampleIds.has(record.sampleId)) {
+                denyListedStat.value = [0]; // Ensure deny_listed is 0 if not locally tracked
+            }
+
             const cell = gridManager.getCellbyIndex(index);
             if (cell) {
                 cell.populate(record, preferences);
@@ -239,6 +428,9 @@ async function fetchAndDisplaySamples() {
 
         // Update range labels on scrollbar
         traversalPanel.updateRangeLabels();
+
+        // Keep left metadata panel in sync with the latest records (even if cached)
+        displayOptionsPanel.populateOptions(cachedResponse.dataRecords);
 
         // Trigger prefetch of multiple batches ahead in background
         prefetchMultipleBatches(start, count, resizeWidth, resizeHeight);
@@ -305,6 +497,14 @@ async function fetchAndDisplaySamples() {
                 const preferences = displayOptionsPanel.getDisplayPreferences();
                 preferences.splitColors = getSplitColors();
                 response.dataRecords.forEach((record, index) => {
+                    // Apply locally-tracked discard state to maintain consistency
+                    const denyListedStat = record.dataStats.find(stat => stat.name === 'deny_listed');
+                    if (denyListedStat && locallyDiscardedSampleIds.has(record.sampleId)) {
+                        denyListedStat.value = [1]; // Ensure deny_listed is 1 if locally tracked
+                    } else if (denyListedStat && !locallyDiscardedSampleIds.has(record.sampleId)) {
+                        denyListedStat.value = [0]; // Ensure deny_listed is 0 if not locally tracked
+                    }
+
                     const cell = gridManager.getCellbyIndex(i + index);
                     if (cell) {
                         cell.populate(record, preferences);
@@ -336,12 +536,15 @@ async function fetchAndDisplaySamples() {
                 dataRecords: allRecords
             };
             setCachedResponse(start, count, resizeWidth, resizeHeight, completeResponse);
+            if (displayOptionsPanel) {
+                displayOptionsPanel.populateOptions(allRecords);
+            }
         }
 
         // Update range labels on scrollbar
         traversalPanel.updateRangeLabels();
 
-        // Trigger prefetch of batches both ahead and behind based on navigation direction
+        // // Trigger prefetch of batches both ahead and behind based on navigation direction
         prefetchBidirectionalBatches(start, count, resizeWidth, resizeHeight, lastFetchedBatchStart);
         lastFetchedBatchStart = start; // Update for next navigation
 
@@ -356,6 +559,7 @@ async function prefetchBidirectionalBatches(currentStart: number, count: number,
         console.debug('[Prefetch] Already in progress, skipping');
         return;
     }
+    console.debug('[PrefetchBi] Starting prefetch of batches...');
 
     prefetchInProgress = true;
     const maxSampleId = traversalPanel.getMaxSampleId();
@@ -365,24 +569,37 @@ async function prefetchBidirectionalBatches(currentStart: number, count: number,
     const maxBackwardBatches = Math.floor(currentStart / count);
     const maxForwardBatches = Math.floor((maxSampleId - currentStart) / count);
 
-    // Split prefetch batches: aim for totalBatches/2 before and after
-    let targetBackward = Math.floor(totalBatches / 2);
-    let targetForward = Math.ceil(totalBatches / 2);
+    // Split prefetch batches: 2/3 forward, 1/3 backward (directional allocation)
+    // Forward is the primary direction for optimal UX - most users scroll forward
+    let targetForward = Math.ceil(totalBatches * 2 / 3);
+    let targetBackward = Math.floor(totalBatches * 1 / 3);
+
+    // Special case: if only 1 batch available, allocate to forward (unless at end)
+    if (totalBatches === 1) {
+        if (maxForwardBatches > 0) {
+            targetForward = 1;
+            targetBackward = 0;
+        } else if (maxBackwardBatches > 0) {
+            // At the end of dataset, allocate the single batch to backward
+            targetForward = 0;
+            targetBackward = 1;
+        }
+    }
 
     // Adjust if we're near boundaries
     const availableBackward = Math.min(targetBackward, maxBackwardBatches);
     const availableForward = Math.min(targetForward, maxForwardBatches);
 
     // If we can't reach target in one direction, use extra in the other
-    if (availableBackward < targetBackward) {
+    if (availableBackward < targetBackward && availableForward < maxForwardBatches) {
         // Near the beginning: use more forward batches
         targetForward = Math.min(totalBatches - availableBackward, maxForwardBatches);
-    } else if (availableForward < targetForward) {
+    } else if (availableForward < targetForward && availableBackward < maxBackwardBatches) {
         // Near the end: use more backward batches
         targetBackward = Math.min(totalBatches - availableForward, maxBackwardBatches);
     }
 
-    console.debug(`[Prefetch] Position: ${currentStart}, Direction: forward=${availableForward} backward=${availableBackward}, Targets: F=${targetForward} B=${targetBackward}`);
+    console.debug(`[Prefetch] Position: ${currentStart}, Direction: forward=${availableForward}/${targetForward} backward=${availableBackward}/${targetBackward}, Available F=${maxForwardBatches} B=${maxBackwardBatches}`);
 
     // Collect backward batches
     for (let i = 1; i <= targetBackward; i++) {
@@ -470,6 +687,7 @@ async function prefetchMultipleBatches(currentStart: number, count: number, resi
         console.debug('[Prefetch] Already in progress, skipping');
         return;
     }
+    console.debug('[PrefetchMul] Starting prefetch of batches...');
 
     prefetchInProgress = true;
     const maxSampleId = traversalPanel.getMaxSampleId();
@@ -570,7 +788,7 @@ async function updateLayout() {
     }
 
     // Clear cache since image dimensions will change
-    clearResponseCache();
+    // clearResponseCache();
 
     gridManager.updateGridLayout();
     const gridDims = gridManager.calculateGridDimensions();
@@ -621,10 +839,6 @@ export async function handleQuerySubmit(query: string, isNaturalLanguage: boolea
             return; // Do not refresh grid for analysis queries
         }
 
-        // Handle Filter Intent (Grid Mode)
-        // Clear cache since query changed the dataset
-        clearResponseCache();
-
         // If there is a meaningful message, log it to chat
         if (response.message && response.message !== "Reset view to base dataset") {
             addChatMessage(response.message, 'agent');
@@ -652,6 +866,10 @@ export async function handleQuerySubmit(query: string, isNaturalLanguage: boolea
         );
         traversalPanel.setStartIndex(currentStartIndex);
 
+        // Handle Filter Intent (Grid Mode)
+        // Clear cache since query changed the dataset
+        clearResponseCache();
+
         fetchAndDisplaySamples();
     } catch (error) {
         console.error('Error applying query:', error);
@@ -661,6 +879,14 @@ export async function handleQuerySubmit(query: string, isNaturalLanguage: boolea
 
 async function refreshDynamicStatsOnly() {
     if (!displayOptionsPanel) return;
+
+    const refreshBtn = document.getElementById('refresh-stats');
+    if (refreshBtn) refreshBtn.classList.add('refreshing');
+
+    // Ensure icon spins at least once (0.5s) even if fetch is instant
+    const minSpinDuration = new Promise(resolve => setTimeout(resolve, 500));
+
+    console.debug('[Refresh Stats] Updating dynamic stats for visible samples...');
 
     const displayPreferences = displayOptionsPanel.getDisplayPreferences();
 
@@ -714,6 +940,11 @@ async function refreshDynamicStatsOnly() {
             break;
         }
     }
+
+    // Wait for the minimum spin time if it hasn't elapsed yet
+    await minSpinDuration;
+
+    if (refreshBtn) refreshBtn.classList.remove('refreshing');
 }
 
 
@@ -852,27 +1083,7 @@ export async function initializeUIElements() {
             }
         }
 
-        // Close inspector details panel when clicking outside (optional - only if it's in a modal/floating state)
-        const optionsPanel = document.getElementById('options-panel');
-        const detailsBody = document.getElementById('details-body');
-        const detailsToggle = document.getElementById('details-toggle');
 
-        // Only auto-collapse if the panel is visible and click is outside
-        if (optionsPanel && detailsBody && !detailsBody.classList.contains('collapsed')) {
-            const inspectorContainer = document.querySelector('.inspector-container');
-            // Don't collapse if clicking within the inspector or its controls
-            if (inspectorContainer && !inspectorContainer.contains(target)) {
-                // Only collapse if clicking in the main content area (not in training card or other UI)
-                const mainContent = document.querySelector('.main-content');
-                if (mainContent?.contains(target)) {
-                    detailsBody.classList.add('collapsed');
-                    if (detailsToggle) {
-                        detailsToggle.textContent = 'v';
-                        detailsToggle.classList.add('collapsed');
-                    }
-                }
-            }
-        }
     });
 
     // Custom Resize Handles for Chat History Panel
@@ -977,12 +1188,66 @@ export async function initializeUIElements() {
         });
     }
 
+    // Inspector Panel Resize Handle
+    const inspectorResizeHandle = document.getElementById('inspector-resize-handle');
+    const inspectorContainerEl = document.querySelector('.inspector-container') as HTMLElement;
+
+    if (inspectorResizeHandle && inspectorContainerEl) {
+        let isResizingInspector = false;
+        let startXInspector = 0;
+        let startWidthInspector = 0;
+
+        // Restore saved width from localStorage
+        const savedWidth = localStorage.getItem('inspector-width');
+        if (savedWidth) {
+            const width = parseInt(savedWidth, 10);
+            if (width >= 180 && width <= 450) {
+                inspectorContainerEl.style.width = width + 'px';
+            }
+        }
+
+        inspectorResizeHandle.addEventListener('mousedown', (e) => {
+            isResizingInspector = true;
+            startXInspector = e.clientX;
+            startWidthInspector = inspectorContainerEl.offsetWidth;
+            inspectorResizeHandle.classList.add('dragging');
+            document.body.classList.add('resizing-inspector');
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizingInspector) return;
+
+            const dx = e.clientX - startXInspector;
+            const newWidth = startWidthInspector + dx;
+
+            // Clamp to min/max
+            const clampedWidth = Math.max(180, Math.min(450, newWidth));
+            inspectorContainerEl.style.width = clampedWidth + 'px';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizingInspector) {
+                isResizingInspector = false;
+                inspectorResizeHandle.classList.remove('dragging');
+                document.body.classList.remove('resizing-inspector');
+
+                // Save to localStorage
+                localStorage.setItem('inspector-width', inspectorContainerEl.offsetWidth.toString());
+
+                // Trigger layout update
+                updateLayout();
+            }
+        });
+    }
+
 
 
 
     inspectorContainer = document.querySelector('.inspector-container') as HTMLElement | null;
     inspectorPanel = document.getElementById('options-panel') as HTMLElement | null;
     trainingStatePill = document.getElementById('training-state-pill') as HTMLElement | null;
+    connectionStatusElement = document.getElementById('connection-status') as HTMLElement | null;
     trainingSummary = document.getElementById('training-summary') as HTMLElement | null;
     detailsToggle = document.getElementById('details-toggle') as HTMLButtonElement | null;
     detailsBody = document.getElementById('details-body') as HTMLElement | null;
@@ -996,9 +1261,11 @@ export async function initializeUIElements() {
                 toggleBtn.classList.toggle('paused', !isTraining);
             }
             if (trainingStatePill) {
-                trainingStatePill.textContent = isTraining ? 'Running' : 'Paused';
                 trainingStatePill.classList.toggle('pill-running', isTraining);
                 trainingStatePill.classList.toggle('pill-paused', !isTraining);
+            }
+            if (connectionStatusElement && isTraining !== undefined) {
+                connectionStatusElement.textContent = ''; // Clear connecting text once we have a state
             }
 
             // Fetch training_steps_to_do from hyperparameters
@@ -1103,7 +1370,7 @@ export async function initializeUIElements() {
 
         // Helper function to fetch training state with retry logic
         // More patient settings for server startup
-        async function fetchInitialTrainingState(retries = 5, initialDelay = 1000): Promise<boolean> {
+        async function fetchInitialTrainingState(retries = 5, initialDelay = 2000): Promise<boolean> {
             let delay = initialDelay;
 
             for (let attempt = 0; attempt < retries; attempt++) {
@@ -1138,9 +1405,11 @@ export async function initializeUIElements() {
                     if (attempt < retries - 1) {
                         console.log(`Retry ${attempt + 1}/${retries} to fetch training state in ${delay}ms...`);
 
-                        // Show visual feedback that we're retrying
+                        // Show visual feedback that we're retrying in the separate status label
+                        if (connectionStatusElement) {
+                            connectionStatusElement.textContent = `Connecting... (${attempt + 1}/${retries})`;
+                        }
                         if (trainingStatePill) {
-                            trainingStatePill.textContent = `Connecting... (${attempt + 1}/${retries})`;
                             trainingStatePill.classList.add('pill-paused');
                         }
 
@@ -1182,45 +1451,69 @@ export async function initializeUIElements() {
         });
         displayOptionsPanel.initialize();
 
-        if (detailsToggle && inspectorPanel) {
-            detailsToggle.addEventListener('click', () => {
-                if (inspectorPanel) {
-                    inspectorPanel.style.transform = 'translateX(-100%)';
-                    inspectorPanel.classList.toggle('details-collapsed');
-                    // Small delay to allow for CSS transitions if any
-                    setTimeout(updateLayout, 150);
-                }
+        // Fetch splits from backend (if supported) and build color pickers dynamically
+        await fetchAndCreateSplitColorPickers();
+
+    }
+
+    // Initialize Collapsible Widgets
+    const setupCollapse = (btnId: string, cardSelector: string) => {
+        const btn = document.getElementById(btnId);
+        const card = document.querySelector(cardSelector);
+        if (btn && card) {
+            // Ensure button type is button to prevent form submission
+            if (btn instanceof HTMLButtonElement) btn.type = 'button';
+
+            // Initialize button with correct icon based on current state
+            const isCurrentlyCollapsed = card.classList.contains('collapsed');
+            btn.innerHTML = isCurrentlyCollapsed ? PLUS_ICON : MINUS_ICON;
+            btn.title = isCurrentlyCollapsed ? 'Maximize' : 'Minimize';
+
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const isCollapsed = card.classList.toggle('collapsed');
+                btn.innerHTML = isCollapsed ? PLUS_ICON : MINUS_ICON;
+                btn.title = isCollapsed ? 'Maximize' : 'Minimize';
+                // Trigger layout update
+                setTimeout(updateLayout, 150);
             });
         }
+    };
 
-        // Listen for color changes and persist to localStorage
-        const trainColorInput = document.getElementById('train-color') as HTMLInputElement;
-        const evalColorInput = document.getElementById('eval-color') as HTMLInputElement;
+    setupCollapse('training-collapse-btn', '.training-card');
+    setupCollapse('tags-collapse-btn', '.tagger-card');
+    setupCollapse('details-toggle', '#options-panel');
 
-        // Restore saved colors from localStorage
-        const savedTrainColor = localStorage.getItem('train-color');
-        const savedEvalColor = localStorage.getItem('eval-color');
-        if (savedTrainColor && trainColorInput) {
-            trainColorInput.value = savedTrainColor;
-        }
-        if (savedEvalColor && evalColorInput) {
-            evalColorInput.value = savedEvalColor;
-        }
+    // Listen for color changes and persist to localStorage
+    const trainColorInput = document.getElementById('train-color') as HTMLInputElement;
+    const evalColorInput = document.getElementById('eval-color') as HTMLInputElement;
 
-        if (trainColorInput) {
-            trainColorInput.addEventListener('input', () => {
-                localStorage.setItem('train-color', trainColorInput.value);
-                updateDisplayOnly();
-            });
-        }
-        if (evalColorInput) {
-            evalColorInput.addEventListener('input', () => {
-                localStorage.setItem('eval-color', evalColorInput.value);
-                updateDisplayOnly();
-            });
-        }
+    // Restore saved colors from localStorage
+    const savedTrainColor = localStorage.getItem('train-color');
+    const savedEvalColor = localStorage.getItem('eval-color');
+    if (savedTrainColor && trainColorInput) {
+        trainColorInput.value = savedTrainColor;
+    }
+    if (savedEvalColor && evalColorInput) {
+        evalColorInput.value = savedEvalColor;
+    }
 
-        // Checkbox changes only need display update, not layout recalculation
+    if (trainColorInput) {
+        trainColorInput.addEventListener('input', () => {
+            localStorage.setItem('train-color', trainColorInput.value);
+            updateDisplayOnly();
+        });
+    }
+    if (evalColorInput) {
+        evalColorInput.addEventListener('input', () => {
+            localStorage.setItem('eval-color', evalColorInput.value);
+            updateDisplayOnly();
+        });
+    }
+
+    // Checkbox changes only need display update, not layout recalculation
+    if (displayOptionsPanel) {
         displayOptionsPanel.onUpdate(updateDisplayOnly);
     }
 
@@ -1236,11 +1529,20 @@ export async function initializeUIElements() {
         });
     }
 
+    // Restore grid settings from localStorage before initialization
+    restoreGridSettings();
+
     traversalPanel.initialize();
     traversalPanel.setupKeyboardShortcuts();
     gridManager = new GridManager(
         cellsContainer, traversalPanel,
         displayOptionsPanel as DataDisplayOptionsPanel);
+
+    // Initialize grid layout BEFORE setting up any data fetching to ensure proper dimensions
+    gridManager.updateGridLayout();
+    const initialGridDims = gridManager.calculateGridDimensions();
+    traversalPanel.updateSliderStep(initialGridDims.gridCount);
+    console.log(`[Init] Initial grid dimensions set: ${JSON.stringify(initialGridDims)}`);
 
     traversalPanel.onUpdate(() => {
         debouncedFetchAndDisplay();
@@ -1248,7 +1550,10 @@ export async function initializeUIElements() {
         fetchTimeout = setTimeout(updateLayout, 150);
     });
 
-    window.addEventListener('resize', updateLayout);
+    window.addEventListener('resize', () => {
+        updateLayout();
+        saveGridSettings();
+    });
 
     try {
         const request: DataQueryRequest = { query: "", accumulate: false, isNaturalLanguage: false };
@@ -1260,36 +1565,131 @@ export async function initializeUIElements() {
             response.numberOfAllSamples,
             response.numberOfSamplesInTheLoop
         );
-
-        // Fetch first sample to populate display options
-        if (sampleCount > 0 && displayOptionsPanel) {
-            const sampleRequest: DataSamplesRequest = {
-                startIndex: 0,
-                recordsCnt: 1,
-                includeRawData: true,
-                includeTransformedData: false,
-                statsToRetrieve: [],
-                resizeWidth: 0,
-                resizeHeight: 0
-            };
-            const sampleResponse = await fetchSamples(sampleRequest);
-
-            if (sampleResponse.success && sampleResponse.dataRecords.length > 0) {
-                displayOptionsPanel.populateOptions(sampleResponse.dataRecords);
-            }
-        }
+        datasetInfoReady = true;
     } catch (error) {
         console.error('Error fetching sample count or stats:', error);
         // traversalPanel.setMaxSampleId(0);
         traversalPanel.updateSampleCounts(
             0, 0
         );
+        datasetInfoReady = true;
     }
 
-    // Auto-refresh the grid every 2 seconds
-    setInterval(() => {
-        refreshDynamicStatsOnly();
-    }, 10000);
+    // Save grid settings before page unload
+    window.addEventListener('beforeunload', saveGridSettings);
+
+    // Auto-refresh setup with configurable interval
+    let refreshIntervalId: any = null;
+    let refreshIntervalMs = parseInt(localStorage.getItem('refresh-interval') || '30000');
+
+    function startRefreshInterval() {
+        if (refreshIntervalId) {
+            clearInterval(refreshIntervalId);
+        }
+
+        const refreshBtn = document.getElementById('refresh-stats');
+        if (refreshBtn) {
+            refreshBtn.classList.toggle('is-polling', refreshIntervalMs > 0);
+        }
+
+        if (refreshIntervalMs > 0) {
+            refreshIntervalId = setInterval(() => {
+                refreshDynamicStatsOnly();
+            }, refreshIntervalMs);
+            console.debug(`[Refresh] Interval set to ${refreshIntervalMs}ms`);
+        }
+    }
+
+    startRefreshInterval();
+
+    // Refresh button setup
+    const refreshBtn = document.getElementById('refresh-stats') as HTMLButtonElement;
+    if (refreshBtn) {
+        // Left click: Trigger refresh now and reset timer
+        refreshBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            console.debug('[Refresh] Manual refresh triggered');
+            refreshDynamicStatsOnly();
+            startRefreshInterval(); // Reset the timer
+        });
+
+        // Right click OR Clock click: Configure interval (Custom Popover)
+        const refreshPopover = document.getElementById('refresh-config-popover');
+        const refreshInput = document.getElementById('refresh-interval-input') as HTMLInputElement;
+        const refreshAutoToggle = document.getElementById('refresh-auto-toggle') as HTMLInputElement;
+        const refreshInputWrapper = document.getElementById('refresh-input-wrapper');
+        const refreshSaveBtn = document.getElementById('refresh-config-save');
+        const refreshTrigger = document.getElementById('refresh-config-trigger');
+
+        const openConfig = (e: Event) => {
+            e.preventDefault();
+            if (refreshPopover && refreshInput && refreshAutoToggle) {
+                const currentSeconds = Math.round(refreshIntervalMs / 1000);
+
+                // Initialize UI state
+                refreshAutoToggle.checked = refreshIntervalMs > 0;
+                refreshInput.value = currentSeconds > 0 ? currentSeconds.toString() : "5";
+
+                if (refreshInputWrapper) {
+                    refreshInputWrapper.classList.toggle('disabled', !refreshAutoToggle.checked);
+                }
+
+                refreshPopover.classList.remove('hidden');
+
+                if (refreshAutoToggle.checked) {
+                    refreshInput.focus();
+                    refreshInput.select();
+                }
+            }
+        };
+
+        if (refreshTrigger) {
+            refreshTrigger.addEventListener('click', openConfig);
+        }
+
+        if (refreshAutoToggle && refreshInputWrapper) {
+            refreshAutoToggle.addEventListener('change', () => {
+                refreshInputWrapper.classList.toggle('disabled', !refreshAutoToggle.checked);
+            });
+        }
+
+        if (refreshSaveBtn && refreshPopover && refreshInput && refreshAutoToggle) {
+            refreshSaveBtn.addEventListener('click', () => {
+                if (!refreshAutoToggle.checked) {
+                    refreshIntervalMs = 0;
+                } else {
+                    const newSeconds = parseInt(refreshInput.value);
+                    if (!isNaN(newSeconds) && newSeconds > 0) {
+                        refreshIntervalMs = newSeconds * 1000;
+                    } else {
+                        // Fallback/Default if they checked it but entered something weird
+                        refreshIntervalMs = 5000;
+                    }
+                }
+
+                localStorage.setItem('refresh-interval', refreshIntervalMs.toString());
+                startRefreshInterval();
+                refreshPopover.classList.add('hidden');
+            });
+
+            // Close on Escape or Save on Enter
+            refreshInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') refreshSaveBtn.click();
+                if (e.key === 'Escape') refreshPopover.classList.add('hidden');
+            });
+        }
+
+        // Close popover when clicking outside
+        document.addEventListener('click', (e) => {
+            const isOutsidePopover = refreshPopover && !refreshPopover.contains(e.target as Node);
+            const isNotMainBtn = refreshBtn !== e.target && !refreshBtn.contains(e.target as Node);
+            const isNotTrigger = refreshTrigger !== e.target && !refreshTrigger.contains(e.target as Node);
+
+            if (isOutsidePopover && isNotMainBtn && isNotTrigger) {
+                refreshPopover.classList.add('hidden');
+            }
+        });
+    }
 
     setTimeout(updateLayout, 0);
 
@@ -1298,10 +1698,16 @@ export async function initializeUIElements() {
     const painterTagsList = document.getElementById('painter-tags-list') as HTMLElement;
     const painterNewTagBtn = document.getElementById('painter-new-tag') as HTMLButtonElement;
     const newTagInput = document.getElementById('new-tag-input') as HTMLInputElement;
+    const modeSwitcherContainer = document.getElementById('mode-switcher-container') as HTMLElement;
 
     if (painterToggle) {
         painterToggle.addEventListener('change', () => {
             isPainterMode = painterToggle.checked;
+
+            // Show/hide the mode switcher (+/-) based on Painter toggle
+            if (modeSwitcherContainer) {
+                modeSwitcherContainer.style.display = isPainterMode ? 'flex' : 'none';
+            }
 
             // Enable/disable tag interactions based on mode
             if (isPainterMode) {
@@ -1459,41 +1865,6 @@ async function startTrainingStatusStream() {
             console.warn('Could not fetch total steps for stream:', err);
         }
         return false;
-    }
-
-    console.log('🚀 Starting training status stream...');
-
-    while (isStreamRunning) {
-        try {
-            await ensureTotalSteps();
-            const stream = dataClient.streamStatus({});
-
-            for await (const status of stream.responses) {
-                if (!isStreamRunning) break;
-
-                // Update current step (model_age)
-                if (status.modelAge !== undefined && status.modelAge !== null) {
-                    updateProgress(status.modelAge);
-                }
-
-                // Update metrics
-                if (status.metricsStatus && status.metricsStatus.name) {
-                    latestMetrics.set(status.metricsStatus.name, status.metricsStatus.value);
-                    updateMetrics();
-                }
-            }
-        } catch (streamError) {
-            console.warn('📡 Training status stream interrupted:', streamError);
-            if (!isStreamRunning) break;
-            // Wait before reconnecting
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            console.log('🔄 Attempting to reconnect training status stream...');
-        }
-
-        if (isStreamRunning) {
-            console.log('📡 Training status stream ended, reconnecting...');
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
     }
 }
 
@@ -1723,6 +2094,37 @@ function showContextMenu(x: number, y: number) {
     contextMenu.style.left = `${x}px`;
     contextMenu.style.top = `${y}px`;
     contextMenu.classList.add('visible');
+
+    // Determine if all selected cells are discarded, all not discarded, or mixed
+    let allDiscarded = true;
+    let anyDiscarded = false;
+
+    for (const cell of selectedCells) {
+        const isDiscarded = cell.classList.contains('discarded');
+        if (isDiscarded) {
+            anyDiscarded = true;
+        } else {
+            allDiscarded = false;
+        }
+    }
+
+    // Show/hide restore option based on selection
+    const discardBtn = contextMenu.querySelector('[data-action="discard"]') as HTMLElement;
+    const restoreBtn = contextMenu.querySelector('[data-action="restore"]') as HTMLElement;
+
+    if (anyDiscarded && allDiscarded) {
+        // All selected cells are discarded: show restore, hide discard
+        if (discardBtn) discardBtn.style.display = 'none';
+        if (restoreBtn) restoreBtn.style.display = 'block';
+    } else if (anyDiscarded && !allDiscarded) {
+        // Mixed: show both
+        if (discardBtn) discardBtn.style.display = 'block';
+        if (restoreBtn) restoreBtn.style.display = 'block';
+    } else {
+        // None discarded: show discard, hide restore
+        if (discardBtn) discardBtn.style.display = 'block';
+        if (restoreBtn) restoreBtn.style.display = 'none';
+    }
 }
 
 function hideContextMenu() {
@@ -1781,6 +2183,13 @@ contextMenu.addEventListener('click', async (e) => {
                 break;
             case 'discard':
                 let newlyDiscardedCount = 0;
+                // Track discarded samples locally to maintain state across refreshes
+                sample_ids.forEach(id => {
+                    if (typeof id === 'number') {
+                        locallyDiscardedSampleIds.add(id);
+                    }
+                });
+
                 selectedCells.forEach(cell => {
                     const gridCell = getGridCell(cell);
                     if (gridCell) {
@@ -1817,6 +2226,48 @@ contextMenu.addEventListener('click', async (e) => {
                     }
                 } catch (error) {
                     console.error("Error discarding:", error);
+                }
+                clearSelection();
+                debouncedFetchAndDisplay();
+                break;
+            case 'undiscard':
+                let newlyRestoredCount = 0;
+                selectedCells.forEach(cell => {
+                    const gridCell = getGridCell(cell);
+                    if (gridCell) {
+                        const record = gridCell.getRecord();
+                        // Check if currently discarded
+                        const isDiscardedStat = record?.dataStats.find((s: any) => s.name === 'deny_listed');
+                        const isCurrentlyDiscarded = isDiscardedStat?.value?.[0] === 1;
+
+                        if (isCurrentlyDiscarded) {
+                            newlyRestoredCount++;
+                        }
+
+                        gridCell.updateStats({ deny_listed: 0 });
+                    }
+                });
+
+                if (newlyRestoredCount > 0) {
+                    traversalPanel.incrementActiveCount(newlyRestoredCount);
+                }
+
+                const urequest: DataEditsRequest = {
+                    statName: "deny_listed",
+                    floatValue: 0,
+                    stringValue: '',
+                    boolValue: false,  // false to un-discard/restore
+                    type: SampleEditType.EDIT_OVERRIDE,
+                    samplesIds: sample_ids,
+                    sampleOrigins: origins
+                };
+                try {
+                    const uresponse = await dataClient.editDataSample(urequest).response;
+                    if (!uresponse.success) {
+                        console.error("Failed to restore:", uresponse.message);
+                    }
+                } catch (error) {
+                    console.error("Error restoring:", error);
                 }
                 clearSelection();
                 debouncedFetchAndDisplay();
@@ -1978,12 +2429,6 @@ async function openImageDetailModal(cell: HTMLElement) {
         });
 
         sortedStats.forEach((stat: any) => {
-            // Skip raw_data and other binary/large data
-            if (stat.name === 'raw_data' || stat.name === 'transformed_data' ||
-                stat.name === 'label' || stat.name === 'pred_mask') {
-                return;
-            }
-
             const statItem = document.createElement('div');
             statItem.className = 'modal-stat-item';
 
@@ -1998,14 +2443,19 @@ async function openImageDetailModal(cell: HTMLElement) {
                 if (stat.value.length === 1) {
                     // Single scalar value
                     const num = stat.value[0];
-                    value = typeof num === 'number' && num % 1 !== 0
-                        ? num.toFixed(4)
-                        : String(num);
+                    if (typeof num === 'number' && Number.isNaN(num)) {
+                        value = '';
+                    } else {
+                        value = typeof num === 'number' && num % 1 !== 0
+                            ? num.toFixed(4)
+                            : String(num);
+                    }
                 } else {
                     // Array of values - show first few
-                    value = stat.value.slice(0, 3).map((v: number) =>
-                        typeof v === 'number' && v % 1 !== 0 ? v.toFixed(2) : String(v)
-                    ).join(', ');
+                    const vals = stat.value.slice(0, 3)
+                        .filter((v: number) => !(typeof v === 'number' && Number.isNaN(v)))
+                        .map((v: number) => typeof v === 'number' && v % 1 !== 0 ? v.toFixed(2) : String(v));
+                    value = vals.join(', ');
                     if (stat.value.length > 3) {
                         value += '...';
                     }
@@ -2013,6 +2463,11 @@ async function openImageDetailModal(cell: HTMLElement) {
             }
             else {
                 value = '-';
+            }
+
+            // Mask NaN or empty-like values
+            if (value === '-' || value.trim() === '' || value.toLowerCase() === 'nan') {
+                return; // skip rendering this stat
             }
 
             statItem.innerHTML = `
@@ -2218,10 +2673,23 @@ function updateUniqueTags(tags: string[]) {
     // 2. Update Painter Mode Tag List (Chips)
     const tagsContainer = document.getElementById('painter-tags-list');
     if (tagsContainer) {
+        // Preserve the inline input before clearing
+        const inlineInput = tagsContainer.querySelector('.inline-tag-input');
+
+        // Clear only the chips (avoid wiping the inline input if it exists)
+        // We can do this by removing all children distinct from inlineInput
+        Array.from(tagsContainer.children).forEach(child => {
+            if (child !== inlineInput) {
+                child.remove();
+            }
+        });
+
         if (uniqueTags.length === 0) {
-            tagsContainer.innerHTML = '<div class="empty-state">No tags found</div>';
+            // If no tags, maybe show a small text? or just show nothing before the input
+            // For now, let's just leave it clean or add a placeholder text if needed
+            // tagsContainer.insertAdjacentHTML('afterbegin', '<span class="empty-text">No tags</span>');
         } else {
-            tagsContainer.innerHTML = '';
+            // Sort tags if needed, they usually come sorted
             uniqueTags.forEach(tag => {
                 const chip = document.createElement('div');
                 chip.className = 'tag-chip';
@@ -2233,7 +2701,12 @@ function updateUniqueTags(tags: string[]) {
                     setActiveBrush(tag);
                 };
 
-                tagsContainer.appendChild(chip);
+                // Insert before the input (if it exists), or append
+                if (inlineInput) {
+                    tagsContainer.insertBefore(chip, inlineInput);
+                } else {
+                    tagsContainer.appendChild(chip);
+                }
             });
         }
     }
