@@ -876,6 +876,39 @@ body.segmentation-mode [data-section='segmentation'] {
   opacity: 0.85;
 }
 
+.slider-label-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 60px;
+}
+
+.slider-label-group.right {
+  align-items: flex-end;
+  text-align: right;
+  gap: 3px;
+}
+
+.stat-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1;
+}
+
+.stat-count.primary {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--primary-text-color);
+}
+
+.stat-count.secondary {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--secondary-text-color);
+  opacity: 0.85;
+}
+
 .stat-label {
   font-size: 0.55rem;
   color: var(--muted-text-color);
