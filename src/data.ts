@@ -132,6 +132,9 @@ const MAX_PREFETCH_BATCHES = (() => {
 const MAX_CACHE_ENTRIES = MAX_PREFETCH_BATCHES + 4; // Keep extra batches in memory (+2 for first/last batches)
 let prefetchInProgress = false;
 let lastFetchedBatchStart: number = 0; // Track navigation direction
+// function applyLocalOverrides(record: any) { ... } // Removed
+
+
 
 // Track discarded sample IDs locally to persist state across refreshes
 const locallyDiscardedSampleIds = new Set<number>();
@@ -333,6 +336,8 @@ function getSplitColors(): SplitColors {
         ['eval', 'test'],
         ['val', 'eval'],
         ['validation', 'eval'],
+        ['evaluation', 'eval'],
+        ['test', 'eval'],
     ];
 
     const allSplits = availableSplits && availableSplits.length > 0 ? availableSplits : ['train', 'eval'];
@@ -342,13 +347,21 @@ function getSplitColors(): SplitColors {
         colors[split.toLowerCase()] = saved || generateSplitColor(split, index, allSplits.length);
     });
 
-    // Ensure aliases resolve to existing colors
+    // Ensure aliases resolve to existing colors (bidirectional)
     aliasPairs.forEach(([alias, target]) => {
         const targetColor = colors[target.toLowerCase()];
-        if (targetColor && !colors[alias.toLowerCase()]) {
+        const aliasColor = colors[alias.toLowerCase()];
+
+        if (targetColor && !aliasColor) {
             colors[alias.toLowerCase()] = targetColor;
+        } else if (aliasColor && !targetColor) {
+            colors[target.toLowerCase()] = aliasColor;
         }
     });
+
+    // Absolute fallbacks to ensure type safety and basic colors
+    if (!colors['train']) colors['train'] = '#c57a09';
+    if (!colors['eval']) colors['eval'] = '#16bb07';
 
     return colors;
 }
@@ -2184,11 +2197,9 @@ contextMenu.addEventListener('click', async (e) => {
             case 'discard':
                 let newlyDiscardedCount = 0;
                 // Track discarded samples locally to maintain state across refreshes
-                sample_ids.forEach(id => {
-                    if (typeof id === 'number') {
-                        locallyDiscardedSampleIds.add(id);
-                    }
-                });
+                // sample_ids.forEach(id => {
+                //      locallyDiscardedSampleIds.add(id);
+                //});
 
                 selectedCells.forEach(cell => {
                     const gridCell = getGridCell(cell);
@@ -2251,6 +2262,7 @@ contextMenu.addEventListener('click', async (e) => {
                 if (newlyRestoredCount > 0) {
                     traversalPanel.incrementActiveCount(newlyRestoredCount);
                 }
+
 
                 const urequest: DataEditsRequest = {
                     statName: "deny_listed",
@@ -2962,6 +2974,7 @@ async function paintCell(cell: HTMLElement) {
         // Optimistic update
         gridCell.updateStats({ "tags": newTagsStr });
 
+
         // Send remove requests
         tagsToRemove.forEach((tag: string) => {
             const request: DataEditsRequest = {
@@ -2991,6 +3004,7 @@ async function paintCell(cell: HTMLElement) {
 
         // Optimistic update
         gridCell.updateStats({ "tags": newTagsStr });
+
 
         // Send add requests
         tagsToAdd.forEach((tag: string) => {

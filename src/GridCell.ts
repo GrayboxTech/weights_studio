@@ -406,7 +406,9 @@ export class GridCell {
         const splitColors = this.displayPreferences.splitColors || {};
 
         // Prefer explicit split color if available, else fall back to train/eval defaults
-        let borderColor = splitColors[origin] || (isEval ? splitColors.eval : splitColors.train) || (isEval ? EVAL_BORDER_COLOR : TRAIN_BORDER_COLOR);
+        let borderColor = splitColors[valLower] ||
+            (isEval ? splitColors['eval'] : splitColors['train']) ||
+            (isEval ? EVAL_BORDER_COLOR : TRAIN_BORDER_COLOR);
 
         // If discarded, reduce opacity to 40% (60% transparent)
         if (isDiscarded && borderColor) {

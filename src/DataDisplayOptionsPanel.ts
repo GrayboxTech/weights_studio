@@ -1,8 +1,7 @@
 import { DataRecord } from "./data_service";
 
 export type SplitColors = {
-    train: string;
-    eval: string;
+    [key: string]: string;
 };
 
 type ClassPreference = {
@@ -146,6 +145,7 @@ export class DataDisplayOptionsPanel {
             const stats = record.dataStats || [];
             const taskTypeStat = stats.find((s: any) => s.name === "task_type");
             if (taskTypeStat?.valueString === "segmentation") return true;
+            if (taskTypeStat?.valueString === "classification") return false;
         }
 
         const firstRecord = records[0];
