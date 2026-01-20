@@ -136,6 +136,9 @@ let lastFetchedBatchStart: number = 0; // Track navigation direction
 
 
 
+// Track discarded sample IDs locally to persist state across refreshes
+const locallyDiscardedSampleIds = new Set<number>();
+
 function getCacheKey(startIndex: number, count: number, resizeWidth: number, resizeHeight: number): string {
     return `${startIndex}-${count}-${resizeWidth}-${resizeHeight}`;
 }
@@ -421,6 +424,14 @@ async function fetchAndDisplaySamples() {
         const preferences = displayOptionsPanel.getDisplayPreferences();
         preferences.splitColors = getSplitColors();
         cachedResponse.dataRecords.forEach((record, index) => {
+            // Apply locally-tracked discard state to maintain consistency across refreshes
+            const denyListedStat = record.dataStats.find(stat => stat.name === 'deny_listed');
+            if (denyListedStat && locallyDiscardedSampleIds.has(record.sampleId)) {
+                denyListedStat.value = [1]; // Ensure deny_listed is 1 if locally tracked
+            } else if (denyListedStat && !locallyDiscardedSampleIds.has(record.sampleId)) {
+                denyListedStat.value = [0]; // Ensure deny_listed is 0 if not locally tracked
+            }
+
             const cell = gridManager.getCellbyIndex(index);
             if (cell) {
                 cell.populate(record, preferences);
@@ -499,6 +510,14 @@ async function fetchAndDisplaySamples() {
                 const preferences = displayOptionsPanel.getDisplayPreferences();
                 preferences.splitColors = getSplitColors();
                 response.dataRecords.forEach((record, index) => {
+                    // Apply locally-tracked discard state to maintain consistency
+                    const denyListedStat = record.dataStats.find(stat => stat.name === 'deny_listed');
+                    if (denyListedStat && locallyDiscardedSampleIds.has(record.sampleId)) {
+                        denyListedStat.value = [1]; // Ensure deny_listed is 1 if locally tracked
+                    } else if (denyListedStat && !locallyDiscardedSampleIds.has(record.sampleId)) {
+                        denyListedStat.value = [0]; // Ensure deny_listed is 0 if not locally tracked
+                    }
+
                     const cell = gridManager.getCellbyIndex(i + index);
                     if (cell) {
                         cell.populate(record, preferences);
