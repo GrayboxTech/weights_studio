@@ -16,15 +16,34 @@
       const cachedZoomLevel = localStorage.getItem('grid-zoom-level');
       const cachedImageResolutionAuto = localStorage.getItem('grid-image-resolution-auto');
       const cachedImageResolutionPercent = localStorage.getItem('grid-image-resolution-percent');
+      const cachedToggleRaw = localStorage.getItem('grid-toggle-raw');
+      const cachedToggleGt = localStorage.getItem('grid-toggle-gt');
+      const cachedTogglePred = localStorage.getItem('grid-toggle-pred');
+      const cachedToggleDiff = localStorage.getItem('grid-toggle-diff');
 
       // Store in a global object for later use by data.ts
       window.__cachedGridSettings = {
         cellSize: cachedCellSize,
         zoomLevel: cachedZoomLevel,
         imageResolutionAuto: cachedImageResolutionAuto,
-        imageResolutionPercent: cachedImageResolutionPercent
+        imageResolutionPercent: cachedImageResolutionPercent,
+        toggleRaw: cachedToggleRaw,
+        toggleGt: cachedToggleGt,
+        togglePred: cachedTogglePred,
+        toggleDiff: cachedToggleDiff
       };
     })();
+  </script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const settings = window.__cachedGridSettings;
+      if (settings) {
+        if (settings.toggleRaw !== null) document.getElementById('toggle-raw').checked = settings.toggleRaw === 'true';
+        if (settings.toggleGt !== null) document.getElementById('toggle-gt').checked = settings.toggleGt === 'true';
+        if (settings.togglePred !== null) document.getElementById('toggle-pred').checked = settings.togglePred === 'true';
+        if (settings.toggleDiff !== null) document.getElementById('toggle-diff').checked = settings.toggleDiff === 'true';
+      }
+    });
   </script>
 </head>
 
@@ -157,27 +176,27 @@
 
               <!-- Painter Controls Footer -->
               <div class="painter-controls-row">
-                <div class="painter-toggle-group">
+                <div class="painter-controls-group">
                   <span class="mode-label">Painter</span>
-                  <label class="switch compact" title="Toggle Painter Mode">
+                  <label class="switch-tiny" title="Toggle Painter Mode">
                     <input type="checkbox" id="painter-toggle">
                     <span></span>
                   </label>
-                </div>
-                <div class="segmented-control" id="mode-switcher-container" style="display: none;">
-                  <button id="mode-add" class="segment active" title="Add Tags">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                      stroke-width="2.5">
-                      <line x1="12" y1="5" x2="12" y2="19"></line>
-                      <line x1="5" y1="12" x2="19" y2="12"></line>
-                    </svg>
-                  </button>
-                  <button id="mode-remove" class="segment" title="Remove Tags">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                      stroke-width="2.5">
-                      <line x1="5" y1="12" x2="19" y2="12"></line>
-                    </svg>
-                  </button>
+                  <div class="segmented-control" id="mode-switcher-container" style="display: none;">
+                    <button id="mode-add" class="segment active" title="Add Tags">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                    </button>
+                    <button id="mode-remove" class="segment" title="Remove Tags">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

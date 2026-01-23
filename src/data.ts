@@ -112,6 +112,7 @@ let datasetInfoReady = false;
 let isPainterMode = false;
 let isPainterRemoveMode = false;
 let activeBrushTags = new Set<string>();
+let currentAbortController: AbortController | null = null;
 
 const MINUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
 const PLUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
@@ -841,10 +842,10 @@ async function updateDisplayOnly() {
     }
 }
 
-export async function handleQuerySubmit(query: string, isNaturalLanguage: boolean = true): Promise<void> {
+export async function handleQuerySubmit(query: string, isNaturalLanguage: boolean = true, abortSignal?: AbortSignal): Promise<void> {
     try {
         const request: DataQueryRequest = { query, accumulate: false, isNaturalLanguage };
-        const response: DataQueryResponse = await dataClient.applyDataQuery(request).response;
+        const response: DataQueryResponse = await dataClient.applyDataQuery(request, { abort: abortSignal }).response;
 
         // Handle Analysis Intent (Chat Mode)
         if (response.agentIntentType === AgentIntentType.INTENT_ANALYSIS) {
@@ -976,10 +977,14 @@ export async function initializeUIElements() {
         if (chatInput && chatInput.value.trim() && chatSendBtn) {
             const query = chatInput.value.trim();
 
-            // Set loading state
-            chatSendBtn.disabled = true;
+            // Set loading state (keep enabled for cancellation)
+            // chatSendBtn.disabled = true;
             chatSendBtn.classList.add('loading');
+            chatSendBtn.title = "Click to abort";
             chatInput.disabled = true;
+
+            // Create AbortController
+            currentAbortController = new AbortController();
 
             // 1. Add User Message immediately
             addChatMessage(query, 'user');
@@ -989,17 +994,23 @@ export async function initializeUIElements() {
             const typingMsg = addChatMessage('', 'agent', true);
 
             try {
-                await handleQuerySubmit(query);
+                await handleQuerySubmit(query, true, currentAbortController.signal);
             } catch (error: any) {
-                console.error("Query failed:", error);
-                // 3. Add Error Message to history
-                addChatMessage(`Error: ${error.message || "Unknown error"}`, 'agent');
+                if (error.name === 'AbortError' || error.message.includes('aborted')) {
+                    addChatMessage("Process Aborted.", 'agent');
+                } else {
+                    console.error("Query failed:", error);
+                    // 3. Add Error Message to history
+                    addChatMessage(`Error: ${error.message || "Unknown error"}`, 'agent');
+                }
             } finally {
                 // Remove typing indicator if it exists
                 if (typingMsg) typingMsg.remove();
                 // Reset state
+                currentAbortController = null;
                 chatSendBtn.disabled = false;
                 chatSendBtn.classList.remove('loading');
+                chatSendBtn.title = "Send query";
                 chatInput.disabled = false;
                 chatInput.focus();
             }
@@ -1026,7 +1037,13 @@ export async function initializeUIElements() {
 
     if (chatSendBtn) {
         chatSendBtn.addEventListener('click', async () => {
-            await submitQuery();
+            if (chatSendBtn.classList.contains('loading')) {
+                if (currentAbortController) {
+                    currentAbortController.abort();
+                }
+            } else {
+                await submitQuery();
+            }
         });
     }
 
