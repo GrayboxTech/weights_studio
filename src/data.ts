@@ -413,9 +413,9 @@ async function fetchAndDisplaySamples() {
         resizeWidth = -resolutionPercent;
         resizeHeight = -resolutionPercent;
     } else {
-        const cellSize = gridManager.calculateGridDimensions().cellSize;
-        resizeWidth = cellSize;
-        resizeHeight = cellSize;
+        const { cellWidth, cellHeight } = gridManager.calculateGridDimensions();
+        resizeWidth = cellWidth;
+        resizeHeight = cellHeight;
     }
 
     // Check cache first for the entire batch
@@ -484,9 +484,9 @@ async function fetchAndDisplaySamples() {
                 resizeHeight = -resolutionPercent;
             } else {
                 // Auto mode: use grid cell size
-                const cellSize = gridManager.calculateGridDimensions().cellSize;
-                resizeWidth = cellSize;
-                resizeHeight = cellSize;
+                const { cellWidth, cellHeight } = gridManager.calculateGridDimensions();
+                resizeWidth = cellWidth;
+                resizeHeight = cellHeight;
             }
 
             const request: DataSamplesRequest = {
@@ -541,6 +541,27 @@ async function fetchAndDisplaySamples() {
         }
 
         console.debug(`Retrieved ${totalRecordsRetrieved} records for grid of size ${count}.`);
+
+        // Detect and apply aspect ratio from the first batch of results
+        if (allRecords.length > 0) {
+            const firstRecord = allRecords[0];
+            const rawStat = firstRecord.dataStats.find((s: any) => s.name === 'raw_data' || s.name === 'image');
+            if (rawStat && rawStat.shape && rawStat.shape.length >= 2) {
+                // Shape is usually [H, W, C] in the backend for raw_data
+                // but let's be careful. common: [H, W, 3]
+                const h = rawStat.shape[0];
+                const w = rawStat.shape[1];
+                if (h > 0 && w > 0) {
+                    const ratio = w / h;
+                    if (gridManager.setAspectRatio(ratio)) {
+                        console.info(`[Aspect Ratio] Detected new ratio: ${ratio.toFixed(2)}. Re-triggering layout.`);
+                        // If ratio changed, we must rebuild the grid
+                        updateLayout();
+                        // Recursive call might be overkill, let's just finish this cycle
+                    }
+                }
+            }
+        }
 
         // Cache the complete response
         if (allRecords.length > 0) {
@@ -2364,6 +2385,7 @@ function applySegmentationToModal(
                 showGt,
                 showPred,
                 showDiff,
+                showSplitView: displayOptionsPanel?.getDisplayPreferences().showSplitView ?? false,
                 alpha: 0.45,
                 classPrefs: classPreferences
             }

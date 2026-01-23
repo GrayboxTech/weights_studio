@@ -14,6 +14,7 @@ export class GridManager {
     private displayOptionsPanel: DataDisplayOptionsPanel;
     private cells: GridCell[] = [];
     private selectionManager: SelectionManager | null = null;
+    private aspectRatio: number = 1.0;
 
     constructor(
         cellsContainer: HTMLElement,
@@ -25,11 +26,14 @@ export class GridManager {
         this.displayOptionsPanel = displayOptionsPanel;
     }
 
-    calculateGridDimensions(): { rows: number; cols: number; gridCount: number; cellSize: number } {
+    calculateGridDimensions(): { rows: number; cols: number; gridCount: number; cellWidth: number; cellHeight: number } {
         const size = this.traversalPanel.getImageWidth();
         const zoom = this.traversalPanel.getMagnification();
 
-        const effectiveCellSize = Math.round(size * zoom);
+        const cellWidth = Math.round(size * zoom);
+        // Calculate height based on aspect ratio (width / height = aspect_ratio) -> height = width / aspect_ratio
+        const cellHeight = Math.round(cellWidth / this.aspectRatio);
+
         const containerWidth = this.cellsContainer.clientWidth;
 
         // Dynamically calculate available height
@@ -47,20 +51,20 @@ export class GridManager {
             availableHeight = mainContentHeight - headerHeight - bottomBarHeight - 15;
         }
 
-        const cols = Math.max(1, Math.floor(containerWidth / (effectiveCellSize + GRID_GAP)));
-        const rows = Math.max(1, Math.floor(availableHeight / (effectiveCellSize + GRID_GAP)));
+        const cols = Math.max(1, Math.floor(containerWidth / (cellWidth + GRID_GAP)));
+        const rows = Math.max(1, Math.floor(availableHeight / (cellHeight + GRID_GAP)));
         const gridCount = rows * cols;
 
-        return { rows, cols, gridCount, cellSize: effectiveCellSize };
+        return { rows, cols, gridCount, cellWidth, cellHeight };
     }
 
-    updateGridLayout(): { rows: number; cols: number; gridCount: number; cellSize: number } {
+    updateGridLayout(): { rows: number; cols: number; gridCount: number; cellWidth: number; cellHeight: number } {
         const dimensions = this.calculateGridDimensions();
-        const { rows, cols, gridCount, cellSize } = dimensions;
+        const { rows, cols, gridCount, cellWidth, cellHeight } = dimensions;
 
         // Check if we already have the correct number of cells and the correct layout
         const currentCols = parseInt(this.cellsContainer.style.gridTemplateColumns.match(/\d+/)?.[0] || '0');
-        if (this.cells.length === gridCount && currentCols === cols && this.cells[0]?.getWidth() === cellSize) {
+        if (this.cells.length === gridCount && currentCols === cols && this.cells[0]?.getWidth() === cellWidth) {
             return dimensions;
         }
 
@@ -69,18 +73,28 @@ export class GridManager {
         this.cells = [];
 
         // Set grid template
-        this.cellsContainer.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
-        this.cellsContainer.style.gridTemplateRows = `repeat(${rows}, ${cellSize}px)`;
+        this.cellsContainer.style.gridTemplateColumns = `repeat(${cols}, ${cellWidth}px)`;
+        this.cellsContainer.style.gridTemplateRows = `repeat(${rows}, ${cellHeight}px)`;
         this.cellsContainer.style.gap = `${GRID_GAP}px`;
 
         // Create new cells
         for (let i = 0; i < gridCount; i++) {
-            const cell = new GridCell(cellSize, cellSize);
+            const cell = new GridCell(cellWidth, cellHeight);
             this.cells.push(cell);
             this.cellsContainer.appendChild(cell.getElement());
         }
 
         return dimensions;
+    }
+
+    public setAspectRatio(ratio: number): boolean {
+        // Clamp ratio to reasonable bounds to prevent layout explosion
+        const clampedRatio = Math.max(0.1, Math.min(ratio, 10));
+        if (Math.abs(this.aspectRatio - clampedRatio) > 0.01) {
+            this.aspectRatio = clampedRatio;
+            return true; // Ratio changed
+        }
+        return false;
     }
 
     public getCellbyIndex(index: number): GridCell | null {

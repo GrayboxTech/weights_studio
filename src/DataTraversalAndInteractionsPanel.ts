@@ -51,6 +51,7 @@ export class DataTraversalAndInteractionsPanel {
 
         this.attachEventListeners();
         this.initializeSlider();
+        this.updateImageResolutionValue();
     }
 
     private attachEventListeners(): void {

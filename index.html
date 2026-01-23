@@ -42,6 +42,14 @@
         if (settings.toggleGt !== null) document.getElementById('toggle-gt').checked = settings.toggleGt === 'true';
         if (settings.togglePred !== null) document.getElementById('toggle-pred').checked = settings.togglePred === 'true';
         if (settings.toggleDiff !== null) document.getElementById('toggle-diff').checked = settings.toggleDiff === 'true';
+
+        // Apply numerical/range settings
+        if (settings.cellSize !== null) {
+          document.getElementById('cell-size').value = settings.cellSize;
+        }
+        if (settings.imageResolutionPercent !== null) {
+          document.getElementById('image-resolution-percent').value = settings.imageResolutionPercent;
+        }
       }
     });
   </script>
@@ -272,6 +280,8 @@
                       <label class="switch"><input type="checkbox" id="toggle-gt" checked><span></span>GT</label>
                       <label class="switch"><input type="checkbox" id="toggle-pred" checked><span></span>Pred</label>
                       <label class="switch"><input type="checkbox" id="toggle-diff"><span></span>Diff</label>
+                      <label class="switch" title="Split view into quadrants"><input type="checkbox"
+                          id="toggle-split-view"><span></span>Split view</label>
                     </div>
                   </div>
                 </div>

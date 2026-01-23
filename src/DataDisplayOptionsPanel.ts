@@ -17,6 +17,7 @@ export type DisplayPreferences = {
     showGtMask?: boolean;
     showPredMask?: boolean;
     showDiffMask?: boolean;
+    showSplitView?: boolean;
 
     classPreferences?: Record<number, ClassPreference>;
 };
@@ -65,6 +66,7 @@ export class DataDisplayOptionsPanel {
         const toggleGt = document.getElementById('toggle-gt') as HTMLInputElement | null;
         const togglePred = document.getElementById('toggle-pred') as HTMLInputElement | null;
         const toggleDiff = document.getElementById('toggle-diff') as HTMLInputElement | null;
+        const toggleSplitView = document.getElementById('toggle-split-view') as HTMLInputElement | null;
 
         const isSegmentation = this.isSegmentationDataset;
 
@@ -106,6 +108,7 @@ export class DataDisplayOptionsPanel {
         applyState(toggleGt, gtDisabled, gtMsg, 'grid-toggle-gt', true);
         applyState(togglePred, predDisabled, predMsg, 'grid-toggle-pred', true);
         applyState(toggleDiff, diffDisabled, diffMsg, 'grid-toggle-diff', false);
+        applyState(toggleSplitView, false, '', 'grid-toggle-split-view', false);
 
         // Note: Diff is NOT auto-toggled (user must explicitly enable it)
 
@@ -704,6 +707,8 @@ export class DataDisplayOptionsPanel {
         preferences.showGtMask = gtToggle ? gtToggle.checked : true;
         preferences.showPredMask = predToggle ? predToggle.checked : true;
         preferences.showDiffMask = diffToggle ? diffToggle.checked : false;
+        const splitToggle = document.getElementById("toggle-split-view") as HTMLInputElement | null;
+        preferences.showSplitView = splitToggle ? splitToggle.checked : false;
 
         const classPreferences: Record<number, ClassPreference> = {};
         for (const id of this.classIds) {
@@ -751,6 +756,7 @@ export class DataDisplayOptionsPanel {
         const gtToggle = document.getElementById("toggle-gt") as HTMLInputElement | null;
         const predToggle = document.getElementById("toggle-pred") as HTMLInputElement | null;
         const diffToggle = document.getElementById("toggle-diff") as HTMLInputElement | null;
+        const splitToggle = document.getElementById("toggle-split-view") as HTMLInputElement | null;
 
         const imageResolutionAuto = document.getElementById("image-resolution-auto") as HTMLInputElement | null;
         const imageResolutionPercent = document.getElementById("image-resolution-percent") as HTMLInputElement | null;
@@ -779,6 +785,7 @@ export class DataDisplayOptionsPanel {
         if (gtToggle) gtToggle.addEventListener("change", () => onToggleChange("toggle-gt", gtToggle));
         if (predToggle) predToggle.addEventListener("change", () => onToggleChange("toggle-pred", predToggle));
         if (diffToggle) diffToggle.addEventListener("change", () => onToggleChange("toggle-diff", diffToggle));
+        if (splitToggle) splitToggle.addEventListener("change", () => onToggleChange("toggle-split-view", splitToggle));
     }
 
     getCellSize(): number {
