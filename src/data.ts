@@ -346,16 +346,17 @@ function showRestoreMarkerModal(marker: any, signalName: string): void {
         modal.style.top = '50%';
         modal.style.left = '50%';
         modal.style.transform = 'translate(-50%, -50%)';
-        modal.style.backgroundColor = '#fff';
-        modal.style.border = '1px solid #ccc';
-        modal.style.borderRadius = '8px';
-        modal.style.padding = '20px';
+        modal.style.background = 'var(--surface-color, #ffffff)';
+        modal.style.border = '1px solid var(--border-color, #d1d5db)';
+        modal.style.borderRadius = 'var(--radius-md, 12px)';
+        modal.style.padding = '24px';
         modal.style.zIndex = '10001';
-        modal.style.minWidth = '400px';
-        modal.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
-        modal.style.maxHeight = '80vh';
+        modal.style.minWidth = '420px';
+        modal.style.maxWidth = '600px';
+        modal.style.boxShadow = 'var(--shadow-soft, 0 18px 45px rgba(15, 23, 42, 0.08))';
+        modal.style.maxHeight = '85vh';
         modal.style.overflowY = 'auto';
-        modal.style.color = '#000';
+        modal.style.color = 'var(--primary-text-color, #111827)';
         document.body.appendChild(modal);
 
         // Add overlay
@@ -366,7 +367,8 @@ function showRestoreMarkerModal(marker: any, signalName: string): void {
         overlay.style.left = '0';
         overlay.style.width = '100%';
         overlay.style.height = '100%';
-        overlay.style.backgroundColor = 'rgba(0,0,0,0.5)';
+        overlay.style.backgroundColor = 'rgba(15, 23, 42, 0.35)';
+        overlay.style.backdropFilter = 'blur(4px)';
         overlay.style.zIndex = '10000';
         overlay.onclick = closeRestoreMarkerModal;
         document.body.appendChild(overlay);
@@ -374,38 +376,40 @@ function showRestoreMarkerModal(marker: any, signalName: string): void {
 
     // Populate modal content
     modal.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h2 style="margin: 0;">Restore Checkpoint</h2>
-            <button onclick="(window ).closeRestoreMarkerModal()" style="background: none; border: none; font-size: 24px; cursor: pointer;">×</button>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle, rgba(209, 213, 219, 0.9));">
+            <h2 style="margin: 0; font-size: 18px; font-weight: 600; color: var(--primary-text-color, #111827);">Restore Checkpoint</h2>
+            <button onclick="(window ).closeRestoreMarkerModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--secondary-text-color, #6b7280); padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: background-color 0.2s;">×</button>
         </div>
 
-        <div style="margin-bottom: 16px;">
-            <label style="font-weight: bold;">Signal:</label>
-            <div>${signalName}</div>
+        <div style="margin-bottom: 18px;">
+            <label style="font-weight: 600; font-size: 13px; color: var(--secondary-text-color, #6b7280); display: block; margin-bottom: 6px;">Signal</label>
+            <div style="color: var(--primary-text-color, #111827); font-size: 14px;">${signalName}</div>
         </div>
 
-        <div style="margin-bottom: 16px;">
-            <label style="font-weight: bold;">Experiment Hash:</label>
-            <div style="word-break: break-all; font-family: monospace; background: #f5f5f5; padding: 8px; border-radius: 4px;">${marker.experimentHash}</div>
+        <div style="margin-bottom: 18px;">
+            <label style="font-weight: 600; font-size: 13px; color: var(--secondary-text-color, #6b7280); display: block; margin-bottom: 6px;">Experiment Hash</label>
+            <div style="word-break: break-all; font-family: 'SF Mono', 'Monaco', 'Courier New', monospace; background: var(--surface-elevated-color, #ffffff); padding: 10px 12px; border-radius: var(--radius-sm, 8px); border: 1px solid var(--border-subtle, rgba(209, 213, 219, 0.9)); font-size: 13px; color: var(--primary-text-color, #111827);">${marker.experimentHash}</div>
         </div>
 
-        <div style="margin-bottom: 16px;">
-            <label style="font-weight: bold;">Model Age (Steps):</label>
-            <div>${marker.x}</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px;">
+            <div>
+                <label style="font-weight: 600; font-size: 13px; color: var(--secondary-text-color, #6b7280); display: block; margin-bottom: 6px;">Model Age (Steps)</label>
+                <div style="color: var(--primary-text-color, #111827); font-size: 14px;">${marker.x}</div>
+            </div>
+            <div>
+                <label style="font-weight: 600; font-size: 13px; color: var(--secondary-text-color, #6b7280); display: block; margin-bottom: 6px;">Value</label>
+                <div style="color: var(--primary-text-color, #111827); font-size: 14px;">${marker.y.toFixed(4)}</div>
+            </div>
         </div>
 
-        <div style="margin-bottom: 16px;">
-            <label style="font-weight: bold;">Value:</label>
-            <div>${marker.y.toFixed(4)}</div>
+        <div style="margin-bottom: 24px;">
+            <label style="font-weight: 600; font-size: 13px; color: var(--secondary-text-color, #6b7280); display: block; margin-bottom: 6px;">Change Details</label>
+            <div style="color: var(--primary-text-color, #111827); font-size: 13px; line-height: 1.6; white-space: pre-wrap; background: var(--surface-elevated-color, #ffffff); padding: 10px 12px; border-radius: var(--radius-sm, 8px); border: 1px solid var(--border-subtle, rgba(209, 213, 219, 0.9));">${marker.changeDetail || 'No change details available'}</div>
         </div>
 
-        <div style="margin-bottom: 16px;">
-            <label style="font-weight: bold;">Details:</label>
-            <div>${marker.changeDetail ? marker.changeDetail : 'No change details available'}</div>
-        </div>
-
-        <div style="display: flex; gap: 10px; justify-content: flex-end;">
-            <button onclick="(window ).executeRestoreCheckpoint('${marker.experimentHash}')" style="padding: 8px 16px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer;">Restore Checkpoint</button>
+        <div style="display: flex; gap: 10px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid var(--border-subtle, rgba(209, 213, 219, 0.9));">
+            <button onclick="(window ).closeRestoreMarkerModal()" style="padding: 10px 20px; background: var(--surface-elevated-color, #f5f5f5); color: var(--primary-text-color, #111827); border: 1px solid var(--border-subtle, rgba(209, 213, 219, 0.9)); border-radius: var(--radius-sm, 8px); cursor: pointer; font-weight: 500; font-size: 14px; transition: background-color 0.2s;">Cancel</button>
+            <button onclick="(window ).executeRestoreCheckpoint('${marker.experimentHash}')" style="padding: 10px 20px; background: var(--accent-color, #007aff); color: white; border: none; border-radius: var(--radius-sm, 8px); cursor: pointer; font-weight: 500; font-size: 14px; transition: background-color 0.2s;">Restore Checkpoint</button>
         </div>
     `;
 
@@ -1193,26 +1197,33 @@ function openSignalSettings(signalName: string): void {
     overlay.style.left = '0';
     overlay.style.right = '0';
     overlay.style.bottom = '0';
-    overlay.style.background = 'rgba(0,0,0,0.4)';
+    overlay.style.background = 'rgba(15, 23, 42, 0.35)';
+    overlay.style.backdropFilter = 'blur(4px)';
     overlay.style.zIndex = '9999';
     overlay.style.display = 'flex';
     overlay.style.alignItems = 'center';
     overlay.style.justifyContent = 'center';
 
     const modal = document.createElement('div');
-    modal.style.background = 'var(--bg, #fff)';
-    modal.style.color = 'var(--fg, #111)';
-    modal.style.padding = '16px';
-    modal.style.borderRadius = '8px';
-    modal.style.minWidth = '320px';
-    modal.style.boxShadow = '0 8px 30px rgba(0,0,0,0.25)';
+    modal.style.background = 'var(--surface-color, #ffffff)';
+    modal.style.color = 'var(--primary-text-color, #111827)';
+    modal.style.padding = '24px';
+    modal.style.borderRadius = 'var(--radius-md, 12px)';
+    modal.style.minWidth = '380px';
+    modal.style.maxWidth = '480px';
+    modal.style.border = '1px solid var(--border-color, #d1d5db)';
+    modal.style.boxShadow = 'var(--shadow-soft, 0 18px 45px rgba(15, 23, 42, 0.08))';
     modal.style.display = 'flex';
     modal.style.flexDirection = 'column';
-    modal.style.gap = '12px';
+    modal.style.gap = '16px';
 
     const title = document.createElement('div');
     title.textContent = `Settings • ${signalName}`;
     title.style.fontWeight = '600';
+    title.style.fontSize = '18px';
+    title.style.color = 'var(--primary-text-color, #111827)';
+    title.style.paddingBottom = '12px';
+    title.style.borderBottom = '1px solid var(--border-subtle, rgba(209, 213, 219, 0.9))';
     modal.appendChild(title);
 
     const colorRow = document.createElement('div');
@@ -1348,27 +1359,33 @@ function openGlobalPlotSettings(): void {
     overlay.style.left = '0';
     overlay.style.right = '0';
     overlay.style.bottom = '0';
-    overlay.style.background = 'rgba(0,0,0,0.4)';
+    overlay.style.background = 'rgba(15, 23, 42, 0.35)';
+    overlay.style.backdropFilter = 'blur(4px)';
     overlay.style.zIndex = '9999';
     overlay.style.display = 'flex';
     overlay.style.alignItems = 'center';
     overlay.style.justifyContent = 'center';
 
     const modal = document.createElement('div');
-    modal.style.background = 'var(--bg, #fff)';
-    modal.style.color = 'var(--fg, #111)';
-    modal.style.padding = '16px';
-    modal.style.borderRadius = '8px';
-    modal.style.minWidth = '350px';
-    modal.style.boxShadow = '0 8px 30px rgba(0,0,0,0.25)';
+    modal.style.background = 'var(--surface-color, #ffffff)';
+    modal.style.color = 'var(--primary-text-color, #111827)';
+    modal.style.padding = '24px';
+    modal.style.borderRadius = 'var(--radius-md, 12px)';
+    modal.style.minWidth = '400px';
+    modal.style.maxWidth = '500px';
+    modal.style.border = '1px solid var(--border-color, #d1d5db)';
+    modal.style.boxShadow = 'var(--shadow-soft, 0 18px 45px rgba(15, 23, 42, 0.08))';
     modal.style.display = 'flex';
     modal.style.flexDirection = 'column';
-    modal.style.gap = '12px';
+    modal.style.gap = '16px';
 
     const title = document.createElement('div');
     title.textContent = 'Plot Settings';
     title.style.fontWeight = '600';
-    title.style.fontSize = '16px';
+    title.style.fontSize = '18px';
+    title.style.color = 'var(--primary-text-color, #111827)';
+    title.style.paddingBottom = '12px';
+    title.style.borderBottom = '1px solid var(--border-subtle, rgba(209, 213, 219, 0.9))';
     modal.appendChild(title);
 
     const currentInterval = localStorage.getItem('plot-refresh-interval-ms') || '2000';
