@@ -576,10 +576,43 @@ function applyStride(points: SignalRawPoint[], stride: number): SignalRawPoint[]
 
 /**
  * Describe what changed between two experiment hashes.
+ * Hash structure: [HP: 8 chars][MODEL: 8 chars][DATA: 8 chars]
  */
 function describeHashChange(prevHash: string, currHash: string): string | undefined {
-    // TODO: Implement hash comparison logic if needed
-    return undefined;
+    if (!prevHash || !currHash || prevHash.length < 24 || currHash.length < 24) {
+        return undefined;
+    }
+
+    // Extract components: first 8 chars = HP, next 8 = MODEL, last 8 = DATA
+    const prevHP = prevHash.slice(0, 8);
+    const prevModel = prevHash.slice(8, 16);
+    const prevData = prevHash.slice(16, 24);
+
+    const currHP = currHash.slice(0, 8);
+    const currModel = currHash.slice(8, 16);
+    const currData = currHash.slice(16, 24);
+
+    const changes: string[] = [];
+
+    if (prevHP !== currHP) {
+        changes.push(`HP (changed): ${prevHP} → ${currHP}`);
+    } else {
+        changes.push(`HP: ${prevHP} (unchanged)`);
+    }
+
+    if (prevModel !== currModel) {
+        changes.push(`MODEL (changed): ${prevModel} → ${currModel}`);
+    } else {
+        changes.push(`MODEL: ${prevModel} (unchanged)`);
+    }
+
+    if (prevData !== currData) {
+        changes.push(`DATA (changed): ${prevData} → ${currData}`);
+    } else {
+        changes.push(`DATA: ${prevData} (unchanged)`);
+    }
+
+    return changes.join('\n');
 }
 
 function buildSmoothedSeries(points: SignalRawPoint[], opts: {
@@ -1596,12 +1629,13 @@ async function fetchAndCreateSplitColorPickers(): Promise<void> {
                 input.className = 'color-picker';
 
                 // Restore from localStorage or use default/generated color
-                const savedColor = localStorage.getItem(`${split}-color`);
+                const lcKey = `${split.toLowerCase()}-color`;
+                const savedColor = localStorage.getItem(lcKey);
                 input.value = savedColor || generateSplitColor(split, index, availableSplits.length);
 
                 // Save to localStorage on change and update display
                 input.addEventListener('input', () => {
-                    localStorage.setItem(`${split}-color`, input.value);
+                    localStorage.setItem(lcKey, input.value);
                     updateDisplayOnly();
                 });
 
@@ -1637,7 +1671,8 @@ function getSplitColors(): SplitColors {
     const allSplits = availableSplits && availableSplits.length > 0 ? availableSplits : ['train', 'eval'];
 
     allSplits.forEach((split, index) => {
-        const saved = localStorage.getItem(`${split}-color`);
+        const lcKey = `${split.toLowerCase()}-color`;
+        const saved = localStorage.getItem(lcKey);
         colors[split.toLowerCase()] = saved || generateSplitColor(split, index, allSplits.length);
     });
 
