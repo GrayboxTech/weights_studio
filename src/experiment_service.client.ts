@@ -4,6 +4,10 @@
 import type { RpcTransport } from "@protobuf-ts/runtime-rpc";
 import type { ServiceInfo } from "@protobuf-ts/runtime-rpc";
 import { ExperimentService } from "./experiment_service";
+import type { RestoreCheckpointResponse } from "./experiment_service";
+import type { RestoreCheckpointRequest } from "./experiment_service";
+import type { GetLatestLoggerDataResponse } from "./experiment_service";
+import type { GetLatestLoggerDataRequest } from "./experiment_service";
 import type { AgentHealthResponse } from "./experiment_service";
 import type { DataEditsResponse } from "./experiment_service";
 import type { DataEditsRequest } from "./experiment_service";
@@ -33,9 +37,9 @@ import type { RpcOptions } from "@protobuf-ts/runtime-rpc";
  */
 export interface IExperimentServiceClient {
     /**
-     * @generated from protobuf rpc: StreamStatus
+     * @generated from protobuf rpc: GetLatestLoggerData
      */
-    streamStatus(input: Empty, options?: RpcOptions): ServerStreamingCall<Empty, TrainingStatusEx>;
+    getLatestLoggerData(input: GetLatestLoggerDataRequest, options?: RpcOptions): UnaryCall<GetLatestLoggerDataRequest, GetLatestLoggerDataResponse>;
     /**
      * @generated from protobuf rpc: ExperimentCommand
      */
@@ -78,6 +82,10 @@ export interface IExperimentServiceClient {
      * @generated from protobuf rpc: CheckAgentHealth
      */
     checkAgentHealth(input: Empty, options?: RpcOptions): UnaryCall<Empty, AgentHealthResponse>;
+    /**
+     * @generated from protobuf rpc: RestoreCheckpoint
+     */
+    restoreCheckpoint(input: RestoreCheckpointRequest, options?: RpcOptions): UnaryCall<RestoreCheckpointRequest, RestoreCheckpointResponse>;
 }
 /**
  * @generated from protobuf service ExperimentService
@@ -89,11 +97,11 @@ export class ExperimentServiceClient implements IExperimentServiceClient, Servic
     constructor(private readonly _transport: RpcTransport) {
     }
     /**
-     * @generated from protobuf rpc: StreamStatus
+     * @generated from protobuf rpc: GetLatestLoggerData
      */
-    streamStatus(input: Empty, options?: RpcOptions): ServerStreamingCall<Empty, TrainingStatusEx> {
+    getLatestLoggerData(input: GetLatestLoggerDataRequest, options?: RpcOptions): UnaryCall<GetLatestLoggerDataRequest, GetLatestLoggerDataResponse> {
         const method = this.methods[0], opt = this._transport.mergeOptions(options);
-        return stackIntercept<Empty, TrainingStatusEx>("serverStreaming", this._transport, method, opt, input);
+        return stackIntercept<GetLatestLoggerDataRequest, GetLatestLoggerDataResponse>("unary", this._transport, method, opt, input);
     }
     /**
      * @generated from protobuf rpc: ExperimentCommand
@@ -124,6 +132,13 @@ export class ExperimentServiceClient implements IExperimentServiceClient, Servic
         return stackIntercept<ActivationRequest, ActivationResponse>("unary", this._transport, method, opt, input);
     }
     /**
+     * @generated from protobuf rpc: GetSamples
+     */
+    getSamples(input: BatchSampleRequest, options?: RpcOptions): UnaryCall<BatchSampleRequest, BatchSampleResponse> {
+        const method = this.methods[5], opt = this._transport.mergeOptions(options);
+        return stackIntercept<BatchSampleRequest, BatchSampleResponse>("unary", this._transport, method, opt, input);
+    }
+    /**
      * @generated from protobuf rpc: ApplyDataQuery
      */
     applyDataQuery(input: DataQueryRequest, options?: RpcOptions): UnaryCall<DataQueryRequest, DataQueryResponse> {
@@ -131,31 +146,38 @@ export class ExperimentServiceClient implements IExperimentServiceClient, Servic
         return stackIntercept<DataQueryRequest, DataQueryResponse>("unary", this._transport, method, opt, input);
     }
     /**
-     * @generated from protobuf rpc: GetDataSplits
-     */
-    getDataSplits(input: Empty, options?: RpcOptions): UnaryCall<Empty, DataSplitsResponse> {
-        const method = this.methods[7], opt = this._transport.mergeOptions(options);
-        return stackIntercept<Empty, DataSplitsResponse>("unary", this._transport, method, opt, input);
-    }
-    /**
      * @generated from protobuf rpc: GetDataSamples
      */
     getDataSamples(input: DataSamplesRequest, options?: RpcOptions): UnaryCall<DataSamplesRequest, DataSamplesResponse> {
-        const method = this.methods[8], opt = this._transport.mergeOptions(options);
+        const method = this.methods[7], opt = this._transport.mergeOptions(options);
         return stackIntercept<DataSamplesRequest, DataSamplesResponse>("unary", this._transport, method, opt, input);
     }
     /**
      * @generated from protobuf rpc: EditDataSample
      */
     editDataSample(input: DataEditsRequest, options?: RpcOptions): UnaryCall<DataEditsRequest, DataEditsResponse> {
-        const method = this.methods[9], opt = this._transport.mergeOptions(options);
+        const method = this.methods[8], opt = this._transport.mergeOptions(options);
         return stackIntercept<DataEditsRequest, DataEditsResponse>("unary", this._transport, method, opt, input);
+    }
+    /**
+     * @generated from protobuf rpc: GetDataSplits
+     */
+    getDataSplits(input: Empty, options?: RpcOptions): UnaryCall<Empty, DataSplitsResponse> {
+        const method = this.methods[9], opt = this._transport.mergeOptions(options);
+        return stackIntercept<Empty, DataSplitsResponse>("unary", this._transport, method, opt, input);
     }
     /**
      * @generated from protobuf rpc: CheckAgentHealth
      */
     checkAgentHealth(input: Empty, options?: RpcOptions): UnaryCall<Empty, AgentHealthResponse> {
-        const method = this.methods[9], opt = this._transport.mergeOptions(options);
+        const method = this.methods[10], opt = this._transport.mergeOptions(options);
         return stackIntercept<Empty, AgentHealthResponse>("unary", this._transport, method, opt, input);
+    }
+    /**
+     * @generated from protobuf rpc: RestoreCheckpoint
+     */
+    restoreCheckpoint(input: RestoreCheckpointRequest, options?: RpcOptions): UnaryCall<RestoreCheckpointRequest, RestoreCheckpointResponse> {
+        const method = this.methods[11], opt = this._transport.mergeOptions(options);
+        return stackIntercept<RestoreCheckpointRequest, RestoreCheckpointResponse>("unary", this._transport, method, opt, input);
     }
 }

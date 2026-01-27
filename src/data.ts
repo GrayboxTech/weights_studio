@@ -63,7 +63,7 @@ function restoreGridSettings(): void {
     const imageResolutionValue = document.getElementById('image-resolution-value') as HTMLSpanElement;
 
     // Use cached values from window object if available (set by HTML script), otherwise use localStorage
-    const cachedSettings = (window as any).__cachedGridSettings || {};
+    const cachedSettings = (window ).__cachedGridSettings || {};
     const savedCellSize = cachedSettings.cellSize || localStorage.getItem('grid-cell-size');
     const savedZoomLevel = cachedSettings.zoomLevel || localStorage.getItem('grid-zoom-level');
     const savedImageResolutionAuto = cachedSettings.imageResolutionAuto || localStorage.getItem('grid-image-resolution-auto');
@@ -105,17 +105,28 @@ let uniqueTags: string[] = [];
 let signalsContainer: HTMLElement | null = null;
 
 type SignalPoint = { x: number; y: number };
+type SignalRawPoint = { x: number; y: number; experimentHash?: string; changeDetail?: string };
 
 interface SignalChart {
     chart: Chart;
-    data: SignalPoint[];
+    data: SignalPoint[]; // plotted (smoothed/decimated) points
+    rawPoints: SignalRawPoint[]; // full history kept in memory (bounded)
     pending: boolean;
+    color: string;
+    smoothingEnabled: boolean;
+    smoothingFactor: number;
+    stdEnabled: boolean;
+    userZoomed: boolean;
 }
 
 const signalCharts = new Map<string, SignalChart>();
 const SIGNAL_UPDATE_INTERVAL_MS = 5000;
 const SIGNAL_MAX_POINTS = 5000;
 let signalUpdateTimer: number | null = null;
+
+// Double-click detection for markers
+let lastMarkerClickTime: number = 0;
+const DOUBLE_CLICK_THRESHOLD_MS = 1000;
 
 // Available data splits reported by backend (train/eval/test/custom)
 let availableSplits: string[] = ['train', 'eval'];
@@ -128,6 +139,15 @@ let datasetInfoReady = false;
 let isPainterMode = false;
 let isPainterRemoveMode = false;
 let activeBrushTags = new Set<string>();
+
+// Training metrics for display: map of metricName -> { value, timestamp }
+const latestMetrics = new Map<string, { value: number; timestamp: number }>();
+
+// Plot/history tuning
+const SIGNAL_HISTORY_LIMIT = 50000; // keep up to 50k raw points per signal
+const PLOT_STRIDE = 5; // plot every Nth point to reduce clutter
+const SMOOTHING_FACTOR = 0.6; // exponential smoothing (TensorBoard-like)
+const STD_WINDOW = 20; // window size for std band (in decimated points)
 
 const MINUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
 const PLUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
@@ -210,8 +230,37 @@ function clearResponseCache(): void {
 Chart.register(zoomPlugin);
 
 // --- Signal charts (streamed training signals) ---
+let signalsBoardHeaderInitialized = false;
+
 function initSignalsBoard(): void {
     signalsContainer = document.getElementById('signals-board') as HTMLElement | null;
+
+    // Add header with global plot settings button if not already added
+    if (signalsContainer && !signalsBoardHeaderInitialized) {
+
+        const title = document.createElement('div');
+        title.textContent = 'Training Signals';
+        title.style.fontWeight = '600';
+        title.style.fontSize = '14px';
+
+        const controls = document.createElement('div');
+        controls.style.display = 'flex';
+        controls.style.gap = '8px';
+
+        const settingsBtn = document.createElement('button');
+        settingsBtn.textContent = '⚙️ Plot Settings';
+        settingsBtn.title = 'Configure plot refresh interval and other settings';
+        settingsBtn.style.padding = '6px 12px';
+        settingsBtn.style.backgroundColor = 'var(--accent-color, #007aff)';
+        settingsBtn.style.color = '#fff';
+        settingsBtn.style.border = 'none';
+        settingsBtn.style.borderRadius = '4px';
+        settingsBtn.style.cursor = 'pointer';
+        settingsBtn.style.fontSize = '12px';
+        settingsBtn.onclick = openGlobalPlotSettings;
+        // Insert header as first child of signals-board
+        signalsBoardHeaderInitialized = true;
+    }
 }
 
 function ensureSignalsContainer(): HTMLElement | null {
@@ -223,6 +272,366 @@ function ensureSignalsContainer(): HTMLElement | null {
 function readCssVar(name: string, fallback: string): string {
     const value = getComputedStyle(document.documentElement).getPropertyValue(name);
     return value && value.trim() ? value.trim() : fallback;
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+    const normalized = hex.replace('#', '');
+    if (normalized.length !== 6) return hex;
+    const num = parseInt(normalized, 16);
+    const r = (num >> 16) & 255;
+    const g = (num >> 8) & 255;
+    const b = num & 255;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function isDarkMode(): boolean {
+    return document.documentElement.classList.contains('dark') ||
+        document.body.classList.contains('dark') ||
+        window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+function triangleColor(): string {
+    return isDarkMode() ? '#ffffff' : '#000000';
+}
+
+/**
+ * Show tooltip with marker hash on hover.
+ */
+function showMarkerTooltip(marker: { experimentHash?: string; x?: number; y?: number }, event: MouseEvent): void {
+    console.debug('showMarkerTooltip called for hash:', marker?.experimentHash);
+    let tooltip = document.getElementById('marker-tooltip') as HTMLElement;
+    if (!tooltip) {
+        tooltip = document.createElement('div');
+        tooltip.id = 'marker-tooltip';
+        tooltip.style.position = 'fixed';
+        tooltip.style.backgroundColor = '#333';
+        tooltip.style.color = '#fff';
+        tooltip.style.padding = '8px 12px';
+        tooltip.style.borderRadius = '4px';
+        tooltip.style.fontSize = '12px';
+        tooltip.style.zIndex = '99999';
+        tooltip.style.pointerEvents = 'none';
+        tooltip.style.maxWidth = '300px';
+        tooltip.style.wordBreak = 'break-all';
+        tooltip.style.whiteSpace = 'pre-line';
+        document.body.appendChild(tooltip);
+    }
+    const hash = marker?.experimentHash ?? 'unknown';
+    tooltip.textContent = `Hash: ${hash}\nDouble click to restore state`;
+    tooltip.style.left = (event.clientX + 10) + 'px';
+    tooltip.style.top = (event.clientY + 10) + 'px';
+    tooltip.style.display = 'block';
+    console.debug('Tooltip displayed at', tooltip.style.left, tooltip.style.top);
+}
+
+/**
+ * Hide marker tooltip.
+ */
+function hideMarkerTooltip(): void {
+    const tooltip = document.getElementById('marker-tooltip');
+    if (tooltip) {
+        tooltip.style.display = 'none';
+    }
+}
+
+/**
+ * Show modal for restoring a checkpoint from marker.
+ */
+function showRestoreMarkerModal(marker: any, signalName: string): void {
+    let modal = document.getElementById('restore-marker-modal') as HTMLElement;
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'restore-marker-modal';
+        modal.style.position = 'fixed';
+        modal.style.top = '50%';
+        modal.style.left = '50%';
+        modal.style.transform = 'translate(-50%, -50%)';
+        modal.style.backgroundColor = '#fff';
+        modal.style.border = '1px solid #ccc';
+        modal.style.borderRadius = '8px';
+        modal.style.padding = '20px';
+        modal.style.zIndex = '10001';
+        modal.style.minWidth = '400px';
+        modal.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+        modal.style.maxHeight = '80vh';
+        modal.style.overflowY = 'auto';
+        modal.style.color = '#000';
+        document.body.appendChild(modal);
+
+        // Add overlay
+        const overlay = document.createElement('div');
+        overlay.id = 'restore-marker-overlay';
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100%';
+        overlay.style.height = '100%';
+        overlay.style.backgroundColor = 'rgba(0,0,0,0.5)';
+        overlay.style.zIndex = '10000';
+        overlay.onclick = closeRestoreMarkerModal;
+        document.body.appendChild(overlay);
+    }
+
+    // Populate modal content
+    modal.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h2 style="margin: 0;">Restore Checkpoint</h2>
+            <button onclick="(window ).closeRestoreMarkerModal()" style="background: none; border: none; font-size: 24px; cursor: pointer;">×</button>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+            <label style="font-weight: bold;">Signal:</label>
+            <div>${signalName}</div>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+            <label style="font-weight: bold;">Experiment Hash:</label>
+            <div style="word-break: break-all; font-family: monospace; background: #f5f5f5; padding: 8px; border-radius: 4px;">${marker.experimentHash}</div>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+            <label style="font-weight: bold;">Model Age (Steps):</label>
+            <div>${marker.x}</div>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+            <label style="font-weight: bold;">Value:</label>
+            <div>${marker.y.toFixed(4)}</div>
+        </div>
+
+        <div style="margin-bottom: 16px;">
+            <label style="font-weight: bold;">Details:</label>
+            <div>${marker.changeDetail ? marker.changeDetail : 'No change details available'}</div>
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button onclick="(window ).executeRestoreCheckpoint('${marker.experimentHash}')" style="padding: 8px 16px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer;">Restore Checkpoint</button>
+        </div>
+    `;
+
+    modal.style.display = 'block';
+    document.getElementById('restore-marker-overlay')!.style.display = 'block';
+}
+
+/**
+ * Close restore marker modal.
+ */
+function closeRestoreMarkerModal(): void {
+    const modal = document.getElementById('restore-marker-modal');
+    const overlay = document.getElementById('restore-marker-overlay');
+    if (modal) modal.style.display = 'none';
+    if (overlay) overlay.style.display = 'none';
+}
+
+/**
+ * Execute checkpoint restore with UI freeze and status monitoring.
+ */
+async function executeRestoreCheckpoint(experimentHash: string): Promise<void> {
+    console.log(`🔄 Restoring checkpoint: ${experimentHash}`);
+
+    closeRestoreMarkerModal();
+    // Pause training before applying a checkpoint restore to avoid concurrent updates
+    await ensureTrainingPaused();
+    freezeUIForRestore();
+
+    const timeout = 30000; // 30 seconds
+    const startTime = Date.now();
+
+    try {
+        // Call backend to restore checkpoint
+        const resp = await dataClient.restoreCheckpoint({
+            experimentHash
+        }).response;
+
+        if (resp.success) {
+            console.log(`✅ Checkpoint restored successfully`);
+
+            // Reload metadata and cached data
+            clearResponseCache();
+            await refreshDynamicStatsOnly();
+
+            unfreezeUIAfterRestore();
+        } else {
+            console.error(`❌ Restore failed: ${resp.message}`);
+            unfreezeUIAfterRestore();
+        }
+    } catch (err) {
+        const elapsed = Date.now() - startTime;
+        if (elapsed >= timeout) {
+            console.warn(`⏱️ Restore timed out after ${timeout}ms`);
+        } else {
+            console.error(`❌ Restore error: ${err}`);
+        }
+        unfreezeUIAfterRestore();
+    }
+}
+
+/**
+ * Freeze UI during checkpoint restore.
+ */
+function freezeUIForRestore(): void {
+    const elements = [
+        document.getElementById('cells-grid'),
+        document.getElementById('chat-input-container'),
+        document.querySelector('.inspector-container'),
+        document.querySelector('.training-card'),
+        document.querySelector('.tagger-card'),
+        document.querySelector('.signals-board'),
+    ];
+
+    elements.forEach((el) => {
+        if (el) {
+            (el as any).__freezeOverlay = document.createElement('div');
+            const overlay = (el as any).__freezeOverlay;
+            overlay.style.position = 'absolute';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
+            overlay.style.zIndex = '9999';
+            overlay.style.cursor = 'not-allowed';
+            overlay.style.display = 'flex';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.color = 'white';
+            overlay.style.fontSize = '16px';
+            overlay.innerHTML = '🔄 Restoring checkpoint... Please wait';
+
+            el.style.position = 'relative';
+            el.style.opacity = '0.5';
+            el.style.pointerEvents = 'none';
+            el.appendChild(overlay);
+        }
+    });
+
+    document.body.style.cursor = 'not-allowed';
+}
+
+/**
+ * Unfreeze UI after checkpoint restore.
+ */
+function unfreezeUIAfterRestore(): void {
+    const elements = [
+        document.getElementById('cells-grid'),
+        document.getElementById('chat-input-container'),
+        document.querySelector('.inspector-container'),
+        document.querySelector('.training-card'),
+        document.querySelector('.tagger-card'),
+        document.querySelector('.signals-board'),
+    ];
+
+    elements.forEach((el) => {
+        if (el) {
+            el.style.opacity = '1';
+            el.style.pointerEvents = 'auto';
+            el.style.cursor = 'auto';
+
+            if ((el as any).__freezeOverlay) {
+                (el as any).__freezeOverlay.remove();
+                (el as any).__freezeOverlay = null;
+            }
+        }
+    });
+
+    document.body.style.cursor = 'auto';
+}
+
+/**
+ * Highlight the line segment corresponding to a marker on hover.
+ * The segment spans from this marker to the next marker (or end of curve).
+ */
+function highlightSegmentFromMarker(chart: Chart, markerIndex: number, baseColor: string): void {
+    const markersDataset = chart.data.datasets[3];
+    const markers = markersDataset.data as any[];
+
+    if (markerIndex >= markers.length) return;
+
+    // Store highlight state on chart
+    (chart as any).__highlightedSegment = markerIndex;
+    console.debug('Highlighting segment:', markerIndex);
+    chart.draw();
+}
+
+/**
+ * Clear segment highlighting.
+ */
+function clearSegmentHighlight(chart: Chart): void {
+    (chart as any).__highlightedSegment = null;
+    console.debug('clearSegmentHighlight');
+    chart.draw();
+}
+
+function applyStride(points: SignalRawPoint[], stride: number): SignalRawPoint[] {
+    // For small series, skip decimation to avoid dropping all but the first point
+    if (stride <= 1 || points.length <= stride) return points;
+    const out: SignalRawPoint[] = [];
+    for (let i = 0; i < points.length; i++) {
+        if (i % stride === 0) {
+            out.push(points[i]);
+        }
+    }
+    return out;
+}
+
+/**
+ * Describe what changed between two experiment hashes.
+ */
+function describeHashChange(prevHash: string, currHash: string): string | undefined {
+    // TODO: Implement hash comparison logic if needed
+    return undefined;
+}
+
+function buildSmoothedSeries(points: SignalRawPoint[], opts: {
+    smoothingEnabled: boolean;
+    smoothingFactor: number;
+    stdEnabled: boolean;
+}): {
+    smoothed: SignalPoint[];
+    upper: SignalPoint[];
+    lower: SignalPoint[];
+    markers: SignalRawPoint[];
+} {
+    const smoothed: SignalPoint[] = [];
+    const upper: SignalPoint[] = [];
+    const lower: SignalPoint[] = [];
+    const markers: SignalRawPoint[] = [];
+
+    const decimated = applyStride(points, PLOT_STRIDE);
+    if (decimated.length === 0) {
+        return { smoothed, upper, lower, markers };
+    }
+
+    let ema = decimated[0].y;
+    const window: number[] = [];
+    let previousHash: string | undefined;
+    for (let i = 0; i < decimated.length; i++) {
+        const p = decimated[i];
+        const factor = opts.smoothingEnabled ? opts.smoothingFactor : 0;
+        ema = i === 0 ? p.y : (factor * ema + (1 - factor) * p.y);
+
+        window.push(p.y);
+        if (window.length > STD_WINDOW) window.shift();
+        const mean = window.reduce((a, b) => a + b, 0) / window.length;
+        const variance = window.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / window.length;
+        const std = Math.sqrt(variance);
+
+        smoothed.push({ x: p.x, y: ema });
+        if (opts.stdEnabled) {
+            upper.push({ x: p.x, y: ema + std });
+            lower.push({ x: p.x, y: ema - std });
+        }
+
+        if (p.experimentHash && (i === 0 || p.experimentHash !== decimated[i - 1].experimentHash)) {
+            const changeDetail = previousHash ? describeHashChange(previousHash, p.experimentHash) : undefined;
+            markers.push({ x: p.x, y: ema, experimentHash: p.experimentHash, changeDetail });
+            previousHash = p.experimentHash;
+        } else if (p.experimentHash) {
+            previousHash = p.experimentHash;
+        }
+    }
+
+    return { smoothed, upper, lower, markers };
 }
 
 function startSignalUpdateLoop(): void {
@@ -263,7 +672,7 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
 
     const subtitle = document.createElement('div');
     subtitle.className = 'signal-card-subtitle';
-    subtitle.textContent = 'model_age vs signals';
+    subtitle.textContent = '';
 
     const controls = document.createElement('div');
     controls.className = 'signal-card-controls';
@@ -283,26 +692,37 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
     jsonBtn.textContent = 'JSON';
     jsonBtn.title = 'Export as JSON';
 
-    const colorPicker = document.createElement('input');
-    colorPicker.type = 'color';
-    colorPicker.className = 'signal-color-picker';
-    const savedColor = localStorage.getItem(`signal-color-${signalName}`);
-    colorPicker.value = savedColor || '#ffffff';
-    colorPicker.title = 'Choose curve color';
+    const settingsBtn = document.createElement('button');
+    settingsBtn.className = 'signal-btn-small';
+    settingsBtn.textContent = 'Settings';
+    settingsBtn.title = 'Plot settings';
+
+    const savedColor = localStorage.getItem(`signal-color-${signalName}`) || '#ffffff';
 
     controls.appendChild(resetBtn);
     controls.appendChild(csvBtn);
     controls.appendChild(jsonBtn);
-    controls.appendChild(colorPicker);
+    controls.appendChild(settingsBtn);
 
     header.appendChild(title);
     header.appendChild(subtitle);
     header.appendChild(controls);
 
     const canvas = document.createElement('canvas');
+    // Set fixed size for canvas to prevent sync with other charts
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.display = 'block';
+
+    const canvasWrapper = document.createElement('div');
+    canvasWrapper.style.position = 'relative';
+    canvasWrapper.style.width = '100%';
+    canvasWrapper.style.height = 'auto';
+    canvasWrapper.style.minHeight = '300px';
+    canvasWrapper.appendChild(canvas);
 
     card.appendChild(header);
-    card.appendChild(canvas);
+    card.appendChild(canvasWrapper);
     container.appendChild(card);
 
     const ctx = canvas.getContext('2d');
@@ -316,24 +736,50 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
         data: {
             datasets: [
                 {
+                    label: 'std-lower',
+                    data: [],
+                    borderColor: 'rgba(0,0,0,0)',
+                    backgroundColor: 'rgba(0,0,0,0)',
+                    pointRadius: 0,
+                    borderWidth: 0,
+                    tension: 0,
+                    fill: false,
+                },
+                {
+                    label: 'std-upper',
+                    data: [],
+                    borderColor: 'rgba(0,0,0,0)',
+                    backgroundColor: hexToRgba(savedColor, 0.15),
+                    pointRadius: 0,
+                    borderWidth: 0,
+                    tension: 0,
+                    fill: '-1',
+                },
+                {
                     label: signalName,
                     data: [],
-                    borderColor: colorPicker.value,
-                    backgroundColor: (() => {
-                        const rgb = parseInt(colorPicker.value.slice(1), 16);
-                        const r = (rgb >> 16) & 255;
-                        const g = (rgb >> 8) & 255;
-                        const b = rgb & 255;
-                        return `rgba(${r}, ${g}, ${b}, 0.1)`;
-                    })(),
+                    borderColor: savedColor,
+                    backgroundColor: hexToRgba(savedColor, 0),
                     pointRadius: 0,
+                    pointHitRadius: 6,
                     borderWidth: 2,
                     tension: 0,
+                },
+                {
+                    label: 'markers',
+                    data: [],
+                    borderColor: '#ff6b6b',
+                    backgroundColor: '#ff6b6b',
+                    pointStyle: 'star',
+                    pointRadius: 12,
+                    pointHoverRadius: 14,
+                    borderWidth: 1,
+                    showLine: false,
                 },
             ],
         },
         options: {
-            responsive: true,
+            responsive: false,
             maintainAspectRatio: false,
             parsing: false,
             animation: false,
@@ -342,35 +788,232 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
             plugins: {
                 legend: { display: false },
                 title: { display: false },
+                tooltip: {
+                    enabled: true,
+                    mode: 'nearest',
+                    intersect: false,
+                },
                 decimation: { enabled: true, algorithm: 'lttb', samples: 300 },
                 zoom: {
                     zoom: {
                         wheel: { enabled: true, speed: 0.1 },
                         pinch: { enabled: true },
                         mode: 'xy',
+                        onZoomComplete: () => { entry.userZoomed = true; },
                     },
                     pan: {
                         enabled: true,
                         mode: 'xy',
-                        modifierKey: 'shift' as const,
+                        // allow click-drag panning without modifier key
+                        onPanComplete: () => { entry.userZoomed = true; },
                     },
                 },
             },
             scales: {
                 x: {
                     type: 'linear',
-                    title: { display: true, text: 'model_age' },
-                    ticks: { autoSkip: true, maxTicksLimit: 6 },
+                    title: { display: false },
+                    ticks: {
+                        autoSkip: true,
+                        maxTicksLimit: 10,
+                        callback: (value) => Number(value).toFixed(0),
+                    },
                     grid: { color: gridColor },
                 },
                 y: {
                     type: 'linear',
-                    title: { display: true, text: 'signals' },
+                    title: { display: false },
                     grid: { color: gridColor },
                     grace: '5%',
+                    min: 0,
                 },
             },
+            onHover: (event: any, activeElements: any) => {
+                // Only handle hover for markers (dataset 3)
+                if (activeElements && activeElements.length > 0) {
+                    // Check if any element is a marker (dataset 3)
+                    const markerElement = activeElements.find((el: any) => el.datasetIndex === 3);
+
+                    if (markerElement) {
+                        // Hovering over a marker - highlight the segment
+                        const markerIndex = markerElement.index;
+                        const markersDataset = chart.data.datasets[3];
+                        const markers = markersDataset.data as any[];
+                        const marker = markers[markerIndex];
+
+                        console.debug('Highlighting marker', markerIndex, 'of', markers.length, 'markers');
+                        highlightSegmentFromMarker(chart, markerIndex, entry.color);
+
+                        // Show marker details in tooltip
+                        if (marker) {
+                            showMarkerTooltip(marker, event.native);
+                        }
+
+                        // Store marker info for click handling
+                        (chart as any).__hoveredMarker = { markerIndex, marker, signalName };
+                    } else {
+                        // Not hovering over a marker - clear everything
+                        clearSegmentHighlight(chart);
+                        hideMarkerTooltip();
+                        (chart as any).__hoveredMarker = null;
+                    }
+                } else {
+                    // Mouse left the chart - clear highlight
+                    clearSegmentHighlight(chart);
+                    hideMarkerTooltip();
+                    (chart as any).__hoveredMarker = null;
+                }
+            },
+            onClick: (event: any, activeElements: any) => {
+                // Detect double-click for restore modal (only on markers)
+                if (!activeElements || activeElements.length === 0) return;
+
+                // Check if clicked element is a marker (dataset 3)
+                const markerElement = activeElements.find((el: any) => el.datasetIndex === 3);
+                if (!markerElement) return;
+
+                const now = Date.now();
+                const isDoubleClick = now - lastMarkerClickTime < DOUBLE_CLICK_THRESHOLD_MS;
+                console.debug(`Marker click: elapsed=${now - lastMarkerClickTime}ms, isDouble=${isDoubleClick}`);
+                lastMarkerClickTime = now;
+
+                if (!isDoubleClick) return;
+
+                const hoveredMarker = (chart as any).__hoveredMarker;
+                console.debug('Opening restore modal for:', hoveredMarker?.marker?.experimentHash);
+                if (hoveredMarker && hoveredMarker.marker) {
+                    showRestoreMarkerModal(hoveredMarker.marker, signalName);
+                    lastMarkerClickTime = 0; // Reset after modal opens
+                }
+            },
         },
+        plugins: [
+            {
+                id: 'segmentHighlight',
+                afterDatasetsDraw(chart: Chart) {
+                    const ctx = chart.ctx;
+                    const highlightedSegment = (chart as any).__highlightedSegment;
+
+                    if (highlightedSegment === null || highlightedSegment === undefined) return;
+
+                    const lowerDataset = chart.data.datasets[0];
+                    const upperDataset = chart.data.datasets[1];
+                    const mainLineDataset = chart.data.datasets[2];
+                    const markersDataset = chart.data.datasets[3];
+                    const markers = markersDataset.data as any[];
+
+                    if (highlightedSegment >= markers.length) return;
+
+                    const xScale = chart.scales.x;
+                    const yScale = chart.scales.y;
+
+                    const currentMarker = markers[highlightedSegment];
+                    const nextMarker = highlightedSegment + 1 < markers.length ? markers[highlightedSegment + 1] : null;
+
+                    const currentX = currentMarker.x;
+                    const nextX = nextMarker?.x ?? Infinity;
+
+                    const mainLinePoints = mainLineDataset.data as any[];
+                    const lowerPoints = lowerDataset.data as any[];
+                    const upperPoints = upperDataset.data as any[];
+
+                    // Find points in the segment
+                    // Markers themselves are points, so include them in the segment
+                    // Combine main line points with marker points for complete segment
+                    let segmentPoints: any[];
+                    let segmentLower: any[];
+                    let segmentUpper: any[];
+
+                    if (nextMarker) {
+                        // Include points from current marker up to (and including) next marker
+                        // Markers are data points themselves
+                        const linePoints = mainLinePoints.filter((p: any) => p.x >= currentX && p.x <= nextX);
+                        const markerPoints = markers.filter((m: any) => m.x >= currentX && m.x <= nextX);
+                        segmentPoints = [...linePoints, ...markerPoints].sort((a, b) => a.x - b.x);
+
+                        segmentLower = lowerPoints.filter((p: any) => p.x >= currentX && p.x <= nextX);
+                        segmentUpper = upperPoints.filter((p: any) => p.x >= currentX && p.x <= nextX);
+                    } else {
+                        // Last segment: include all points from current marker to end
+                        const linePoints = mainLinePoints.filter((p: any) => p.x >= currentX);
+                        const markerPoints = markers.filter((m: any) => m.x >= currentX);
+                        segmentPoints = [...linePoints, ...markerPoints].sort((a, b) => a.x - b.x);
+
+                        segmentLower = lowerPoints.filter((p: any) => p.x >= currentX);
+                        segmentUpper = upperPoints.filter((p: any) => p.x >= currentX);
+                    }
+
+                    ctx.save();
+
+                    // Draw highlighted std band if available (need at least 2 points for upper and lower)
+                    if (segmentLower.length >= 2 && segmentUpper.length >= 2) {
+                        ctx.fillStyle = 'rgba(52, 152, 219, 0.25)';
+                        ctx.beginPath();
+
+                        // Draw upper bound
+                        for (let i = 0; i < segmentUpper.length; i++) {
+                            const p = segmentUpper[i];
+                            const xPixel = xScale.getPixelForValue(p.x);
+                            const yPixel = yScale.getPixelForValue(p.y);
+                            if (i === 0) {
+                                ctx.moveTo(xPixel, yPixel);
+                            } else {
+                                ctx.lineTo(xPixel, yPixel);
+                            }
+                        }
+
+                        // Draw lower bound in reverse
+                        for (let i = segmentLower.length - 1; i >= 0; i--) {
+                            const p = segmentLower[i];
+                            const xPixel = xScale.getPixelForValue(p.x);
+                            const yPixel = yScale.getPixelForValue(p.y);
+                            ctx.lineTo(xPixel, yPixel);
+                        }
+
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+
+                    // Draw highlighted main line
+                    ctx.strokeStyle = '#3498db';
+                    ctx.lineWidth = 4;
+                    ctx.globalAlpha = 0.8;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+
+                    ctx.beginPath();
+
+                    if (segmentPoints.length >= 2) {
+                        // Draw line through all points in segment
+                        for (let i = 0; i < segmentPoints.length; i++) {
+                            const p = segmentPoints[i];
+                            const xPixel = xScale.getPixelForValue(p.x);
+                            const yPixel = yScale.getPixelForValue(p.y);
+
+                            if (i === 0) {
+                                ctx.moveTo(xPixel, yPixel);
+                            } else {
+                                ctx.lineTo(xPixel, yPixel);
+                            }
+                        }
+                        ctx.stroke();
+                    } else if (segmentPoints.length === 1 && nextMarker) {
+                        // Only start point exists - draw to next marker position
+                        const p = segmentPoints[0];
+                        const xPixel = xScale.getPixelForValue(p.x);
+                        const yPixel = yScale.getPixelForValue(p.y);
+                        ctx.moveTo(xPixel, yPixel);
+
+                        const nextXPixel = xScale.getPixelForValue(nextMarker.x);
+                        const nextYPixel = yScale.getPixelForValue(nextMarker.y);
+                        ctx.lineTo(nextXPixel, nextYPixel);
+                        ctx.stroke();
+                    }
+
+                    ctx.restore();
+                },
+            },
+        ],
     } as any);
 
     resetBtn.onclick = () => {
@@ -378,30 +1021,33 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
     };
 
     csvBtn.onclick = () => {
-        exportSignalDataCSV(signalName, entry.data);
+        exportSignalDataCSV(signalName, entry.rawPoints.length ? entry.rawPoints : entry.data);
     };
 
     jsonBtn.onclick = () => {
-        exportSignalDataJSON(signalName, entry.data);
+        exportSignalDataJSON(signalName, entry.rawPoints.length ? entry.rawPoints : entry.data);
     };
 
-    colorPicker.onclick = (e) => {
+    settingsBtn.onclick = (e) => {
         e.stopPropagation();
+        openSignalSettings(signalName);
     };
 
-    colorPicker.onchange = () => {
-        const newColor = colorPicker.value;
-        localStorage.setItem(`signal-color-${signalName}`, newColor);
-        chart.data.datasets[0].borderColor = newColor;
-        const rgb = parseInt(newColor.slice(1), 16);
-        const r = (rgb >> 16) & 255;
-        const g = (rgb >> 8) & 255;
-        const b = rgb & 255;
-        chart.data.datasets[0].backgroundColor = `rgba(${r}, ${g}, ${b}, 0.1)`;
-        chart.update('none');
+    const entry: SignalChart = {
+        chart,
+        data: [],
+        rawPoints: [],
+        pending: false,
+        color: savedColor,
+        smoothingEnabled: true,
+        smoothingFactor: SMOOTHING_FACTOR,
+        stdEnabled: true,
+        userZoomed: false,
     };
 
-    const entry: SignalChart = { chart, data: [], pending: false };
+    // Store original line color for segment highlighting
+    (chart as any).__originalLineColor = savedColor;
+
     signalCharts.set(signalName, entry);
     startSignalUpdateLoop();
     return entry;
@@ -412,23 +1058,383 @@ function pushSignalSample(signalName: string, modelAge: number, value: number): 
     const entry = getOrCreateSignalChart(signalName);
     if (!entry) return;
 
-    entry.data.push({ x: modelAge, y: value });
-    if (entry.data.length > SIGNAL_MAX_POINTS) {
-        entry.data.splice(0, entry.data.length - SIGNAL_MAX_POINTS);
+    entry.rawPoints.push({ x: modelAge, y: value });
+    if (entry.rawPoints.length > SIGNAL_HISTORY_LIMIT) {
+        entry.rawPoints.splice(0, entry.rawPoints.length - SIGNAL_HISTORY_LIMIT);
     }
 
-    entry.chart.data.datasets[0].data = entry.data;
+    refreshSignalChart(entry, signalName);
+}
 
-    // Reset scales to auto-fit new data range
-    entry.chart.options.scales!.y!.min = undefined;
-    entry.chart.options.scales!.y!.max = undefined;
+function refreshSignalChart(entry: SignalChart, signalName: string, graphName?: string): void {
+    const { smoothed, upper, lower, markers } = buildSmoothedSeries(entry.rawPoints, {
+        smoothingEnabled: entry.smoothingEnabled,
+        smoothingFactor: entry.smoothingFactor,
+        stdEnabled: entry.stdEnabled,
+    });
 
-    if (entry.data.length === 1) {
+    entry.data = smoothed;
+
+    const chart = entry.chart;
+    const datasets = chart.data.datasets;
+
+    // Std band between lower (0) and upper (1)
+    datasets[0].data = entry.stdEnabled ? lower : [];
+    datasets[1].data = entry.stdEnabled ? upper : [];
+    datasets[1].backgroundColor = entry.stdEnabled ? hexToRgba(entry.color, 0.15) : 'rgba(0,0,0,0)';
+
+    // Main line (2)
+    datasets[2].data = smoothed;
+    datasets[2].pointRadius = 0;
+    datasets[2].borderColor = entry.color;
+    datasets[2].backgroundColor = hexToRgba(entry.color, 0);
+
+    // Triangles (3)
+    datasets[3].data = markers;
+    datasets[3].backgroundColor = '#ff6b6b';
+
+    if (markers.length > 0) {
+        console.debug(`📍 ${signalName}: ${markers.length} markers, first at x=${markers[0].x}, last at x=${markers[markers.length - 1].x}`);
+    }
+
+    chart.options.plugins.tooltip = {
+        filter: (item) => item.datasetIndex !== 0 && item.datasetIndex !== 1 && item.datasetIndex !== 3,
+        callbacks: {
+            label: function(context) {
+                if (context.datasetIndex === 3) {
+                    const marker = (chart.data.datasets[3].data as any)[context.dataIndex];
+                    const hash = marker?.experimentHash;
+                    const change = marker?.changeDetail;
+                    const lines: string[] = [];
+                    if (hash) lines.push(`Experiment Hash To Reload: ${hash}`);
+                    if (change) lines.push(`Changed: ${change}`);
+                    return lines;
+                }
+                return `Value: ${context.parsed.y}`;
+            }
+        }
+    };
+
+    // Keep title in sync if provided
+    if (graphName && chart.options.plugins?.title) {
+        chart.options.plugins.title.display = true;
+        chart.options.plugins.title.text = graphName;
+    }
+
+    // Gentle tension for smoother appearance after smoothing
+    datasets[2].tension = 0;
+
+    // Auto-fit axes if user hasn't zoomed/panned yet
+    // Each chart maintains independent axis ranges
+    if (!entry.userZoomed) {
+        const lastX = entry.rawPoints.length ? entry.rawPoints[entry.rawPoints.length - 1].x : undefined;
+
+        // Ensure scales exist and are independent (not shared)
+        if (!chart.options.scales) {
+            chart.options.scales = {};
+        }
+        if (!chart.options.scales.x) {
+            chart.options.scales.x = {};
+        }
+        if (!chart.options.scales.y) {
+            chart.options.scales.y = {};
+        }
+
+        // Set independent min/max for this chart only
+        chart.options.scales.x.min = 0;
+        chart.options.scales.x.max = lastX;
+        chart.options.scales.y.min = 0;
+        chart.options.scales.y.max = undefined;
+    }
+
+    entry.pending = true;
+}
+
+function openSignalSettings(signalName: string): void {
+    const entry = signalCharts.get(signalName);
+    if (!entry) return;
+
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.right = '0';
+    overlay.style.bottom = '0';
+    overlay.style.background = 'rgba(0,0,0,0.4)';
+    overlay.style.zIndex = '9999';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+
+    const modal = document.createElement('div');
+    modal.style.background = 'var(--bg, #fff)';
+    modal.style.color = 'var(--fg, #111)';
+    modal.style.padding = '16px';
+    modal.style.borderRadius = '8px';
+    modal.style.minWidth = '320px';
+    modal.style.boxShadow = '0 8px 30px rgba(0,0,0,0.25)';
+    modal.style.display = 'flex';
+    modal.style.flexDirection = 'column';
+    modal.style.gap = '12px';
+
+    const title = document.createElement('div');
+    title.textContent = `Settings • ${signalName}`;
+    title.style.fontWeight = '600';
+    modal.appendChild(title);
+
+    const colorRow = document.createElement('div');
+    colorRow.style.display = 'flex';
+    colorRow.style.alignItems = 'center';
+    colorRow.style.justifyContent = 'space-between';
+    const colorLabel = document.createElement('span');
+    colorLabel.textContent = 'Curve color';
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.value = entry.color;
+    colorInput.style.width = '48px';
+    colorInput.style.height = '32px';
+    colorRow.appendChild(colorLabel);
+    colorRow.appendChild(colorInput);
+    modal.appendChild(colorRow);
+
+    const smoothingRow = document.createElement('div');
+    smoothingRow.style.display = 'flex';
+    smoothingRow.style.alignItems = 'center';
+    smoothingRow.style.justifyContent = 'space-between';
+    const smoothingLabel = document.createElement('span');
+    smoothingLabel.textContent = 'Enable smoothing';
+    const smoothingToggle = document.createElement('input');
+    smoothingToggle.type = 'checkbox';
+    smoothingToggle.checked = entry.smoothingEnabled;
+    smoothingRow.appendChild(smoothingLabel);
+    smoothingRow.appendChild(smoothingToggle);
+    modal.appendChild(smoothingRow);
+
+    const factorRow = document.createElement('div');
+    factorRow.style.display = 'flex';
+    factorRow.style.alignItems = 'center';
+    factorRow.style.gap = '8px';
+    const factorLabel = document.createElement('span');
+    factorLabel.textContent = 'Smoothing factor';
+    const factorInput = document.createElement('input');
+    factorInput.type = 'range';
+    factorInput.min = '0';
+    factorInput.max = '0.99';
+    factorInput.step = '0.05';
+    factorInput.value = entry.smoothingFactor.toString();
+    factorInput.style.flex = '1';
+    const factorVal = document.createElement('span');
+    factorVal.textContent = entry.smoothingFactor.toFixed(2);
+    factorInput.oninput = () => { factorVal.textContent = parseFloat(factorInput.value).toFixed(2); };
+    factorRow.appendChild(factorLabel);
+    factorRow.appendChild(factorInput);
+    factorRow.appendChild(factorVal);
+    modal.appendChild(factorRow);
+
+    const stdRow = document.createElement('div');
+    stdRow.style.display = 'flex';
+    stdRow.style.alignItems = 'center';
+    stdRow.style.justifyContent = 'space-between';
+    const stdLabel = document.createElement('span');
+    stdLabel.textContent = 'Show std band';
+    const stdToggle = document.createElement('input');
+    stdToggle.type = 'checkbox';
+    stdToggle.checked = entry.stdEnabled;
+    stdRow.appendChild(stdLabel);
+    stdRow.appendChild(stdToggle);
+    modal.appendChild(stdRow);
+
+    const actionsRow = document.createElement('div');
+    actionsRow.style.display = 'flex';
+    actionsRow.style.gap = '8px';
+    actionsRow.style.justifyContent = 'flex-end';
+
+    const resetXBtn = document.createElement('button');
+    resetXBtn.textContent = 'Reset X';
+    resetXBtn.onclick = () => {
+        const lastX = entry.rawPoints.length ? entry.rawPoints[entry.rawPoints.length - 1].x : undefined;
+        entry.chart.options.scales!.x!.min = 0;
+        entry.chart.options.scales!.x!.max = lastX;
+        entry.userZoomed = false;
         entry.chart.update('none');
-        entry.pending = false;
-    } else {
-        entry.pending = true;
-    }
+    };
+
+    const resetYBtn = document.createElement('button');
+    resetYBtn.textContent = 'Reset Y to 0';
+    resetYBtn.onclick = () => {
+        entry.chart.options.scales!.y!.min = 0;
+        entry.chart.options.scales!.y!.max = undefined;
+        entry.userZoomed = false;
+        entry.chart.update('none');
+    };
+
+    const applyBtn = document.createElement('button');
+    applyBtn.textContent = 'Apply';
+    applyBtn.onclick = () => {
+        entry.color = colorInput.value;
+        entry.smoothingEnabled = smoothingToggle.checked;
+        entry.smoothingFactor = parseFloat(factorInput.value);
+        entry.stdEnabled = stdToggle.checked;
+        localStorage.setItem(`signal-color-${signalName}`, entry.color);
+
+        refreshSignalChart(entry, signalName);
+        entry.userZoomed = false;
+        entry.chart.update('none');
+        document.body.removeChild(overlay);
+    };
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Close';
+    closeBtn.onclick = () => {
+        document.body.removeChild(overlay);
+    };
+
+    actionsRow.appendChild(resetXBtn);
+    actionsRow.appendChild(resetYBtn);
+    actionsRow.appendChild(applyBtn);
+    actionsRow.appendChild(closeBtn);
+    modal.appendChild(actionsRow);
+
+    overlay.appendChild(modal);
+    overlay.onclick = (e) => {
+        if (e.target === overlay) {
+            document.body.removeChild(overlay);
+        }
+    };
+
+    document.body.appendChild(overlay);
+}
+
+/**
+ * Global plot settings dialog for configuring refresh interval
+ */
+function openGlobalPlotSettings(): void {
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.right = '0';
+    overlay.style.bottom = '0';
+    overlay.style.background = 'rgba(0,0,0,0.4)';
+    overlay.style.zIndex = '9999';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+
+    const modal = document.createElement('div');
+    modal.style.background = 'var(--bg, #fff)';
+    modal.style.color = 'var(--fg, #111)';
+    modal.style.padding = '16px';
+    modal.style.borderRadius = '8px';
+    modal.style.minWidth = '350px';
+    modal.style.boxShadow = '0 8px 30px rgba(0,0,0,0.25)';
+    modal.style.display = 'flex';
+    modal.style.flexDirection = 'column';
+    modal.style.gap = '12px';
+
+    const title = document.createElement('div');
+    title.textContent = 'Plot Settings';
+    title.style.fontWeight = '600';
+    title.style.fontSize = '16px';
+    modal.appendChild(title);
+
+    const currentInterval = localStorage.getItem('plot-refresh-interval-ms') || '2000';
+
+    const intervalRow = document.createElement('div');
+    intervalRow.style.display = 'flex';
+    intervalRow.style.alignItems = 'center';
+    intervalRow.style.justifyContent = 'space-between';
+    intervalRow.style.gap = '12px';
+
+    const intervalLabel = document.createElement('span');
+    intervalLabel.textContent = 'Plot refresh interval (ms)';
+    intervalLabel.style.flex = '1';
+
+    const intervalInput = document.createElement('input');
+    intervalInput.type = 'number';
+    intervalInput.min = '2000';
+    intervalInput.max = '60000';
+    intervalInput.step = '100';
+    intervalInput.value = currentInterval;
+    intervalInput.style.width = '100px';
+    intervalInput.style.padding = '4px';
+    intervalInput.style.border = '1px solid var(--border-subtle, #ccc)';
+    intervalInput.style.borderRadius = '4px';
+
+    const intervalNote = document.createElement('div');
+    intervalNote.style.fontSize = '12px';
+    intervalNote.style.color = 'var(--text-secondary, #666)';
+    intervalNote.style.marginTop = '4px';
+    intervalNote.textContent = 'Minimum: 2000 ms. This setting controls how frequently plots update from new data.';
+
+    intervalRow.appendChild(intervalLabel);
+    intervalRow.appendChild(intervalInput);
+    modal.appendChild(intervalRow);
+    modal.appendChild(intervalNote);
+
+    const actionsRow = document.createElement('div');
+    actionsRow.style.display = 'flex';
+    actionsRow.style.gap = '8px';
+    actionsRow.style.justifyContent = 'flex-end';
+    actionsRow.style.marginTop = '8px';
+
+    const applyBtn = document.createElement('button');
+    applyBtn.textContent = 'Apply';
+    applyBtn.style.padding = '6px 16px';
+    applyBtn.style.backgroundColor = 'var(--accent-color, #007aff)';
+    applyBtn.style.color = '#fff';
+    applyBtn.style.border = 'none';
+    applyBtn.style.borderRadius = '4px';
+    applyBtn.style.cursor = 'pointer';
+    applyBtn.onclick = () => {
+        const value = parseInt(intervalInput.value, 10);
+        if (isNaN(value)) {
+            alert('Please enter a valid number');
+            return;
+        }
+        if (value < 2000) {
+            alert('Minimum interval is 2000 ms');
+            intervalInput.value = '2000';
+            return;
+        }
+        if (value > 60000) {
+            alert('Maximum interval is 60000 ms');
+            intervalInput.value = '60000';
+            return;
+        }
+
+        // Save to localStorage
+        localStorage.setItem('plot-refresh-interval-ms', value.toString());
+        console.log(`📊 Plot refresh interval updated to ${value}ms`);
+
+        // The polling loop will pick up the new interval on the next cycle
+        document.body.removeChild(overlay);
+    };
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Close';
+    closeBtn.style.padding = '6px 16px';
+    closeBtn.style.backgroundColor = 'var(--bg-secondary, #f0f0f0)';
+    closeBtn.style.color = 'var(--fg, #111)';
+    closeBtn.style.border = '1px solid var(--border-subtle, #ccc)';
+    closeBtn.style.borderRadius = '4px';
+    closeBtn.style.cursor = 'pointer';
+    closeBtn.onclick = () => {
+        document.body.removeChild(overlay);
+    };
+
+    actionsRow.appendChild(applyBtn);
+    actionsRow.appendChild(closeBtn);
+    modal.appendChild(actionsRow);
+
+    overlay.appendChild(modal);
+    overlay.onclick = (e) => {
+        if (e.target === overlay) {
+            document.body.removeChild(overlay);
+        }
+    };
+
+    document.body.appendChild(overlay);
 }
 
 function exportSignalDataCSV(signalName: string, data: SignalPoint[]): void {
@@ -683,8 +1689,15 @@ async function fetchAndDisplaySamples() {
     }
     console.debug('[Fetch Samples] Starting fetch and display of samples at ' + new Date().toISOString() + '...');
 
-    const start = traversalPanel.getStartIndex();
-    const count = traversalPanel.getLeftSamples();
+    const startRaw = traversalPanel.getStartIndex();
+    const countRaw = traversalPanel.getLeftSamples();
+    const start = Number.isFinite(Number(startRaw)) ? Number(startRaw) : 0;
+    const count = Number.isFinite(Number(countRaw)) ? Number(countRaw) : 0;
+
+    if (count <= 0) {
+        console.debug('[Fetch Samples] count <= 0, aborting fetch');
+        return;
+    }
     const batchSize = Math.min(gridManager.calculateGridDimensions().gridCount, 128);
 
     const requestId = ++currentFetchRequestId;
@@ -1129,8 +2142,56 @@ async function updateDisplayOnly() {
     }
 }
 
+/**
+ * Ensure training is paused before executing data-modifying actions.
+ * If training is currently running, pause it and wait for confirmation.
+ */
+async function ensureTrainingPaused(): Promise<void> {
+    if (!isTraining) {
+        return; // Already paused, proceed
+    }
+
+    console.log('🛑 Pausing training before executing action...');
+
+    try {
+        const cmd: TrainerCommand = {
+            getHyperParameters: false,
+            getInteractiveLayers: false,
+            hyperParameterChange: {
+                hyperParameters: { isTraining: false } as HyperParameters,
+            } as HyperParameterCommand,
+        };
+
+        const resp = await dataClient.experimentCommand(cmd).response;
+        if (resp.success) {
+            isTraining = false;
+            localStorage.setItem('training-state', 'false');
+            console.log('✓ Training paused for action');
+
+            // Update UI
+            const toggleBtn = document.getElementById('toggle-training') as HTMLButtonElement | null;
+            if (toggleBtn) {
+                toggleBtn.textContent = 'Resume';
+                toggleBtn.classList.toggle('running', false);
+                toggleBtn.classList.toggle('paused', true);
+            }
+            if (trainingStatePill) {
+                trainingStatePill.classList.toggle('pill-running', false);
+                trainingStatePill.classList.toggle('pill-paused', true);
+            }
+        } else {
+            console.warn('Failed to pause training:', resp.message);
+        }
+    } catch (err) {
+        console.error('Error pausing training:', err);
+    }
+}
+
 export async function handleQuerySubmit(query: string, isNaturalLanguage: boolean = true): Promise<void> {
     try {
+        // Ensure training is paused before sending agent request
+        await ensureTrainingPaused();
+
         const request: DataQueryRequest = { query, accumulate: false, isNaturalLanguage };
         const response: DataQueryResponse = await dataClient.applyDataQuery(request).response;
 
@@ -1593,9 +2654,9 @@ export async function initializeUIElements() {
                     const newTotal = stepsParam.numericalValue;
 
                     // Update if changed or not set
-                    if ((window as any).trainingTotalSteps !== newTotal) {
-                        console.log(`📊 Training total steps updated: ${(window as any).trainingTotalSteps} -> ${newTotal}`);
-                        (window as any).trainingTotalSteps = newTotal;
+                    if ((window ).trainingTotalSteps !== newTotal) {
+                        console.log(`📊 Training total steps updated: ${(window ).trainingTotalSteps} -> ${newTotal}`);
+                        (window ).trainingTotalSteps = newTotal;
 
                         const totalStepsEl = document.getElementById('training-total-steps');
                         if (totalStepsEl) {
@@ -2078,6 +3139,24 @@ export async function initializeUIElements() {
 // ===== TRAINING PROGRESS STREAM =====
 let isStreamRunning = false;
 let trainingStreamAbortController: AbortController | null = null;
+let trackedSignals: Set<string> = new Set();
+
+/**
+ * Update training UI without making server calls
+ * Used when connection is lost to set paused state
+ */
+function updateTrainingUI(): void {
+    const toggleBtn = document.getElementById('toggle-training') as HTMLButtonElement | null;
+    if (toggleBtn) {
+        toggleBtn.textContent = isTraining ? 'Pause' : 'Resume';
+        toggleBtn.classList.toggle('running', isTraining);
+        toggleBtn.classList.toggle('paused', !isTraining);
+    }
+    if (trainingStatePill) {
+        trainingStatePill.classList.toggle('pill-running', isTraining);
+        trainingStatePill.classList.toggle('pill-paused', !isTraining);
+    }
+}
 
 async function startTrainingStatusStream() {
     // Prevent multiple concurrent streams
@@ -2097,52 +3176,193 @@ async function startTrainingStatusStream() {
         return;
     }
 
-    isStreamRunning = true;
-    trainingStreamAbortController = new AbortController();
+    // Define helper functions for UI updates
+    const updateProgress = (modelAge: number) => {
+        if ((window ).trainingTotalSteps) {
+            const total = (window ).trainingTotalSteps;
+            const percent = Math.min(100, (modelAge / total) * 100);
+            if (progressBarEl) {
+                progressBarEl.style.width = `${percent}%`;
+            }
+            if (percentageEl) {
+                percentageEl.textContent = `${Math.round(percent)}%`;
+            }
+        }
+        if (currentStepEl) {
+            currentStepEl.textContent = String(modelAge);
+        }
+    };
 
-    // Track latest metrics (keep only last 5 unique names)
-    const latestMetrics = new Map<string, number>();
+    const updateMetrics = () => {
+        if (!metricsEl) return;
+        const metricsHtml = Array.from(latestMetrics.entries())
+            .map(([name, data]) => `<div><strong>${name}:</strong> ${data.value.toFixed(4)}</div>`)
+            .join('');
+        metricsEl.innerHTML = metricsHtml;
+        // Ensure text is white in dark mode
+        metricsEl.style.color = 'var(--primary-text-color, #fff)';
+    };
 
-    function updateProgress(currentStep: number) {
-        currentStepEl!.textContent = currentStep.toString();
+    // Get plot refresh interval from localStorage or use default (2 seconds)
+    const getPlotRefreshInterval = (): number => {
+        const stored = localStorage.getItem('plot-refresh-interval-ms');
+        if (stored) {
+            const parsed = parseInt(stored, 10);
+            if (!isNaN(parsed) && parsed >= 2000) {
+                return parsed;
+            }
+        }
+        return 2000;  // Default 2 seconds, minimum allowed
+    };
 
-        const totalSteps = (window as any).trainingTotalSteps;
-        if (totalSteps && totalSteps > 0) {
-            const stepsContainer = currentStepEl!.parentElement;
+    let POLL_INTERVAL_MS = getPlotRefreshInterval();
+    let isFirstPoll = true;  // Track if this is the first poll (full history) or incremental
+    let lastRefreshIntervalCheck = Date.now();
+    const REFRESH_INTERVAL_CHECK_MS = 1000;  // Check for interval changes every 1 second
 
-            // Check for evaluation state (current > total)
-            if (currentStep > totalSteps) {
-                progressBarEl!.classList.add('eval-mode');
-                // Don't force width to 100%, keep it at last valid progress
-                // progressBarEl!.style.width = '100%';
-                if (stepsContainer) stepsContainer.classList.add('eval-mode');
-                // percentageEl!.textContent = ""; // Keep previous percent
-            } else {
-                // Normal Training State
-                progressBarEl!.classList.remove('eval-mode');
-                if (stepsContainer) stepsContainer.classList.remove('eval-mode');
+    // Get max points from environment variable or use default
+    const getMaxPoints = (): number => {
+        const envValue = (window ).WS_PLOT_MAX_POINTS_REQUEST;
+        if (envValue !== undefined && envValue !== null) {
+            const parsed = parseInt(String(envValue), 10);
+            if (!isNaN(parsed) && parsed > 0) {
+                return parsed;
+            }
+        }
+        return 1000;  // Default value
+    };
 
-                const percentage = Math.min(100, (currentStep / totalSteps) * 100);
-                progressBarEl!.style.width = `${percentage}%`;
-                percentageEl!.textContent = `${percentage.toFixed(1)}%`;
+    async function pollLoggerData() {
+        // Check if refresh interval has changed and update polling
+        const now = Date.now();
+        if (now - lastRefreshIntervalCheck > REFRESH_INTERVAL_CHECK_MS) {
+            const newInterval = getPlotRefreshInterval();
+            if (newInterval !== POLL_INTERVAL_MS) {
+                console.log(`📊 Poll interval changed from ${POLL_INTERVAL_MS}ms to ${newInterval}ms`);
+                POLL_INTERVAL_MS = newInterval;
+                lastRefreshIntervalCheck = now;
+            }
+        }
+
+        try {
+            await ensureTotalSteps();
+
+            // Request full history on first poll, then only queue updates
+            const requestFullHistory = isFirstPoll;
+            const maxPoints = getMaxPoints();  // Max points per signal for full history
+
+            const resp = await dataClient.getLatestLoggerData({
+                requestFullHistory,
+                maxPoints
+            }).response;
+
+            const points = resp.points || [];
+
+            if (points.length === 0) {
+                console.debug(requestFullHistory ? 'No history available yet' : 'No new data in queue');
+                if (isFirstPoll) {
+                    isFirstPoll = false;  // Move to incremental mode even if no data
+                }
+                return;
+            }
+
+            console.log(`📊 Received ${points.length} points (${requestFullHistory ? 'full history' : 'queue'})`);
+
+            // Group points by metric_name
+            const signalGroups = new Map<string, typeof points>();
+
+            for (const pt of points) {
+                const metricName = pt.metricName || 'unknown';
+                if (!signalGroups.has(metricName)) {
+                    signalGroups.set(metricName, []);
+                    // Track this signal
+                    if (!trackedSignals.has(metricName)) {
+                        trackedSignals.add(metricName);
+                        console.log(`📊 Discovered signal: ${metricName}`);
+                    }
+                }
+                signalGroups.get(metricName)!.push(pt);
+            }
+
+            // Process each signal group
+            for (const [metricName, signalPoints] of signalGroups.entries()) {
+                const entry = getOrCreateSignalChart(metricName);
+                if (!entry) continue;
+
+                const mapped = signalPoints.map((pt) => ({
+                    x: pt.modelAge,
+                    y: pt.metricValue,
+                    experimentHash: pt.experimentHash,
+                })).sort((a, b) => a.x - b.x);
+
+                // Log the step range for this batch
+                if (mapped.length > 0) {
+                    const minStep = mapped[0].x;
+                    const maxStep = mapped[mapped.length - 1].x;
+                    console.log(`📊 ${metricName} plot update from ${minStep} to ${maxStep} steps (${mapped.length} points)`);
+                }
+
+                if (requestFullHistory || entry.rawPoints.length === 0) {
+                    // Full history: replace all data
+                    entry.rawPoints = mapped;
+                } else {
+                    // Incremental: only add new points
+                    const lastX = entry.rawPoints[entry.rawPoints.length - 1]?.x ?? -Infinity;
+                    mapped.forEach(p => {
+                        if (p.x > lastX) {
+                            entry.rawPoints.push(p);
+                        }
+                    });
+                }
+
+                // Limit history size
+                if (entry.rawPoints.length > SIGNAL_HISTORY_LIMIT) {
+                    entry.rawPoints.splice(0, entry.rawPoints.length - SIGNAL_HISTORY_LIMIT);
+                }
+
+                // Update metrics and progress
+                if (entry.rawPoints.length > 0) {
+                    const latest = entry.rawPoints[entry.rawPoints.length - 1];
+                    updateProgress(latest.x);
+                    // Track metric with timestamp: only show metrics updated in current poll
+                    latestMetrics.set(metricName, { value: latest.y, timestamp: Date.now() });
+                }
+
+                // Refresh chart immediately for this metric
+                refreshSignalChart(entry, metricName, metricName);
+                entry.chart.update('none');
+                console.log(`📊 Chart updated for ${metricName} with ${entry.rawPoints.length} points`);
+            }
+
+            // After first successful poll, switch to incremental mode
+            if (isFirstPoll) {
+                isFirstPoll = false;
+                console.log('📊 Switched to incremental polling mode');
+            }
+
+            // Update metrics display
+            updateMetrics();
+        } catch (err) {
+            // Connection error - graceful handling
+            // Silently skip this poll if server is unavailable
+            // Set training status to paused when connection is lost
+            if (isTraining) {
+                isTraining = false;
+                updateTrainingUI();
             }
         }
     }
 
-    function updateMetrics() {
-        if (!metricsEl) return;
-        // Keep order of metrics as they come, but only the last 5 unique ones
-        const metricsArray = Array.from(latestMetrics.entries()).slice(-5);
-        metricsEl.innerHTML = metricsArray.map(([name, value]) => `
-            <div class="training-metric-item">
-                <span class="training-metric-name">${name}:</span>
-                <span class="training-metric-value">${value.toFixed(4)}</span>
-            </div>
-        `).join('');
+    // Recursive polling with dynamic interval support
+    async function setupPolling() {
+        await pollLoggerData();
+        setTimeout(setupPolling, POLL_INTERVAL_MS);
     }
 
+    setupPolling();
+
     async function ensureTotalSteps() {
-        if ((window as any).trainingTotalSteps) return true;
+        if ((window ).trainingTotalSteps) return true;
         try {
             const resp = await dataClient.experimentCommand({ getHyperParameters: true, getInteractiveLayers: false }).response;
             const params = resp.hyperParametersDescs || [];
@@ -2156,7 +3376,7 @@ async function startTrainingStatusStream() {
 
             if (stepsParam && stepsParam.numericalValue) {
                 const total = stepsParam.numericalValue;
-                (window as any).trainingTotalSteps = total;
+                (window ).trainingTotalSteps = total;
                 const totalStepsEl = document.getElementById('training-total-steps');
                 if (totalStepsEl) {
                     totalStepsEl.textContent = Math.round(total).toString();
@@ -2164,58 +3384,19 @@ async function startTrainingStatusStream() {
                 return true;
             }
         } catch (err) {
-            console.warn('Could not fetch total steps for stream:', err);
+            // Silently fail - server may be disconnected
+            console.debug('Could not fetch total steps (server may be unavailable)');
         }
         return false;
     }
 
-    console.log('🚀 Starting training status stream...');
+    console.log('🚀 Starting training status polling...');
 
     startSignalUpdateLoop();
 
-    while (isStreamRunning) {
-        try {
-            await ensureTotalSteps();
-            const stream = dataClient.streamStatus({});
-
-            for await (const status of stream.responses) {
-                if (!isStreamRunning) break;
-
-                const modelAge = typeof status.modelAge === 'number' ? status.modelAge : undefined;
-
-                if (modelAge !== undefined) {
-                    updateProgress(modelAge);
-                }
-
-                if (status.metricsStatus && status.metricsStatus.name) {
-                    const metricName = status.metricsStatus.name;
-                    const metricValue = status.metricsStatus.value;
-
-                    latestMetrics.set(metricName, metricValue);
-                    updateMetrics();
-
-                    if (modelAge !== undefined) {
-                        pushSignalSample(metricName, modelAge, metricValue);
-                    }
-                }
-
-                if (trainingStreamAbortController?.signal.aborted) {
-                    isStreamRunning = false;
-                    break;
-                }
-            }
-        } catch (streamError) {
-            console.warn('📡 Training status stream interrupted:', streamError);
-            if (!isStreamRunning) break;
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            console.log('🔄 Attempting to reconnect training status stream...');
-        }
-
-        if (isStreamRunning) {
-            console.log('📡 Training status stream ended, reconnecting...');
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-    }
+    // Polling loop runs as long as the stream is "active"
+    // Note: We're now using polling exclusively, no streaming
+    await ensureTotalSteps();
 }
 
 
@@ -2503,40 +3684,48 @@ contextMenu.addEventListener('click', async (e) => {
                 .filter(id => id !== undefined)
         );
 
-        const sample_ids = Array.from(selectedCells)
-            .map(c => getGridCell(c)?.getRecord()?.sampleId)
-            .filter(id => id !== undefined)
+        const validSelections = Array.from(selectedCells)
+            .map(c => getGridCell(c)?.getRecord())
+            .filter((r): r is any => !!r)
+            .map(r => {
+                const idNum = Number(r.sampleId);
+                if (!Number.isFinite(idNum)) return null;
+                const originStat = r.dataStats.find((stat: any) => stat.name === 'origin');
+                return { id: idNum, origin: originStat?.valueString ?? '' };
+            })
+            .filter((x): x is { id: number; origin: string } => !!x);
 
-        let origins = []
-        for (const c of Array.from(selectedCells)) {
-            const gridCell = getGridCell(c);
-            const record = gridCell?.getRecord();
-            // console.log("record: ", record)
-            const originStat = record.dataStats.find((stat: any) => stat.name === 'origin');
-            if (originStat) {
-                origins.push(originStat.valueString as string);
-            }
+        const sample_ids = validSelections.map(v => v.id);
+        const origins = validSelections.map(v => v.origin);
+
+        if (sample_ids.length === 0) {
+            console.warn('No valid sample_ids to edit; skipping action');
+            hideContextMenu();
+            return;
         }
 
         hideContextMenu();
 
         switch (action) {
             case 'add-tag':
+                await ensureTrainingPaused();
                 openTaggingModal(sample_ids, origins);
                 // We DON'T clear selection or refresh here.
                 // The modal will stay on top of the selected items.
                 return;
             case 'remove-tag':
+                await ensureTrainingPaused();
                 await removeTag(sample_ids, origins);
                 clearSelection();
                 debouncedFetchAndDisplay();
                 break;
             case 'discard':
+                await ensureTrainingPaused();
                 let newlyDiscardedCount = 0;
                 // Track discarded samples locally to maintain state across refreshes
-                // sample_ids.forEach(id => {
-                //      locallyDiscardedSampleIds.add(id);
-                //});
+                sample_ids.forEach(id => {
+                     locallyDiscardedSampleIds.add(id);
+                });
 
                 selectedCells.forEach(cell => {
                     const gridCell = getGridCell(cell);
@@ -2565,7 +3754,7 @@ contextMenu.addEventListener('click', async (e) => {
                     boolValue: true,
                     type: SampleEditType.EDIT_OVERRIDE,
                     samplesIds: sample_ids,
-                    sampleOrigins: origins
+                    sampleOrigins: origins.length === sample_ids.length ? origins : sample_ids.map(_ => '')
                 }
                 try {
                     const dresponse = await dataClient.editDataSample(drequest).response;
@@ -2579,6 +3768,8 @@ contextMenu.addEventListener('click', async (e) => {
                 debouncedFetchAndDisplay();
                 break;
             case 'undiscard':
+                await ensureTrainingPaused();
+
                 let newlyRestoredCount = 0;
                 selectedCells.forEach(cell => {
                     const gridCell = getGridCell(cell);
@@ -2608,7 +3799,7 @@ contextMenu.addEventListener('click', async (e) => {
                     boolValue: false,  // false to un-discard/restore
                     type: SampleEditType.EDIT_OVERRIDE,
                     samplesIds: sample_ids,
-                    sampleOrigins: origins
+                    sampleOrigins: origins.length === sample_ids.length ? origins : sample_ids.map(_ => '')
                 };
                 try {
                     const uresponse = await dataClient.editDataSample(urequest).response;
@@ -3136,6 +4327,9 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
     };
 
     const handleRemove = async (tag: string) => {
+        // Ensure training is paused before removing tags
+        await ensureTrainingPaused();
+
         const request: DataEditsRequest = {
             statName: "tags",
             floatValue: 0,
@@ -3174,6 +4368,9 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
             cleanup();
             return;
         }
+
+        // Ensure training is paused before tagging data
+        await ensureTrainingPaused();
 
         const request: DataEditsRequest = {
             statName: "tags",
@@ -3216,6 +4413,9 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
 
     const handleClear = async () => {
         if (confirm("Are you sure you want to remove all tags from the selected images?")) {
+            // Ensure training is paused before clearing tags
+            await ensureTrainingPaused();
+
             await removeTag(sampleIds, origins);
             cleanup();
         }
@@ -3248,6 +4448,9 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
 }
 
 async function removeTag(sampleIds: number[], origins: string[]) {
+    // Ensure training is paused before removing tags
+    await ensureTrainingPaused();
+
     const request: DataEditsRequest = {
         statName: "tags",
         floatValue: 0,
@@ -3282,6 +4485,9 @@ function getRecordOrigin(record: any): string {
 }
 
 async function paintCell(cell: HTMLElement) {
+    // Ensure training is paused before restoring data (painter mode)
+    await ensureTrainingPaused();
+
     if (activeBrushTags.size === 0) return;
 
     const gridCell = getGridCell(cell);
@@ -3363,3 +4569,7 @@ async function paintCell(cell: HTMLElement) {
         });
     }
 }
+
+// Expose checkpoint restore functions to window for HTML onclick handlers
+(window ).closeRestoreMarkerModal = closeRestoreMarkerModal;
+(window ).executeRestoreCheckpoint = executeRestoreCheckpoint;
