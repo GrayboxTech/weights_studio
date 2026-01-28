@@ -139,6 +139,7 @@ let lastFetchedBatchStart: number = 0; // Track navigation direction
 
 // Track discarded sample IDs locally to persist state across refreshes
 const locallyDiscardedSampleIds = new Set<number>();
+const locallyRestoredSampleIds = new Set<number>();
 
 function getCacheKey(startIndex: number, count: number, resizeWidth: number, resizeHeight: number): string {
     return `${startIndex}-${count}-${resizeWidth}-${resizeHeight}`;
@@ -427,10 +428,14 @@ async function fetchAndDisplaySamples() {
         cachedResponse.dataRecords.forEach((record, index) => {
             // Apply locally-tracked discard state to maintain consistency across refreshes
             const denyListedStat = record.dataStats.find(stat => stat.name === 'deny_listed');
-            if (denyListedStat && locallyDiscardedSampleIds.has(record.sampleId)) {
-                denyListedStat.value = [1]; // Ensure deny_listed is 1 if locally tracked
-            } else if (denyListedStat && !locallyDiscardedSampleIds.has(record.sampleId)) {
-                denyListedStat.value = [0]; // Ensure deny_listed is 0 if not locally tracked
+            if (denyListedStat) {
+                if (locallyDiscardedSampleIds.has(record.sampleId)) {
+                    denyListedStat.value = [1]; // Force to 1 if locally discarded
+                    denyListedStat.valueString = '1';
+                } else if (locallyRestoredSampleIds.has(record.sampleId)) {
+                    denyListedStat.value = [0]; // Force to 0 if locally restored
+                    denyListedStat.valueString = '0';
+                }
             }
 
             const cell = gridManager.getCellbyIndex(index);
@@ -513,10 +518,14 @@ async function fetchAndDisplaySamples() {
                 response.dataRecords.forEach((record, index) => {
                     // Apply locally-tracked discard state to maintain consistency
                     const denyListedStat = record.dataStats.find(stat => stat.name === 'deny_listed');
-                    if (denyListedStat && locallyDiscardedSampleIds.has(record.sampleId)) {
-                        denyListedStat.value = [1]; // Ensure deny_listed is 1 if locally tracked
-                    } else if (denyListedStat && !locallyDiscardedSampleIds.has(record.sampleId)) {
-                        denyListedStat.value = [0]; // Ensure deny_listed is 0 if not locally tracked
+                    if (denyListedStat) {
+                        if (locallyDiscardedSampleIds.has(record.sampleId)) {
+                            denyListedStat.value = [1]; // Force to 1 if locally discarded
+                            denyListedStat.valueString = '1';
+                        } else if (locallyRestoredSampleIds.has(record.sampleId)) {
+                            denyListedStat.value = [0]; // Force to 0 if locally restored
+                            denyListedStat.valueString = '0';
+                        }
                     }
 
                     const cell = gridManager.getCellbyIndex(i + index);
@@ -1432,7 +1441,7 @@ export async function initializeUIElements() {
                     }).response;
 
                     const hp = initResp.hyperParametersDescs || [];
-                    const isTrainingDesc = hp.find(d => d.name === 'is_training' || d.label === 'is_training');
+                    const isTrainingDesc = hp.find((d: any) => d.name === 'is_training' || d.label === 'is_training');
 
                     if (isTrainingDesc) {
                         let fetchedState = false;
@@ -2237,6 +2246,7 @@ contextMenu.addEventListener('click', async (e) => {
                 // Track discarded samples locally to maintain state across refreshes
                 sample_ids.forEach(id => {
                     locallyDiscardedSampleIds.add(id);
+                    locallyRestoredSampleIds.delete(id);
                 });
 
                 selectedCells.forEach(cell => {
@@ -2284,6 +2294,7 @@ contextMenu.addEventListener('click', async (e) => {
                 // Update local tracking
                 sample_ids.forEach(id => {
                     locallyDiscardedSampleIds.delete(id);
+                    locallyRestoredSampleIds.add(id);
                 });
                 selectedCells.forEach(cell => {
                     const gridCell = getGridCell(cell);
@@ -3004,7 +3015,7 @@ async function paintCell(cell: HTMLElement) {
     const currentTags = Array.from(new Set(currentTagsStr
         .split(/[;,]/)
         .map((t: string) => t.trim())
-        .filter((t: string) => t && t !== 'None')));
+        .filter((t: any) => t && t !== 'None')));
 
     if (isPainterRemoveMode) {
         // REMOVE MODE: Remove any selected tags that exist
