@@ -206,10 +206,9 @@ export class DataDisplayOptionsPanel {
                 record.dataStats.forEach((stat: any) => {
                     if (stat.name === "raw_data" ||
                         stat.name === "pred_mask" ||
-                        stat.name === "label" ||
                         stat.name === "task_type" ||
                         /^class(_\d+)?$/i.test(stat.name) ||
-                        (this.isSegmentationDataset && SEGMENTATION_HIDDEN_FIELDS.has(stat.name))) {
+                        (stat.name === "label" && this.isSegmentationDataset)) {
                         return;
                     }
                     availableFields.add(stat.name);
@@ -245,8 +244,7 @@ export class DataDisplayOptionsPanel {
                     name === "pred_mask" ||
                     name === "task_type" ||
                     /^class(_\d+)?$/i.test(name) ||
-                    (name === "label" && this.isSegmentationDataset && SEGMENTATION_HIDDEN_FIELDS.has(name)) ||
-                    (this.isSegmentationDataset && SEGMENTATION_HIDDEN_FIELDS.has(name))
+                    (name === "label" && this.isSegmentationDataset)
                 ) {
                     return;
                 }

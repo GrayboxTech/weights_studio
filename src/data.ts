@@ -2161,7 +2161,7 @@ function showContextMenu(x: number, y: number) {
 
     // Show/hide restore option based on selection
     const discardBtn = contextMenu.querySelector('[data-action="discard"]') as HTMLElement;
-    const restoreBtn = contextMenu.querySelector('[data-action="restore"]') as HTMLElement;
+    const restoreBtn = contextMenu.querySelector('[data-action="undiscard"]') as HTMLElement;
 
     if (anyDiscarded && allDiscarded) {
         // All selected cells are discarded: show restore, hide discard
@@ -2235,9 +2235,9 @@ contextMenu.addEventListener('click', async (e) => {
             case 'discard':
                 let newlyDiscardedCount = 0;
                 // Track discarded samples locally to maintain state across refreshes
-                // sample_ids.forEach(id => {
-                //      locallyDiscardedSampleIds.add(id);
-                //});
+                sample_ids.forEach(id => {
+                    locallyDiscardedSampleIds.add(id);
+                });
 
                 selectedCells.forEach(cell => {
                     const gridCell = getGridCell(cell);
@@ -2281,6 +2281,10 @@ contextMenu.addEventListener('click', async (e) => {
                 break;
             case 'undiscard':
                 let newlyRestoredCount = 0;
+                // Update local tracking
+                sample_ids.forEach(id => {
+                    locallyDiscardedSampleIds.delete(id);
+                });
                 selectedCells.forEach(cell => {
                     const gridCell = getGridCell(cell);
                     if (gridCell) {
