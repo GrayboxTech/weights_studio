@@ -93,6 +93,8 @@ let cellsContainer: HTMLElement | null;
 let displayOptionsPanel: DataDisplayOptionsPanel | null = null;
 let gridManager: GridManager;
 let isTraining = false; // local UI state, initialized from server on load (default to paused)
+let plotRefreshEnabled = true; // Plot auto-refresh state (default to enabled)
+let plotRefreshIntervalMs = 2000; // Plot refresh interval in ms
 let inspectorOpen = true;
 let inspectorContainer: HTMLElement | null = null;
 let inspectorPanel: HTMLElement | null = null;
@@ -107,15 +109,24 @@ let signalsContainer: HTMLElement | null = null;
 type SignalPoint = { x: number; y: number };
 type SignalRawPoint = { x: number; y: number; experimentHash?: string; changeDetail?: string };
 
+interface SignalBranch {
+    rawPoints: SignalRawPoint[];
+    branchId: number; // Unique ID for this training branch
+    experimentHash?: string; // Hash of this branch to detect when training diverges
+    customColor?: string; // Optional custom color set by user for this specific branch
+}
+
 interface SignalChart {
     chart: Chart;
     data: SignalPoint[]; // plotted (smoothed/decimated) points
-    rawPoints: SignalRawPoint[]; // full history kept in memory (bounded)
+    rawPoints: SignalRawPoint[]; // full history kept in memory (bounded) - DEPRECATED, use branches
+    branches: SignalBranch[]; // Multiple training branches after checkpoint restores
     pending: boolean;
     color: string;
     smoothingEnabled: boolean;
     smoothingFactor: number;
     stdEnabled: boolean;
+    markersEnabled: boolean;
     userZoomed: boolean;
 }
 
@@ -123,6 +134,13 @@ const signalCharts = new Map<string, SignalChart>();
 const SIGNAL_UPDATE_INTERVAL_MS = 5000;
 const SIGNAL_MAX_POINTS = 5000;
 let signalUpdateTimer: number | null = null;
+
+// Track if we just restored a checkpoint (to create new branch instead of appending)
+let justRestoredCheckpoint = false;
+let nextBranchId = 0;
+
+// Track if this is the first poll (full history) or incremental
+let isFirstPoll = true;
 
 // Double-click detection for markers
 let lastMarkerClickTime: number = 0;
@@ -151,6 +169,26 @@ const STD_WINDOW = 20; // window size for std band (in decimated points)
 
 const MINUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
 const PLUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+
+// Branch color persistence helpers
+function saveBranchColor(experimentHash: string | undefined, color: string): void {
+    if (!experimentHash) return;
+    try {
+        localStorage.setItem(`branch_color_${experimentHash}`, color);
+    } catch (e) {
+        console.warn('Failed to save branch color:', e);
+    }
+}
+
+function loadBranchColor(experimentHash: string | undefined): string | undefined {
+    if (!experimentHash) return undefined;
+    try {
+        return localStorage.getItem(`branch_color_${experimentHash}`) || undefined;
+    } catch (e) {
+        console.warn('Failed to load branch color:', e);
+        return undefined;
+    }
+}
 
 
 // Prefetch Cache for faster navigation
@@ -297,27 +335,45 @@ function triangleColor(): string {
 /**
  * Show tooltip with marker hash on hover.
  */
-function showMarkerTooltip(marker: { experimentHash?: string; x?: number; y?: number }, event: MouseEvent): void {
+function showMarkerTooltip(marker: { experimentHash?: string; x?: number; y?: number; changeDetail?: string }, event: MouseEvent): void {
     console.debug('showMarkerTooltip called for hash:', marker?.experimentHash);
     let tooltip = document.getElementById('marker-tooltip') as HTMLElement;
     if (!tooltip) {
         tooltip = document.createElement('div');
         tooltip.id = 'marker-tooltip';
         tooltip.style.position = 'fixed';
-        tooltip.style.backgroundColor = '#333';
-        tooltip.style.color = '#fff';
-        tooltip.style.padding = '8px 12px';
-        tooltip.style.borderRadius = '4px';
+        tooltip.style.backgroundColor = 'var(--surface-color, #111827)';
+        tooltip.style.color = 'var(--primary-text-color, #ffffff)';
+        tooltip.style.padding = '10px 14px';
+        tooltip.style.borderRadius = '6px';
         tooltip.style.fontSize = '12px';
         tooltip.style.zIndex = '99999';
         tooltip.style.pointerEvents = 'none';
-        tooltip.style.maxWidth = '300px';
-        tooltip.style.wordBreak = 'break-all';
+        tooltip.style.maxWidth = '280px';
+        tooltip.style.wordBreak = 'break-word';
         tooltip.style.whiteSpace = 'pre-line';
+        tooltip.style.border = '1px solid var(--border-subtle, rgba(255, 255, 255, 0.15))';
+        tooltip.style.lineHeight = '1.4';
         document.body.appendChild(tooltip);
     }
+
     const hash = marker?.experimentHash ?? 'unknown';
-    tooltip.textContent = `Hash: ${hash}\nDouble click to restore state`;
+    // Format hash with separators between 8-character segments
+    const formattedHash = hash.match(/.{1,8}/g)?.join('-') || hash;
+
+    // Parse what changed from changeDetail
+    let changes = 'Double click to restore';
+    if (marker?.changeDetail) {
+        const changeMessage = generateChangeMessage(marker.changeDetail);
+        if (changeMessage !== 'No changes detected') {
+            changes = `Changed: ${changeMessage}`;
+        }
+    }
+
+    // Add coordinates
+    const coords = `Step: ${marker?.x ?? 'N/A'}, Value: ${marker?.y?.toFixed(4) ?? 'N/A'}`;
+
+    tooltip.textContent = `Hash: ${formattedHash}\n${coords}\n${changes}`;
     tooltip.style.left = (event.clientX + 10) + 'px';
     tooltip.style.top = (event.clientY + 10) + 'px';
     tooltip.style.display = 'block';
@@ -332,6 +388,40 @@ function hideMarkerTooltip(): void {
     if (tooltip) {
         tooltip.style.display = 'none';
     }
+}
+
+/**
+ * Generate a clean "what changed" message from changeDetail string
+ */
+function generateChangeMessage(changeDetail: string): string {
+    if (!changeDetail) return 'No changes detected';
+
+    const changes = {
+        HP: false,
+        MODEL: false,
+        DATA: false
+    };
+
+    // Parse the changeDetail to find what changed
+    const lines = changeDetail.split('\n');
+    lines.forEach(line => {
+        if (line.includes('→')) {
+            if (line.startsWith('HP')) changes.HP = true;
+            if (line.startsWith('MODEL')) changes.MODEL = true;
+            if (line.startsWith('DATA')) changes.DATA = true;
+        }
+    });
+
+    const changedItems: string[] = [];
+    if (changes.HP) changedItems.push('HP');
+    if (changes.MODEL) changedItems.push('Model');
+    if (changes.DATA) changedItems.push('Data');
+
+    if (changedItems.length === 0) {
+        return 'No changes detected';
+    }
+
+    return changedItems.join(' • ');
 }
 
 /**
@@ -375,6 +465,8 @@ function showRestoreMarkerModal(marker: any, signalName: string): void {
     }
 
     // Populate modal content
+    const changeMessage = generateChangeMessage(marker.changeDetail);
+
     modal.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle, rgba(209, 213, 219, 0.9));">
             <h2 style="margin: 0; font-size: 18px; font-weight: 600; color: var(--primary-text-color, #111827);">Restore Checkpoint</h2>
@@ -391,6 +483,11 @@ function showRestoreMarkerModal(marker: any, signalName: string): void {
             <div style="word-break: break-all; font-family: 'SF Mono', 'Monaco', 'Courier New', monospace; background: var(--surface-elevated-color, #ffffff); padding: 10px 12px; border-radius: var(--radius-sm, 8px); border: 1px solid var(--border-subtle, rgba(209, 213, 219, 0.9)); font-size: 13px; color: var(--primary-text-color, #111827);">${marker.experimentHash}</div>
         </div>
 
+        <div style="margin-bottom: 18px;">
+            <label style="font-weight: 600; font-size: 13px; color: var(--secondary-text-color, #6b7280); display: block; margin-bottom: 6px;">What Changed</label>
+            <div style="color: var(--primary-text-color, #111827); font-size: 14px; background: var(--surface-elevated-color, #f5f5f5); padding: 8px 12px; border-radius: var(--radius-sm, 8px); border-left: 3px solid var(--accent-color, #007aff);">${changeMessage}</div>
+        </div>
+
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px;">
             <div>
                 <label style="font-weight: 600; font-size: 13px; color: var(--secondary-text-color, #6b7280); display: block; margin-bottom: 6px;">Model Age (Steps)</label>
@@ -400,11 +497,6 @@ function showRestoreMarkerModal(marker: any, signalName: string): void {
                 <label style="font-weight: 600; font-size: 13px; color: var(--secondary-text-color, #6b7280); display: block; margin-bottom: 6px;">Value</label>
                 <div style="color: var(--primary-text-color, #111827); font-size: 14px;">${marker.y.toFixed(4)}</div>
             </div>
-        </div>
-
-        <div style="margin-bottom: 24px;">
-            <label style="font-weight: 600; font-size: 13px; color: var(--secondary-text-color, #6b7280); display: block; margin-bottom: 6px;">Change Details</label>
-            <div style="color: var(--primary-text-color, #111827); font-size: 13px; line-height: 1.6; white-space: pre-wrap; background: var(--surface-elevated-color, #ffffff); padding: 10px 12px; border-radius: var(--radius-sm, 8px); border: 1px solid var(--border-subtle, rgba(209, 213, 219, 0.9));">${marker.changeDetail || 'No change details available'}</div>
         </div>
 
         <div style="display: flex; gap: 10px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid var(--border-subtle, rgba(209, 213, 219, 0.9));">
@@ -452,6 +544,14 @@ async function executeRestoreCheckpoint(experimentHash: string): Promise<void> {
 
             // Reload metadata and cached data
             clearResponseCache();
+
+            // Set flag to append new data to existing plots instead of replacing
+            justRestoredCheckpoint = true;
+
+            // Force full history fetch on next poll to load new training branch data
+            // But keep existing plots and append new points to them
+            isFirstPoll = true;
+
             await refreshDynamicStatsOnly();
 
             unfreezeUIAfterRestore();
@@ -509,6 +609,18 @@ function freezeUIForRestore(): void {
         }
     });
 
+    // Explicitly disable chat input and send button
+    const chatInput = document.getElementById('chat-input') as HTMLInputElement;
+    const chatSendButton = document.getElementById('chat-send') as HTMLButtonElement;
+
+    if (chatInput) {
+        chatInput.disabled = true;
+    }
+
+    if (chatSendButton) {
+        chatSendButton.disabled = true;
+    }
+
     document.body.style.cursor = 'not-allowed';
 }
 
@@ -538,6 +650,23 @@ function unfreezeUIAfterRestore(): void {
         }
     });
 
+    // Re-enable chat input, send button, and toggle training button
+    const chatInput = document.getElementById('chat-input') as HTMLInputElement;
+    const chatSendButton = document.getElementById('chat-send') as HTMLButtonElement;
+    const toggleTrainingBtn = document.getElementById('toggle-training') as HTMLButtonElement;
+
+    if (chatInput) {
+        chatInput.disabled = false;
+    }
+
+    if (chatSendButton) {
+        chatSendButton.disabled = false;
+    }
+
+    if (toggleTrainingBtn) {
+        toggleTrainingBtn.disabled = false;
+    }
+
     document.body.style.cursor = 'auto';
 }
 
@@ -546,7 +675,8 @@ function unfreezeUIAfterRestore(): void {
  * The segment spans from this marker to the next marker (or end of curve).
  */
 function highlightSegmentFromMarker(chart: Chart, markerIndex: number, baseColor: string): void {
-    const markersDataset = chart.data.datasets[3];
+    const markersDatasetIndex = chart.data.datasets.length - 1;
+    const markersDataset = chart.data.datasets[markersDatasetIndex];
     const markers = markersDataset.data as any[];
 
     if (markerIndex >= markers.length) return;
@@ -734,7 +864,8 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
     settingsBtn.textContent = 'Settings';
     settingsBtn.title = 'Plot settings';
 
-    const savedColor = localStorage.getItem(`signal-color-${signalName}`) || '#ffffff';
+    const savedColor = getColorForMetric(signalName);
+    const savedMarkersEnabled = localStorage.getItem(`signal-markers-enabled-${signalName}`) !== 'false'; // Default to true
 
     controls.appendChild(resetBtn);
     controls.appendChild(csvBtn);
@@ -754,8 +885,7 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
     const canvasWrapper = document.createElement('div');
     canvasWrapper.style.position = 'relative';
     canvasWrapper.style.width = '100%';
-    canvasWrapper.style.height = 'auto';
-    canvasWrapper.style.minHeight = '300px';
+    canvasWrapper.style.height = '100%';
     canvasWrapper.appendChild(canvas);
 
     card.appendChild(header);
@@ -809,7 +939,8 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
                     backgroundColor: '#ff6b6b',
                     pointStyle: 'star',
                     pointRadius: 12,
-                    pointHoverRadius: 14,
+                    pointHoverRadius: 22,
+                    pointHitRadius: 10,
                     borderWidth: 1,
                     showLine: false,
                 },
@@ -821,7 +952,11 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
             parsing: false,
             animation: false,
             normalized: true,
-            interaction: { mode: 'nearest', intersect: false },
+            interaction: {
+                mode: 'point',
+                intersect: false,
+                axis: 'xy'
+            },
             plugins: {
                 legend: { display: false },
                 title: { display: false },
@@ -829,6 +964,18 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
                     enabled: true,
                     mode: 'nearest',
                     intersect: false,
+                    filter: (tooltipItem) => {
+                        // Don't show tooltip for markers dataset or std bands
+                        if (tooltipItem.datasetIndex === 3 || tooltipItem.datasetIndex === 0 || tooltipItem.datasetIndex === 1) {
+                            return false;
+                        }
+                        // Also check if marker tooltip is currently shown
+                        const markerTooltip = document.getElementById('marker-tooltip');
+                        if (markerTooltip && markerTooltip.style.display === 'block') {
+                            return false;
+                        }
+                        return true;
+                    },
                 },
                 decimation: { enabled: true, algorithm: 'lttb', samples: 300 },
                 zoom: {
@@ -849,7 +996,11 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
             scales: {
                 x: {
                     type: 'linear',
-                    title: { display: false },
+                    title: {
+                        display: true,
+                        text: 'Steps',
+                        font: { size: 12, weight: 'bold' }
+                    },
                     ticks: {
                         autoSkip: true,
                         maxTicksLimit: 10,
@@ -859,27 +1010,52 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
                 },
                 y: {
                     type: 'linear',
-                    title: { display: false },
+                    title: {
+                        display: true,
+                        text: 'Values',
+                        font: { size: 12, weight: 'bold' }
+                    },
                     grid: { color: gridColor },
                     grace: '5%',
                     min: 0,
                 },
             },
             onHover: (event: any, activeElements: any) => {
-                // Only handle hover for markers (dataset 3)
+                // Find markers dataset (last dataset)
+                const markersDatasetIndex = chart.data.datasets.length - 1;
+
+                // Only handle hover for markers if markers are enabled
+                if (!entry.markersEnabled) {
+                    clearSegmentHighlight(chart);
+                    hideMarkerTooltip();
+                    (chart as any).__hoveredMarker = null;
+                    return;
+                }
+
                 if (activeElements && activeElements.length > 0) {
-                    // Check if any element is a marker (dataset 3)
-                    const markerElement = activeElements.find((el: any) => el.datasetIndex === 3);
+                    // Check if any element is a marker (last dataset)
+                    const markerElement = activeElements.find((el: any) => el.datasetIndex === markersDatasetIndex);
 
                     if (markerElement) {
                         // Hovering over a marker - highlight the segment
                         const markerIndex = markerElement.index;
-                        const markersDataset = chart.data.datasets[3];
+                        const markersDataset = chart.data.datasets[markersDatasetIndex];
                         const markers = markersDataset.data as any[];
                         const marker = markers[markerIndex];
 
                         console.debug('Highlighting marker', markerIndex, 'of', markers.length, 'markers');
                         highlightSegmentFromMarker(chart, markerIndex, entry.color);
+
+                        // Completely disable and hide Chart.js tooltip
+                        if (chart.options.plugins?.tooltip) {
+                            chart.options.plugins.tooltip.enabled = false;
+                        }
+                        // Hide any existing Chart.js tooltip element
+                        const chartjsTooltip = document.querySelector('.chartjs-tooltip');
+                        if (chartjsTooltip) {
+                            (chartjsTooltip as HTMLElement).style.opacity = '0';
+                            (chartjsTooltip as HTMLElement).style.display = 'none';
+                        }
 
                         // Show marker details in tooltip
                         if (marker) {
@@ -888,25 +1064,46 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
 
                         // Store marker info for click handling
                         (chart as any).__hoveredMarker = { markerIndex, marker, signalName };
+
                     } else {
                         // Not hovering over a marker - clear everything
                         clearSegmentHighlight(chart);
                         hideMarkerTooltip();
                         (chart as any).__hoveredMarker = null;
+
+                        // Re-enable Chart.js tooltip
+                        if (chart.options.plugins?.tooltip) {
+                            chart.options.plugins.tooltip.enabled = true;
+                        }
                     }
                 } else {
                     // Mouse left the chart - clear highlight
                     clearSegmentHighlight(chart);
                     hideMarkerTooltip();
                     (chart as any).__hoveredMarker = null;
+
+                    // Re-enable Chart.js tooltip
+                    if (chart.options.plugins?.tooltip) {
+                        chart.options.plugins.tooltip.enabled = true;
+                    }
                 }
             },
             onClick: (event: any, activeElements: any) => {
-                // Detect double-click for restore modal (only on markers)
-                if (!activeElements || activeElements.length === 0) return;
+                // Skip all click handling if markers are disabled
+                if (!entry.markersEnabled) {
+                    return;
+                }
 
-                // Check if clicked element is a marker (dataset 3)
-                const markerElement = activeElements.find((el: any) => el.datasetIndex === 3);
+                // Detect double-click for restore modal (only on markers if enabled)
+                if (!activeElements || activeElements.length === 0) {
+                    return;
+                }
+
+                // Find markers dataset (last dataset)
+                const markersDatasetIndex = chart.data.datasets.length - 1;
+
+                // Check if clicked element is a marker (last dataset)
+                const markerElement = activeElements.find((el: any) => el.datasetIndex === markersDatasetIndex);
                 if (!markerElement) return;
 
                 const now = Date.now();
@@ -933,18 +1130,45 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
 
                     if (highlightedSegment === null || highlightedSegment === undefined) return;
 
-                    const lowerDataset = chart.data.datasets[0];
-                    const upperDataset = chart.data.datasets[1];
-                    const mainLineDataset = chart.data.datasets[2];
-                    const markersDataset = chart.data.datasets[3];
+                    // Get markers dataset (always last)
+                    const markersDatasetIndex = chart.data.datasets.length - 1;
+                    const markersDataset = chart.data.datasets[markersDatasetIndex];
                     const markers = markersDataset.data as any[];
 
                     if (highlightedSegment >= markers.length) return;
 
+                    // Find which branch this marker belongs to by matching experimentHash
+                    const currentMarker = markers[highlightedSegment];
+                    const markerHash = currentMarker.experimentHash;
+                    
+                    let branchIndex = -1;
+                    if (markerHash) {
+                        for (let i = 0; i < entry.branches.length; i++) {
+                            if (entry.branches[i].experimentHash === markerHash) {
+                                branchIndex = i;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Fallback to last branch if hash not found
+                    if (branchIndex === -1) {
+                        branchIndex = entry.branches.length - 1;
+                    }
+
+                    // Calculate dataset indices for this specific branch
+                    // Each branch has 3 datasets: [lower_std, upper_std, main_line]
+                    const lowerDatasetIndex = branchIndex * 3;
+                    const upperDatasetIndex = branchIndex * 3 + 1;
+                    const mainLineDatasetIndex = branchIndex * 3 + 2;
+
+                    const mainLineDataset = chart.data.datasets[mainLineDatasetIndex];
+                    const upperDataset = chart.data.datasets[upperDatasetIndex];
+                    const lowerDataset = chart.data.datasets[lowerDatasetIndex];
+
                     const xScale = chart.scales.x;
                     const yScale = chart.scales.y;
 
-                    const currentMarker = markers[highlightedSegment];
                     const nextMarker = highlightedSegment + 1 < markers.length ? markers[highlightedSegment + 1] : null;
 
                     const currentX = currentMarker.x;
@@ -982,9 +1206,13 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
 
                     ctx.save();
 
+                    // Get the branch color (custom or default)
+                    const branch = entry.branches[branchIndex];
+                    const highlightColor = branch.customColor || entry.color;
+
                     // Draw highlighted std band if available (need at least 2 points for upper and lower)
                     if (segmentLower.length >= 2 && segmentUpper.length >= 2) {
-                        ctx.fillStyle = 'rgba(52, 152, 219, 0.25)';
+                        ctx.fillStyle = hexToRgba(highlightColor, 0.25);
                         ctx.beginPath();
 
                         // Draw upper bound
@@ -1012,7 +1240,7 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
                     }
 
                     // Draw highlighted main line
-                    ctx.strokeStyle = '#3498db';
+                    ctx.strokeStyle = highlightColor;
                     ctx.lineWidth = 4;
                     ctx.globalAlpha = 0.8;
                     ctx.lineCap = 'round';
@@ -1070,15 +1298,23 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
         openSignalSettings(signalName);
     };
 
+    // Add context menu for chart
+    canvas.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showChartContextMenu(e, chart, entry, signalName);
+    });
+
     const entry: SignalChart = {
         chart,
         data: [],
-        rawPoints: [],
+        rawPoints: [], // Kept for backward compatibility
+        branches: [{ rawPoints: [], branchId: nextBranchId++ }], // Initialize with first branch
         pending: false,
         color: savedColor,
         smoothingEnabled: true,
         smoothingFactor: SMOOTHING_FACTOR,
         stdEnabled: true,
+        markersEnabled: savedMarkersEnabled,
         userZoomed: false,
     };
 
@@ -1095,51 +1331,149 @@ function pushSignalSample(signalName: string, modelAge: number, value: number): 
     const entry = getOrCreateSignalChart(signalName);
     if (!entry) return;
 
-    entry.rawPoints.push({ x: modelAge, y: value });
-    if (entry.rawPoints.length > SIGNAL_HISTORY_LIMIT) {
-        entry.rawPoints.splice(0, entry.rawPoints.length - SIGNAL_HISTORY_LIMIT);
+    // Push to current (last) branch
+    const currentBranch = entry.branches[entry.branches.length - 1];
+    currentBranch.rawPoints.push({ x: modelAge, y: value });
+    if (currentBranch.rawPoints.length > SIGNAL_HISTORY_LIMIT) {
+        currentBranch.rawPoints.splice(0, currentBranch.rawPoints.length - SIGNAL_HISTORY_LIMIT);
     }
 
     refreshSignalChart(entry, signalName);
 }
 
 function refreshSignalChart(entry: SignalChart, signalName: string, graphName?: string): void {
-    const { smoothed, upper, lower, markers } = buildSmoothedSeries(entry.rawPoints, {
-        smoothingEnabled: entry.smoothingEnabled,
-        smoothingFactor: entry.smoothingFactor,
-        stdEnabled: entry.stdEnabled,
+    const chart = entry.chart;
+
+    // Resync entry.color from split colors or localStorage
+    entry.color = getColorForMetric(signalName);
+
+    // Clear existing datasets (except keep the structure)
+    chart.data.datasets = [];
+
+    // Collect all markers from all branches
+    const allMarkers: any[] = [];
+
+    // Process each branch and create datasets
+    entry.branches.forEach((branch, branchIndex) => {
+        const { smoothed, upper, lower, markers } = buildSmoothedSeries(branch.rawPoints, {
+            smoothingEnabled: entry.smoothingEnabled,
+            smoothingFactor: entry.smoothingFactor,
+            stdEnabled: entry.stdEnabled,
+        });
+
+        // Use custom color if set, otherwise use default color
+        const branchColor = branch.customColor || entry.color;
+        const branchAlpha = branchIndex === 0 ? 1.0 : 0.8; // Slightly transparent for later branches
+
+        // Add std band (lower)
+        chart.data.datasets.push({
+            data: entry.stdEnabled ? lower : [],
+            fill: false,
+            borderColor: 'rgba(0,0,0,0)',
+            backgroundColor: 'rgba(0,0,0,0)',
+            pointRadius: 0,
+            pointHoverRadius: 0,
+        });
+
+        // Add std band (upper)
+        chart.data.datasets.push({
+            data: entry.stdEnabled ? upper : [],
+            fill: '-1',
+            borderColor: 'rgba(0,0,0,0)',
+            backgroundColor: entry.stdEnabled ? hexToRgba(branchColor, 0.15 * branchAlpha) : 'rgba(0,0,0,0)',
+            pointRadius: 0,
+            pointHoverRadius: 0,
+        });
+
+        // Add main line
+        chart.data.datasets.push({
+            data: smoothed,
+            fill: false,
+            borderColor: hexToRgba(branchColor, branchAlpha),
+            backgroundColor: hexToRgba(branchColor, 0),
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            tension: 0,
+            borderWidth: 2,
+        });
+
+        // Add connector from previous branch to this one (if not first branch)
+        // Only connect if current branch starts at same or later step (don't connect backwards)
+        if (branchIndex > 0 && smoothed.length > 0) {
+            const prevBranch = entry.branches[branchIndex - 1];
+            const prevSmoothed = buildSmoothedSeries(prevBranch.rawPoints, {
+                smoothingEnabled: entry.smoothingEnabled,
+                smoothingFactor: entry.smoothingFactor,
+                stdEnabled: entry.stdEnabled,
+            }).smoothed;
+
+            if (prevSmoothed.length > 0) {
+                const lastPointOfPrev = prevSmoothed[prevSmoothed.length - 1];
+                const firstPointOfCurrent = smoothed[0];
+
+                // Only connect if not going backwards in steps
+                if (firstPointOfCurrent.x >= lastPointOfPrev.x) {
+                    // Create connector line dataset
+                    chart.data.datasets.push({
+                        data: [lastPointOfPrev, firstPointOfCurrent],
+                        fill: false,
+                        borderColor: hexToRgba(branchColor, 0.4), // More transparent for connectors
+                        backgroundColor: 'rgba(0,0,0,0)',
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        tension: 0,
+                        borderWidth: 2,
+                        borderDash: [5, 5], // Dashed line to distinguish from main curves
+                    });
+                }
+            }
+        }
+
+        // Collect markers from this branch with their color information
+        markers.forEach(marker => {
+            allMarkers.push({
+                ...marker,
+                branchColor: branchColor, // Store the branch color with each marker
+            });
+        });
     });
 
-    entry.data = smoothed;
+    // Add single markers dataset for all branches with individual colors
+    const markerColors = allMarkers.map(m => m.branchColor || entry.color);
+    
+    chart.data.datasets.push({
+        data: entry.markersEnabled ? allMarkers : [],
+        fill: false,
+        borderColor: markerColors,
+        backgroundColor: markerColors,
+        pointBackgroundColor: markerColors,
+        pointBorderColor: markerColors,
+        pointRadius: 22,
+        pointHoverRadius: 45,
+        pointHitRadius: 90,
+        pointStyle: 'star',
+        showLine: false,
+    });
 
-    const chart = entry.chart;
-    const datasets = chart.data.datasets;
+    const markersDatasetIndex = chart.data.datasets.length - 1;
 
-    // Std band between lower (0) and upper (1)
-    datasets[0].data = entry.stdEnabled ? lower : [];
-    datasets[1].data = entry.stdEnabled ? upper : [];
-    datasets[1].backgroundColor = entry.stdEnabled ? hexToRgba(entry.color, 0.15) : 'rgba(0,0,0,0)';
-
-    // Main line (2)
-    datasets[2].data = smoothed;
-    datasets[2].pointRadius = 0;
-    datasets[2].borderColor = entry.color;
-    datasets[2].backgroundColor = hexToRgba(entry.color, 0);
-
-    // Triangles (3)
-    datasets[3].data = markers;
-    datasets[3].backgroundColor = '#ff6b6b';
-
-    if (markers.length > 0) {
-        console.debug(`📍 ${signalName}: ${markers.length} markers, first at x=${markers[0].x}, last at x=${markers[markers.length - 1].x}`);
+    if (allMarkers.length > 0) {
+        console.debug(`📍 ${signalName}: ${allMarkers.length} markers across ${entry.branches.length} branches`);
     }
 
+    // Update tooltip to skip std bands and handle markers
     chart.options.plugins.tooltip = {
-        filter: (item) => item.datasetIndex !== 0 && item.datasetIndex !== 1 && item.datasetIndex !== 3,
+        filter: (item) => {
+            // Skip std bands (every 3rd index starting from 0 and 1)
+            const datasetIndex = item.datasetIndex;
+            const isStdBand = datasetIndex % 3 === 0 || datasetIndex % 3 === 1;
+            const isMarkers = datasetIndex === markersDatasetIndex;
+            return !isStdBand && !isMarkers;
+        },
         callbacks: {
             label: function(context) {
-                if (context.datasetIndex === 3) {
-                    const marker = (chart.data.datasets[3].data as any)[context.dataIndex];
+                if (context.datasetIndex === markersDatasetIndex) {
+                    const marker = (chart.data.datasets[markersDatasetIndex].data as any)[context.dataIndex];
                     const hash = marker?.experimentHash;
                     const change = marker?.changeDetail;
                     const lines: string[] = [];
@@ -1158,15 +1492,18 @@ function refreshSignalChart(entry: SignalChart, signalName: string, graphName?: 
         chart.options.plugins.title.text = graphName;
     }
 
-    // Gentle tension for smoother appearance after smoothing
-    datasets[2].tension = 0;
-
     // Auto-fit axes if user hasn't zoomed/panned yet
-    // Each chart maintains independent axis ranges
     if (!entry.userZoomed) {
-        const lastX = entry.rawPoints.length ? entry.rawPoints[entry.rawPoints.length - 1].x : undefined;
+        // Find max X across all branches
+        let maxX = 0;
+        entry.branches.forEach(branch => {
+            if (branch.rawPoints.length > 0) {
+                const branchMaxX = branch.rawPoints[branch.rawPoints.length - 1].x;
+                if (branchMaxX > maxX) maxX = branchMaxX;
+            }
+        });
 
-        // Ensure scales exist and are independent (not shared)
+        // Ensure scales exist and are independent
         if (!chart.options.scales) {
             chart.options.scales = {};
         }
@@ -1179,12 +1516,328 @@ function refreshSignalChart(entry: SignalChart, signalName: string, graphName?: 
 
         // Set independent min/max for this chart only
         chart.options.scales.x.min = 0;
-        chart.options.scales.x.max = lastX;
+        chart.options.scales.x.max = maxX > 0 ? maxX : undefined;
         chart.options.scales.y.min = 0;
         chart.options.scales.y.max = undefined;
     }
 
     entry.pending = true;
+}
+
+/**
+ * Show context menu for chart with Reset X/Y options
+ */
+function showChartContextMenu(event: MouseEvent, chart: Chart, entry: SignalChart, signalName: string): void {
+    // Remove any existing context menu
+    const existingMenu = document.getElementById('chart-context-menu');
+    if (existingMenu) {
+        document.body.removeChild(existingMenu);
+    }
+
+    const menu = document.createElement('div');
+    menu.id = 'chart-context-menu';
+    menu.style.position = 'fixed';
+    menu.style.left = event.pageX + 'px';
+    menu.style.top = event.pageY + 'px';
+    menu.style.background = 'var(--surface-color, #ffffff)';
+    menu.style.border = '1px solid var(--border-subtle, rgba(209, 213, 219, 0.9))';
+    menu.style.borderRadius = 'var(--radius-sm, 8px)';
+    menu.style.boxShadow = 'var(--shadow-soft, 0 10px 15px rgba(15, 23, 42, 0.1))';
+    menu.style.zIndex = '10000';
+    menu.style.minWidth = '160px';
+    menu.style.overflow = 'hidden';
+
+    const menuItemStyles = `
+        padding: 10px 14px;
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--primary-text-color, #111827);
+        background: var(--surface-color, #ffffff);
+        border: none;
+        width: 100%;
+        text-align: left;
+        transition: background-color 0.15s ease;
+    `;
+
+    // Reset X button
+    const resetXBtn = document.createElement('button');
+    resetXBtn.textContent = 'Reset X Zoom';
+    resetXBtn.style.cssText = menuItemStyles;
+    resetXBtn.onmouseover = () => {
+        resetXBtn.style.background = 'var(--surface-elevated-color, #f5f5f5)';
+    };
+    resetXBtn.onmouseout = () => {
+        resetXBtn.style.background = 'var(--surface-color, #ffffff)';
+    };
+    resetXBtn.onclick = () => {
+        const lastX = entry.rawPoints.length ? entry.rawPoints[entry.rawPoints.length - 1].x : undefined;
+        if (!chart.options.scales) {
+            chart.options.scales = {};
+        }
+        if (!chart.options.scales.x) {
+            chart.options.scales.x = {};
+        }
+        chart.options.scales.x.min = 0;
+        chart.options.scales.x.max = lastX;
+        entry.userZoomed = false;
+        chart.update('none');
+        document.body.removeChild(menu);
+    };
+
+    // Reset Y button
+    const resetYBtn = document.createElement('button');
+    resetYBtn.textContent = 'Reset Y Zoom';
+    resetYBtn.style.cssText = menuItemStyles;
+    resetYBtn.onmouseover = () => {
+        resetYBtn.style.background = 'var(--surface-elevated-color, #f5f5f5)';
+    };
+    resetYBtn.onmouseout = () => {
+        resetYBtn.style.background = 'var(--surface-color, #ffffff)';
+    };
+    resetYBtn.onclick = () => {
+        if (!chart.options.scales) {
+            chart.options.scales = {};
+        }
+        if (!chart.options.scales.y) {
+            chart.options.scales.y = {};
+        }
+        chart.options.scales.y.min = 0;
+        chart.options.scales.y.max = undefined;
+        entry.userZoomed = false;
+        chart.update('none');
+        document.body.removeChild(menu);
+    };
+
+    // Reset All button
+    const resetAllBtn = document.createElement('button');
+    resetAllBtn.textContent = 'Reset All Zoom';
+    resetAllBtn.style.cssText = menuItemStyles;
+    resetAllBtn.onmouseover = () => {
+        resetAllBtn.style.background = 'var(--surface-elevated-color, #f5f5f5)';
+    };
+    resetAllBtn.onmouseout = () => {
+        resetAllBtn.style.background = 'var(--surface-color, #ffffff)';
+    };
+    resetAllBtn.onclick = () => {
+        const lastX = entry.rawPoints.length ? entry.rawPoints[entry.rawPoints.length - 1].x : undefined;
+        if (!chart.options.scales) {
+            chart.options.scales = {};
+        }
+        if (!chart.options.scales.x) {
+            chart.options.scales.x = {};
+        }
+        if (!chart.options.scales.y) {
+            chart.options.scales.y = {};
+        }
+        chart.options.scales.x.min = 0;
+        chart.options.scales.x.max = lastX;
+        chart.options.scales.y.min = 0;
+        chart.options.scales.y.max = undefined;
+        entry.userZoomed = false;
+        chart.update('none');
+        document.body.removeChild(menu);
+    };
+
+    // Separator
+    const separator = document.createElement('div');
+    separator.style.height = '1px';
+    separator.style.background = 'var(--border-subtle, rgba(209, 213, 219, 0.9))';
+    separator.style.margin = '4px 0';
+
+    // Change Color button (only show if cursor is over a curve)
+    const elements = chart.getElementsAtEventForMode(event as any, 'nearest', { intersect: false }, false);
+    let colorBtn: HTMLButtonElement | null = null;
+    
+    if (elements.length > 0) {
+        const clickedElement = elements[0];
+        const datasetIndex = clickedElement.datasetIndex;
+        const markersDatasetIndex = chart.data.datasets.length - 1;
+        
+        // Only show color picker if NOT clicked on markers
+        if (datasetIndex !== markersDatasetIndex) {
+            const branchIndex = Math.floor(datasetIndex / 3);
+            
+            if (branchIndex >= 0 && branchIndex < entry.branches.length) {
+                const branch = entry.branches[branchIndex];
+                
+                colorBtn = document.createElement('button');
+                colorBtn.textContent = `Change Curve Color (Branch ${branchIndex + 1})`;
+                colorBtn.style.cssText = menuItemStyles;
+                colorBtn.onmouseover = () => {
+                    colorBtn!.style.background = 'var(--surface-elevated-color, #f5f5f5)';
+                };
+                colorBtn.onmouseout = () => {
+                    colorBtn!.style.background = 'var(--surface-color, #ffffff)';
+                };
+                colorBtn.onclick = () => {
+                    // Close menu first
+                    if (menu.parentNode) {
+                        menu.parentNode.removeChild(menu);
+                    }
+                    
+                    // Create color picker positioned at mouse click
+                    const colorInput = document.createElement('input');
+                    colorInput.type = 'color';
+                    colorInput.value = branch.customColor || entry.color;
+                    colorInput.style.position = 'fixed';
+                    colorInput.style.left = `${event.pageX}px`;
+                    colorInput.style.top = `${event.pageY}px`;
+                    colorInput.style.zIndex = '10001';
+                    document.body.appendChild(colorInput);
+                    
+                    colorInput.addEventListener('change', () => {
+                        const newColor = colorInput.value;
+                        branch.customColor = newColor;
+                        
+                        // Save color to localStorage by hash
+                        saveBranchColor(branch.experimentHash, newColor);
+                        
+                        // Directly update chart colors without full refresh
+                        const lowerDatasetIndex = branchIndex * 3;
+                        const upperDatasetIndex = branchIndex * 3 + 1;
+                        const mainLineDatasetIndex = branchIndex * 3 + 2;
+                        
+                        // Update std bands
+                        if (chart.data.datasets[upperDatasetIndex]) {
+                            chart.data.datasets[upperDatasetIndex].backgroundColor = hexToRgba(newColor, 0.15);
+                        }
+                        
+                        // Update main line
+                        if (chart.data.datasets[mainLineDatasetIndex]) {
+                            chart.data.datasets[mainLineDatasetIndex].borderColor = newColor;
+                        }
+                        
+                        // Update markers that belong to this branch
+                        const markersDataset = chart.data.datasets[markersDatasetIndex];
+                        if (markersDataset && markersDataset.data) {
+                            const markers = markersDataset.data as any[];
+                            const branchHash = branch.experimentHash;
+                            
+                            // Update point colors for markers matching this branch's hash
+                            const bgColors = markersDataset.pointBackgroundColor as any[];
+                            const borderColors = markersDataset.pointBorderColor as any[];
+                            
+                            if (bgColors && borderColors) {
+                                markers.forEach((marker, idx) => {
+                                    if (marker.experimentHash === branchHash) {
+                                        bgColors[idx] = newColor;
+                                        borderColors[idx] = newColor;
+                                    }
+                                });
+                            }
+                        }
+                        
+                        // Update chart without full refresh
+                        chart.update('none');
+                        
+                        // Safe removal
+                        if (colorInput.parentNode) {
+                            colorInput.parentNode.removeChild(colorInput);
+                        }
+                    });
+                    
+                    colorInput.addEventListener('cancel', () => {
+                        // Safe removal
+                        if (colorInput.parentNode) {
+                            colorInput.parentNode.removeChild(colorInput);
+                        }
+                    });
+                    
+                    colorInput.addEventListener('blur', () => {
+                        // Safe removal when color picker loses focus
+                        setTimeout(() => {
+                            if (colorInput.parentNode) {
+                                colorInput.parentNode.removeChild(colorInput);
+                            }
+                        }, 100);
+                    });
+                    
+                    // Trigger color picker after a small delay
+                    setTimeout(() => {
+                        colorInput.click();
+                    }, 50);
+                };
+            }
+        }
+    }
+    
+    const separator2 = document.createElement('div');
+    separator2.style.height = '1px';
+    separator2.style.background = 'var(--border-subtle, rgba(209, 213, 219, 0.9))';
+    separator2.style.margin = '4px 0';
+
+    // Copy Chart as Image
+    const copyImageBtn = document.createElement('button');
+    copyImageBtn.textContent = 'Copy Chart as Image';
+    copyImageBtn.style.cssText = menuItemStyles;
+    copyImageBtn.onmouseover = () => {
+        copyImageBtn.style.background = 'var(--surface-elevated-color, #f5f5f5)';
+    };
+    copyImageBtn.onmouseout = () => {
+        copyImageBtn.style.background = 'var(--surface-color, #ffffff)';
+    };
+    copyImageBtn.onclick = async () => {
+        try {
+            const canvas = chart.canvas;
+            canvas.toBlob(async (blob) => {
+                if (blob) {
+                    await navigator.clipboard.write([
+                        new ClipboardItem({ 'image/png': blob })
+                    ]);
+                    console.log('✓ Chart copied to clipboard');
+                }
+            });
+        } catch (err) {
+            console.error('Failed to copy chart:', err);
+        }
+        document.body.removeChild(menu);
+    };
+
+    // Save Chart as Image
+    const saveImageBtn = document.createElement('button');
+    saveImageBtn.textContent = 'Save Chart as Image';
+    saveImageBtn.style.cssText = menuItemStyles;
+    saveImageBtn.onmouseover = () => {
+        saveImageBtn.style.background = 'var(--surface-elevated-color, #f5f5f5)';
+    };
+    saveImageBtn.onmouseout = () => {
+        saveImageBtn.style.background = 'var(--surface-color, #ffffff)';
+    };
+    saveImageBtn.onclick = () => {
+        const canvas = chart.canvas;
+        const url = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = `${signalName}_chart.png`;
+        link.href = url;
+        link.click();
+        console.log(`✓ Chart saved as ${signalName}_chart.png`);
+        document.body.removeChild(menu);
+    };
+
+    menu.appendChild(resetXBtn);
+    menu.appendChild(resetYBtn);
+    menu.appendChild(resetAllBtn);
+    menu.appendChild(separator);
+    if (colorBtn) {
+        menu.appendChild(colorBtn);
+        menu.appendChild(separator2);
+    }
+    menu.appendChild(copyImageBtn);
+    menu.appendChild(saveImageBtn);
+    document.body.appendChild(menu);
+
+    // Close menu when clicking outside
+    const closeMenuListener = (e: any) => {
+        if (e.target !== menu && !menu.contains(e.target)) {
+            if (document.body.contains(menu)) {
+                document.body.removeChild(menu);
+            }
+            document.removeEventListener('click', closeMenuListener);
+        }
+    };
+    setTimeout(() => {
+        document.addEventListener('click', closeMenuListener);
+    }, 0);
 }
 
 function openSignalSettings(signalName: string): void {
@@ -1230,13 +1883,21 @@ function openSignalSettings(signalName: string): void {
     colorRow.style.display = 'flex';
     colorRow.style.alignItems = 'center';
     colorRow.style.justifyContent = 'space-between';
+    colorRow.style.gap = '12px';
     const colorLabel = document.createElement('span');
     colorLabel.textContent = 'Curve color';
+    colorLabel.style.fontSize = '14px';
+    colorLabel.style.color = 'var(--primary-text-color, #111827)';
     const colorInput = document.createElement('input');
     colorInput.type = 'color';
     colorInput.value = entry.color;
-    colorInput.style.width = '48px';
-    colorInput.style.height = '32px';
+    colorInput.style.width = '44px';
+    colorInput.style.height = '44px';
+    colorInput.style.borderRadius = '50%';
+    colorInput.style.border = 'none';
+    colorInput.style.cursor = 'pointer';
+    colorInput.style.padding = '0';
+    colorInput.style.background = 'none';
     colorRow.appendChild(colorLabel);
     colorRow.appendChild(colorInput);
     modal.appendChild(colorRow);
@@ -1288,13 +1949,46 @@ function openSignalSettings(signalName: string): void {
     stdRow.appendChild(stdToggle);
     modal.appendChild(stdRow);
 
+    const markersRow = document.createElement('div');
+    markersRow.style.display = 'flex';
+    markersRow.style.alignItems = 'center';
+    markersRow.style.justifyContent = 'space-between';
+    const markersLabel = document.createElement('span');
+    markersLabel.textContent = 'Show markers';
+    const markersToggle = document.createElement('input');
+    markersToggle.type = 'checkbox';
+    markersToggle.checked = entry.markersEnabled;
+    markersRow.appendChild(markersLabel);
+    markersRow.appendChild(markersToggle);
+    modal.appendChild(markersRow);
+
     const actionsRow = document.createElement('div');
     actionsRow.style.display = 'flex';
     actionsRow.style.gap = '8px';
     actionsRow.style.justifyContent = 'flex-end';
+    actionsRow.style.marginTop = '12px';
+    actionsRow.style.paddingTop = '16px';
+    actionsRow.style.borderTop = '1px solid var(--border-subtle, rgba(209, 213, 219, 0.9))';
+
+    const buttonStyles = `
+        padding: 8px 16px;
+        border-radius: var(--radius-sm, 8px);
+        cursor: pointer;
+        font-weight: 500;
+        font-size: 13px;
+        transition: all 0.2s ease;
+        border: none;
+    `;
 
     const resetXBtn = document.createElement('button');
     resetXBtn.textContent = 'Reset X';
+    resetXBtn.style.cssText = buttonStyles + `
+        background: var(--surface-elevated-color, #f5f5f5);
+        color: var(--primary-text-color, #111827);
+        border: 1px solid var(--border-subtle, rgba(209, 213, 219, 0.9));
+    `;
+    resetXBtn.onmouseover = () => { resetXBtn.style.background = 'var(--border-subtle, rgba(209, 213, 219, 0.3))'; };
+    resetXBtn.onmouseout = () => { resetXBtn.style.background = 'var(--surface-elevated-color, #f5f5f5)'; };
     resetXBtn.onclick = () => {
         const lastX = entry.rawPoints.length ? entry.rawPoints[entry.rawPoints.length - 1].x : undefined;
         entry.chart.options.scales!.x!.min = 0;
@@ -1305,6 +1999,13 @@ function openSignalSettings(signalName: string): void {
 
     const resetYBtn = document.createElement('button');
     resetYBtn.textContent = 'Reset Y to 0';
+    resetYBtn.style.cssText = buttonStyles + `
+        background: var(--surface-elevated-color, #f5f5f5);
+        color: var(--primary-text-color, #111827);
+        border: 1px solid var(--border-subtle, rgba(209, 213, 219, 0.9));
+    `;
+    resetYBtn.onmouseover = () => { resetYBtn.style.background = 'var(--border-subtle, rgba(209, 213, 219, 0.3))'; };
+    resetYBtn.onmouseout = () => { resetYBtn.style.background = 'var(--surface-elevated-color, #f5f5f5)'; };
     resetYBtn.onclick = () => {
         entry.chart.options.scales!.y!.min = 0;
         entry.chart.options.scales!.y!.max = undefined;
@@ -1314,12 +2015,20 @@ function openSignalSettings(signalName: string): void {
 
     const applyBtn = document.createElement('button');
     applyBtn.textContent = 'Apply';
+    applyBtn.style.cssText = buttonStyles + `
+        background: var(--accent-color, #007aff);
+        color: white;
+    `;
+    applyBtn.onmouseover = () => { applyBtn.style.background = 'var(--accent-color-hover, #0060d0)'; };
+    applyBtn.onmouseout = () => { applyBtn.style.background = 'var(--accent-color, #007aff)'; };
     applyBtn.onclick = () => {
         entry.color = colorInput.value;
         entry.smoothingEnabled = smoothingToggle.checked;
         entry.smoothingFactor = parseFloat(factorInput.value);
         entry.stdEnabled = stdToggle.checked;
+        entry.markersEnabled = markersToggle.checked;
         localStorage.setItem(`signal-color-${signalName}`, entry.color);
+        localStorage.setItem(`signal-markers-enabled-${signalName}`, entry.markersEnabled.toString());
 
         refreshSignalChart(entry, signalName);
         entry.userZoomed = false;
@@ -1329,6 +2038,13 @@ function openSignalSettings(signalName: string): void {
 
     const closeBtn = document.createElement('button');
     closeBtn.textContent = 'Close';
+    closeBtn.style.cssText = buttonStyles + `
+        background: var(--surface-elevated-color, #f5f5f5);
+        color: var(--primary-text-color, #111827);
+        border: 1px solid var(--border-subtle, rgba(209, 213, 219, 0.9));
+    `;
+    closeBtn.onmouseover = () => { closeBtn.style.background = 'var(--border-subtle, rgba(209, 213, 219, 0.3))'; };
+    closeBtn.onmouseout = () => { closeBtn.style.background = 'var(--surface-elevated-color, #f5f5f5)'; };
     closeBtn.onclick = () => {
         document.body.removeChild(overlay);
     };
@@ -1407,9 +2123,11 @@ function openGlobalPlotSettings(): void {
     intervalInput.step = '100';
     intervalInput.value = currentInterval;
     intervalInput.style.width = '100px';
-    intervalInput.style.padding = '4px';
+    intervalInput.style.padding = '6px 8px';
     intervalInput.style.border = '1px solid var(--border-subtle, #ccc)';
-    intervalInput.style.borderRadius = '4px';
+    intervalInput.style.borderRadius = 'var(--radius-sm, 6px)';
+    intervalInput.style.background = 'var(--surface-elevated-color, #f9f9f9)';
+    intervalInput.style.color = 'var(--primary-text-color, #111827)';
 
     const intervalNote = document.createElement('div');
     intervalNote.style.fontSize = '12px';
@@ -1426,16 +2144,28 @@ function openGlobalPlotSettings(): void {
     actionsRow.style.display = 'flex';
     actionsRow.style.gap = '8px';
     actionsRow.style.justifyContent = 'flex-end';
-    actionsRow.style.marginTop = '8px';
+    actionsRow.style.marginTop = '12px';
+    actionsRow.style.paddingTop = '16px';
+    actionsRow.style.borderTop = '1px solid var(--border-subtle, rgba(209, 213, 219, 0.9))';
+
+    const buttonStyles = `
+        padding: 8px 16px;
+        border-radius: var(--radius-sm, 8px);
+        cursor: pointer;
+        font-weight: 500;
+        font-size: 13px;
+        transition: all 0.2s ease;
+        border: none;
+    `;
 
     const applyBtn = document.createElement('button');
     applyBtn.textContent = 'Apply';
-    applyBtn.style.padding = '6px 16px';
-    applyBtn.style.backgroundColor = 'var(--accent-color, #007aff)';
-    applyBtn.style.color = '#fff';
-    applyBtn.style.border = 'none';
-    applyBtn.style.borderRadius = '4px';
-    applyBtn.style.cursor = 'pointer';
+    applyBtn.style.cssText = buttonStyles + `
+        background: var(--accent-color, #007aff);
+        color: white;
+    `;
+    applyBtn.onmouseover = () => { applyBtn.style.background = 'var(--accent-color-hover, #0060d0)'; };
+    applyBtn.onmouseout = () => { applyBtn.style.background = 'var(--accent-color, #007aff)'; };
     applyBtn.onclick = () => {
         const value = parseInt(intervalInput.value, 10);
         if (isNaN(value)) {
@@ -1463,12 +2193,13 @@ function openGlobalPlotSettings(): void {
 
     const closeBtn = document.createElement('button');
     closeBtn.textContent = 'Close';
-    closeBtn.style.padding = '6px 16px';
-    closeBtn.style.backgroundColor = 'var(--bg-secondary, #f0f0f0)';
-    closeBtn.style.color = 'var(--fg, #111)';
-    closeBtn.style.border = '1px solid var(--border-subtle, #ccc)';
-    closeBtn.style.borderRadius = '4px';
-    closeBtn.style.cursor = 'pointer';
+    closeBtn.style.cssText = buttonStyles + `
+        background: var(--surface-elevated-color, #f5f5f5);
+        color: var(--primary-text-color, #111827);
+        border: 1px solid var(--border-subtle, rgba(209, 213, 219, 0.9));
+    `;
+    closeBtn.onmouseover = () => { closeBtn.style.background = 'var(--border-subtle, rgba(209, 213, 219, 0.3))'; };
+    closeBtn.onmouseout = () => { closeBtn.style.background = 'var(--surface-elevated-color, #f5f5f5)'; };
     closeBtn.onclick = () => {
         document.body.removeChild(overlay);
     };
@@ -1589,7 +2320,63 @@ function generateSplitColor(split: string, index: number, _total: number): strin
     const saturation = 65 + Math.floor(Math.random() * 15); // 65-80%
     const lightness = 40 + Math.floor(Math.random() * 15);  // 40-55%
 
-    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+    // Convert HSL to hex for color input compatibility
+    const h = hue / 360;
+    const s = saturation / 100;
+    const l = lightness / 100;
+    
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs((h * 6) % 2 - 1));
+    const m = l - c / 2;
+    
+    let r = 0, g = 0, b = 0;
+    if (h < 1/6) { r = c; g = x; b = 0; }
+    else if (h < 2/6) { r = x; g = c; b = 0; }
+    else if (h < 3/6) { r = 0; g = c; b = x; }
+    else if (h < 4/6) { r = 0; g = x; b = c; }
+    else if (h < 5/6) { r = x; g = 0; b = c; }
+    else { r = c; g = 0; b = x; }
+    
+    const toHex = (n: number) => {
+        const hex = Math.round((n + m) * 255).toString(16);
+        return hex.length === 1 ? '0' + hex : hex;
+    };
+    
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+/**
+ * Extract split name from metric name (e.g., "train/loss" -> "train")
+ * and return the corresponding color from split colors or localStorage
+ */
+function getColorForMetric(metricName: string): string {
+    // Try to extract split from metric name (e.g., "train/loss", "eval/accuracy")
+    const parts = metricName.split('/');
+    if (parts.length >= 2) {
+        const splitName = parts[0].toLowerCase();
+        
+        // Check localStorage for this split's color
+        const lcKey = `${splitName}-color`;
+        const savedSplitColor = localStorage.getItem(lcKey);
+        if (savedSplitColor) {
+            return savedSplitColor;
+        }
+        
+        // Use default colors for common splits
+        if (splitName === 'train') return '#c57a09';
+        if (splitName === 'eval' || splitName === 'val' || splitName === 'test' || splitName === 'validation') {
+            return '#16bb07';
+        }
+    }
+    
+    // Fallback: check if there's a saved color for this specific signal
+    const savedSignalColor = localStorage.getItem(`signal-color-${metricName}`);
+    if (savedSignalColor) {
+        return savedSignalColor;
+    }
+    
+    // Final fallback: use a default color (blue instead of white)
+    return '#007aff';
 }
 
 async function fetchAndCreateSplitColorPickers(): Promise<void> {
@@ -1645,10 +2432,25 @@ async function fetchAndCreateSplitColorPickers(): Promise<void> {
                 input.id = `${split}-color`;
                 input.className = 'color-picker';
 
-                // Restore from localStorage or use default/generated color
+                // Get default color for this split
+                const defaultColor = generateSplitColor(split, index, availableSplits.length);
+                
+                // Restore from localStorage or use default
                 const lcKey = `${split.toLowerCase()}-color`;
                 const savedColor = localStorage.getItem(lcKey);
-                input.value = savedColor || generateSplitColor(split, index, availableSplits.length);
+                const finalColor = savedColor || defaultColor;
+                
+                // Ensure the color is valid (not black/empty)
+                if (finalColor && finalColor !== '#000000' && finalColor !== '') {
+                    input.value = finalColor;
+                } else {
+                    input.value = defaultColor;
+                }
+                
+                // Save to localStorage if not already saved or if it was invalid
+                if (!savedColor || savedColor === '#000000' || savedColor === '') {
+                    localStorage.setItem(lcKey, input.value);
+                }
 
                 // Save to localStorage on change and update display
                 input.addEventListener('input', () => {
@@ -2754,6 +3556,11 @@ export async function initializeUIElements() {
                     // Persist state to localStorage for reload fallback
                     localStorage.setItem('training-state', String(nextState));
                     lastToggleError = null; // Reset error tracking on success
+
+                    // Synchronize plot auto-refresh with training state
+                    plotRefreshEnabled = nextState;
+                    localStorage.setItem('plot-refresh-enabled', plotRefreshEnabled.toString());
+                    console.debug(`[Refresh] Plot refresh automatically ${plotRefreshEnabled ? 'enabled' : 'disabled'} (training ${nextState ? 'resumed' : 'paused'})`);
                 } else {
                     // Revert UI on failure
                     isTraining = !nextState;
@@ -2996,6 +3803,9 @@ export async function initializeUIElements() {
     // Auto-refresh setup with configurable interval
     let refreshIntervalId: any = null;
     let refreshIntervalMs = parseInt(localStorage.getItem('refresh-interval') || '30000');
+    // Initialize plot refresh settings from localStorage
+    plotRefreshEnabled = localStorage.getItem('plot-refresh-enabled') === 'true';
+    plotRefreshIntervalMs = parseInt(localStorage.getItem('plot-refresh-interval-ms') || '2000');
 
     function startRefreshInterval() {
         if (refreshIntervalId) {
@@ -3036,17 +3846,33 @@ export async function initializeUIElements() {
         const refreshSaveBtn = document.getElementById('refresh-config-save');
         const refreshTrigger = document.getElementById('refresh-config-trigger');
 
+        const plotInput = document.getElementById('plot-interval-input') as HTMLInputElement;
+        const plotRefreshToggle = document.getElementById('plot-refresh-toggle') as HTMLInputElement;
+        const plotInputWrapper = document.getElementById('plot-input-wrapper');
+        const plotSaveBtn = document.getElementById('plot-config-save');
+
         const openConfig = (e: Event) => {
             e.preventDefault();
             if (refreshPopover && refreshInput && refreshAutoToggle) {
                 const currentSeconds = Math.round(refreshIntervalMs / 1000);
+                const currentPlotSeconds = Math.round(plotRefreshIntervalMs / 1000);
 
-                // Initialize UI state
+                // Initialize data refresh UI state
                 refreshAutoToggle.checked = refreshIntervalMs > 0;
                 refreshInput.value = currentSeconds > 0 ? currentSeconds.toString() : "5";
 
+                // Initialize plot refresh UI state
+                if (plotRefreshToggle && plotInput) {
+                    plotRefreshToggle.checked = plotRefreshEnabled;
+                    plotInput.value = currentPlotSeconds > 0 ? currentPlotSeconds.toString() : "2";
+                }
+
                 if (refreshInputWrapper) {
                     refreshInputWrapper.classList.toggle('disabled', !refreshAutoToggle.checked);
+                }
+
+                if (plotInputWrapper && plotRefreshToggle) {
+                    plotInputWrapper.classList.toggle('disabled', !plotRefreshToggle.checked);
                 }
 
                 refreshPopover.classList.remove('hidden');
@@ -3068,6 +3894,13 @@ export async function initializeUIElements() {
             });
         }
 
+        if (plotRefreshToggle && plotInputWrapper) {
+            plotRefreshToggle.addEventListener('change', () => {
+                plotInputWrapper.classList.toggle('disabled', !plotRefreshToggle.checked);
+            });
+        }
+
+        // Data refresh save button
         if (refreshSaveBtn && refreshPopover && refreshInput && refreshAutoToggle) {
             refreshSaveBtn.addEventListener('click', () => {
                 if (!refreshAutoToggle.checked) {
@@ -3077,19 +3910,44 @@ export async function initializeUIElements() {
                     if (!isNaN(newSeconds) && newSeconds > 0) {
                         refreshIntervalMs = newSeconds * 1000;
                     } else {
-                        // Fallback/Default if they checked it but entered something weird
                         refreshIntervalMs = 5000;
                     }
                 }
 
                 localStorage.setItem('refresh-interval', refreshIntervalMs.toString());
                 startRefreshInterval();
-                refreshPopover.classList.add('hidden');
+                console.debug(`[Refresh] Data refresh interval set to ${refreshIntervalMs}ms`);
             });
 
             // Close on Escape or Save on Enter
             refreshInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') refreshSaveBtn.click();
+                if (e.key === 'Escape') refreshPopover.classList.add('hidden');
+            });
+        }
+
+        // Plot refresh save button
+        if (plotSaveBtn && refreshPopover && plotInput && plotRefreshToggle) {
+            plotSaveBtn.addEventListener('click', () => {
+                plotRefreshEnabled = plotRefreshToggle.checked;
+
+                if (plotRefreshEnabled) {
+                    const newSeconds = parseInt(plotInput.value);
+                    if (!isNaN(newSeconds) && newSeconds >= 2) {
+                        plotRefreshIntervalMs = newSeconds * 1000;
+                    } else {
+                        plotRefreshIntervalMs = 2000; // Minimum 2 seconds
+                    }
+                }
+
+                localStorage.setItem('plot-refresh-enabled', plotRefreshEnabled.toString());
+                localStorage.setItem('plot-refresh-interval-ms', plotRefreshIntervalMs.toString());
+                console.debug(`[Refresh] Plot refresh ${plotRefreshEnabled ? 'enabled' : 'disabled'}, interval: ${plotRefreshIntervalMs}ms`);
+            });
+
+            // Close on Escape or Save on Enter
+            plotInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') plotSaveBtn.click();
                 if (e.key === 'Escape') refreshPopover.classList.add('hidden');
             });
         }
@@ -3104,6 +3962,23 @@ export async function initializeUIElements() {
                 refreshPopover.classList.add('hidden');
             }
         });
+
+        // Clear cache and refresh button
+        const clearCacheRefreshBtn = document.getElementById('clear-cache-refresh-btn');
+        if (clearCacheRefreshBtn) {
+            clearCacheRefreshBtn.addEventListener('click', () => {
+                console.log('[Cache] Clearing localStorage and refreshing page...');
+                
+                // Clear all localStorage (including branch colors, settings, etc.)
+                localStorage.clear();
+                
+                // Clear session storage
+                sessionStorage.clear();
+                
+                // Force reload the page (bypassing cache)
+                window.location.reload();
+            });
+        }
     }
 
     setTimeout(updateLayout, 0);
@@ -3257,18 +4132,14 @@ async function startTrainingStatusStream() {
 
     // Get plot refresh interval from localStorage or use default (2 seconds)
     const getPlotRefreshInterval = (): number => {
-        const stored = localStorage.getItem('plot-refresh-interval-ms');
-        if (stored) {
-            const parsed = parseInt(stored, 10);
-            if (!isNaN(parsed) && parsed >= 2000) {
-                return parsed;
-            }
+        // If plot refresh is disabled, return a very large number to effectively disable it
+        if (!plotRefreshEnabled) {
+            return 999999999;  // ~11 days, effectively disabled
         }
-        return 2000;  // Default 2 seconds, minimum allowed
+        return plotRefreshIntervalMs;
     };
 
     let POLL_INTERVAL_MS = getPlotRefreshInterval();
-    let isFirstPoll = true;  // Track if this is the first poll (full history) or incremental
     let lastRefreshIntervalCheck = Date.now();
     const REFRESH_INTERVAL_CHECK_MS = 1000;  // Check for interval changes every 1 second
 
@@ -3285,6 +4156,11 @@ async function startTrainingStatusStream() {
     };
 
     async function pollLoggerData() {
+        // Skip polling if training is paused OR plot refresh is disabled
+        if (!isTraining || !plotRefreshEnabled) {
+            return;
+        }
+
         // Check if refresh interval has changed and update polling
         const now = Date.now();
         if (now - lastRefreshIntervalCheck > REFRESH_INTERVAL_CHECK_MS) {
@@ -3354,27 +4230,94 @@ async function startTrainingStatusStream() {
                     console.log(`📊 ${metricName} plot update from ${minStep} to ${maxStep} steps (${mapped.length} points)`);
                 }
 
-                if (requestFullHistory || entry.rawPoints.length === 0) {
-                    // Full history: replace all data
-                    entry.rawPoints = mapped;
-                } else {
-                    // Incremental: only add new points
-                    const lastX = entry.rawPoints[entry.rawPoints.length - 1]?.x ?? -Infinity;
-                    mapped.forEach(p => {
-                        if (p.x > lastX) {
-                            entry.rawPoints.push(p);
+                if (requestFullHistory || entry.branches[entry.branches.length - 1].rawPoints.length === 0) {
+                    // Full history: group by hash to create clean branches
+                    if (justRestoredCheckpoint) {
+                        // Create new branch for post-restore training
+                        const newHash = mapped.length > 0 ? mapped[0].experimentHash : undefined;
+                        const savedColor = loadBranchColor(newHash);
+                        const newBranch: SignalBranch = {
+                            rawPoints: mapped,
+                            branchId: nextBranchId++,
+                            experimentHash: newHash,
+                            customColor: savedColor
+                        };
+                        entry.branches.push(newBranch);
+                        console.log(`📊 ${metricName}: Created new branch ${newBranch.branchId} with ${mapped.length} points (hash: ${newHash?.substring(0, 8)}...)${savedColor ? ' (loaded saved color)' : ''}`);
+                    } else {
+                        // Normal full history: group points by hash to avoid markers on every hash change
+                        const hashGroups = new Map<string, typeof mapped>();
+                        const hashOrder: string[] = [];
+                        
+                        for (const pt of mapped) {
+                            const hash = pt.experimentHash || 'unknown';
+                            if (!hashGroups.has(hash)) {
+                                hashGroups.set(hash, []);
+                                hashOrder.push(hash);
+                            }
+                            hashGroups.get(hash)!.push(pt);
                         }
-                    });
+
+                        console.log(`📊 ${metricName}: Full history with ${hashGroups.size} unique hashes`);
+
+                        // Clear existing branches and create one branch per hash group
+                        entry.branches = [];
+                        
+                        for (const hash of hashOrder) {
+                            const hashPoints = hashGroups.get(hash)!;
+                            const expHash = hash !== 'unknown' ? hash : undefined;
+                            const savedColor = loadBranchColor(expHash);
+                            const newBranch: SignalBranch = {
+                                rawPoints: hashPoints,
+                                branchId: nextBranchId++,
+                                experimentHash: expHash,
+                                customColor: savedColor
+                            };
+                            entry.branches.push(newBranch);
+                            console.log(`📊 ${metricName}: Branch ${newBranch.branchId} with ${hashPoints.length} points (hash: ${hash.substring(0, 8)}...)${savedColor ? ' (loaded saved color)' : ''}`);
+                        }
+                    }
+                } else {
+                    // Incremental: check if hash changed (new training branch detected)
+                    const currentBranch = entry.branches[entry.branches.length - 1];
+                    const lastX = currentBranch.rawPoints[currentBranch.rawPoints.length - 1]?.x ?? -Infinity;
+
+                    // Check if incoming data has a different hash (indicates checkpoint restore or divergence)
+                    const incomingHash = mapped.length > 0 ? mapped[0].experimentHash : undefined;
+                    const currentHash = currentBranch.experimentHash || currentBranch.rawPoints[currentBranch.rawPoints.length - 1]?.experimentHash;
+
+                    if (incomingHash && currentHash && incomingHash !== currentHash) {
+                        // Hash changed - create new branch for diverged training
+                        const savedColor = loadBranchColor(incomingHash);
+                        const newBranch: SignalBranch = {
+                            rawPoints: mapped,
+                            branchId: nextBranchId++,
+                            experimentHash: incomingHash,
+                            customColor: savedColor
+                        };
+                        entry.branches.push(newBranch);
+                        console.log(`📊 ${metricName}: Hash changed (${currentHash.substring(0, 8)}... → ${incomingHash.substring(0, 8)}...), created branch ${newBranch.branchId}${savedColor ? ' (loaded saved color)' : ''}`);
+                    } else {
+                        // Same hash - add points to current branch
+                        mapped.forEach(p => {
+                            if (p.x > lastX) {
+                                currentBranch.rawPoints.push(p);
+                            }
+                        });
+                    }
                 }
 
-                // Limit history size
-                if (entry.rawPoints.length > SIGNAL_HISTORY_LIMIT) {
-                    entry.rawPoints.splice(0, entry.rawPoints.length - SIGNAL_HISTORY_LIMIT);
-                }
+                // Limit history size per branch
+                entry.branches.forEach(branch => {
+                    if (branch.rawPoints.length > SIGNAL_HISTORY_LIMIT) {
+                        branch.rawPoints.splice(0, branch.rawPoints.length - SIGNAL_HISTORY_LIMIT);
+                    }
+                });
 
-                // Update metrics and progress
-                if (entry.rawPoints.length > 0) {
-                    const latest = entry.rawPoints[entry.rawPoints.length - 1];
+                // Update metrics and progress (use latest point from latest branch)
+                const currentBranch = entry.branches[entry.branches.length - 1];
+                if (currentBranch.rawPoints.length > 0) {
+                    const latest = currentBranch.rawPoints[currentBranch.rawPoints.length - 1];
                     updateProgress(latest.x);
                     // Track metric with timestamp: only show metrics updated in current poll
                     latestMetrics.set(metricName, { value: latest.y, timestamp: Date.now() });
@@ -3383,13 +4326,22 @@ async function startTrainingStatusStream() {
                 // Refresh chart immediately for this metric
                 refreshSignalChart(entry, metricName, metricName);
                 entry.chart.update('none');
-                console.log(`📊 Chart updated for ${metricName} with ${entry.rawPoints.length} points`);
+
+                // Count total points across all branches for logging
+                const totalPoints = entry.branches.reduce((sum, b) => sum + b.rawPoints.length, 0);
+                console.log(`📊 Chart updated for ${metricName} with ${totalPoints} total points across ${entry.branches.length} branches`);
             }
 
             // After first successful poll, switch to incremental mode
             if (isFirstPoll) {
                 isFirstPoll = false;
                 console.log('📊 Switched to incremental polling mode');
+            }
+
+            // Reset checkpoint restore flag after processing new data
+            if (justRestoredCheckpoint) {
+                justRestoredCheckpoint = false;
+                console.log('📊 Checkpoint restore data merged into plots');
             }
 
             // Update metrics display
@@ -3411,7 +4363,119 @@ async function startTrainingStatusStream() {
         setTimeout(setupPolling, POLL_INTERVAL_MS);
     }
 
-    setupPolling();
+    // Fetch initial history on page load, regardless of training state
+    async function fetchInitialHistory() {
+        try {
+            console.log('📊 Fetching initial plot history on page load...');
+            await ensureTotalSteps();
+
+            const maxPoints = getMaxPoints();
+            const resp = await dataClient.getLatestLoggerData({
+                requestFullHistory: true,
+                maxPoints
+            }).response;
+
+            const points = resp.points || [];
+
+            if (points.length === 0) {
+                console.log('📊 No history available on page load');
+                isFirstPoll = false;  // Move to incremental mode
+                return;
+            }
+
+            console.log(`📊 Loaded ${points.length} historical points on page load`);
+
+            // Group points by metric_name
+            const signalGroups = new Map<string, typeof points>();
+
+            for (const pt of points) {
+                const metricName = pt.metricName || 'unknown';
+                if (!signalGroups.has(metricName)) {
+                    signalGroups.set(metricName, []);
+                    // Track this signal
+                    if (!trackedSignals.has(metricName)) {
+                        trackedSignals.add(metricName);
+                        console.log(`📊 Discovered signal: ${metricName}`);
+                    }
+                }
+                signalGroups.get(metricName)!.push(pt);
+            }
+
+            // Process each signal group
+            for (const [metricName, signalPoints] of signalGroups.entries()) {
+                const entry = getOrCreateSignalChart(metricName);
+                if (!entry) continue;
+
+                const mapped = signalPoints.map((pt) => ({
+                    x: pt.modelAge,
+                    y: pt.metricValue,
+                    experimentHash: pt.experimentHash,
+                })).sort((a, b) => a.x - b.x);
+
+                // Group points by hash to create separate branches
+                const hashGroups = new Map<string, typeof mapped>();
+                const hashOrder: string[] = []; // Track order of first appearance
+                
+                for (const pt of mapped) {
+                    const hash = pt.experimentHash || 'unknown';
+                    if (!hashGroups.has(hash)) {
+                        hashGroups.set(hash, []);
+                        hashOrder.push(hash);
+                    }
+                    hashGroups.get(hash)!.push(pt);
+                }
+
+                console.log(`📊 ${metricName}: Found ${hashGroups.size} unique hashes in history`);
+
+                // Clear existing branches and create one branch per hash group
+                entry.branches = [];
+                
+                for (const hash of hashOrder) {
+                    const hashPoints = hashGroups.get(hash)!;
+                    const expHash = hash !== 'unknown' ? hash : undefined;
+                    const savedColor = loadBranchColor(expHash);
+                    const newBranch: SignalBranch = {
+                        rawPoints: hashPoints,
+                        branchId: nextBranchId++,
+                        experimentHash: expHash,
+                        customColor: savedColor
+                    };
+                    entry.branches.push(newBranch);
+                    console.log(`📊 ${metricName}: Branch ${newBranch.branchId} with ${hashPoints.length} points (hash: ${hash.substring(0, 8)}...)${savedColor ? ' (loaded saved color)' : ''}`);
+                }
+
+                // Update metrics and progress (use latest point from latest branch)
+                const lastBranch = entry.branches[entry.branches.length - 1];
+                if (lastBranch.rawPoints.length > 0) {
+                    const latest = lastBranch.rawPoints[lastBranch.rawPoints.length - 1];
+                    updateProgress(latest.x);
+                    latestMetrics.set(metricName, { value: latest.y, timestamp: Date.now() });
+                }
+
+                // Refresh chart
+                refreshSignalChart(entry, metricName, metricName);
+                entry.chart.update('none');
+                
+                const totalPoints = entry.branches.reduce((sum, b) => sum + b.rawPoints.length, 0);
+                console.log(`📊 Chart initialized for ${metricName} with ${totalPoints} points across ${entry.branches.length} branches`);
+            }
+
+            // Update metrics display
+            updateMetrics();
+
+            // Mark first poll as done to switch to incremental mode
+            isFirstPoll = false;
+            console.log('📊 Switched to incremental polling mode');
+        } catch (err) {
+            console.debug('Error fetching initial history:', err);
+            isFirstPoll = false;  // Move to incremental mode on error
+        }
+    }
+
+    // Fetch initial history on page load, then start polling
+    fetchInitialHistory().then(() => {
+        setupPolling();
+    });
 
     async function ensureTotalSteps() {
         if ((window ).trainingTotalSteps) return true;

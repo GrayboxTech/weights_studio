@@ -53,26 +53,61 @@
               </svg>
             </button>
 
-            <div id="refresh-config-popover" class="refresh-popover horizontal hidden">
-              <span class="refresh-popover-label">Auto-Refresh</span>
-              <label class="switch-premium" title="Enable/Disable Auto-Refresh">
-                <input type="checkbox" id="refresh-auto-toggle">
-                <span class="slider-pill"></span>
-              </label>
-
-              <div class="refresh-input-divider"></div>
-
-              <div class="refresh-input-group" id="refresh-input-wrapper">
-                <input type="number" id="refresh-interval-input" min="1" placeholder="5">
-                <span class="unit">sec</span>
+            <div id="refresh-config-popover" class="refresh-popover vertical hidden">
+              <!-- Data Auto-Refresh Section -->
+              <div class="refresh-section">
+                <span class="refresh-popover-label">Data auto-refresh</span>
+                <div class="refresh-row">
+                  <label class="switch-premium" title="Enable/Disable Data Auto-Refresh">
+                    <input type="checkbox" id="refresh-auto-toggle">
+                    <span class="slider-pill"></span>
+                  </label>
+                  <div class="refresh-input-group" id="refresh-input-wrapper">
+                    <input type="number" id="refresh-interval-input" min="1" placeholder="5">
+                    <span class="unit">sec</span>
+                  </div>
+                  <button id="refresh-config-save" class="refresh-send-btn" title="Save Data Refresh">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="19" x2="12" y2="5"></line>
+                      <polyline points="5 12 12 5 19 12"></polyline>
+                    </svg>
+                  </button>
+                </div>
               </div>
-              <button id="refresh-config-save" class="refresh-send-btn" title="Save Frequency">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
-                  stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="12" y1="19" x2="12" y2="5"></line>
-                  <polyline points="5 12 12 5 19 12"></polyline>
-                </svg>
-              </button>
+
+              <div class="refresh-section-divider"></div>
+
+              <!-- Plot Auto-Refresh Section -->
+              <div class="refresh-section">
+                <span class="refresh-popover-label">Plot auto-refresh</span>
+                <div class="refresh-row">
+                  <label class="switch-premium" title="Enable/Disable Plot Auto-Refresh">
+                    <input type="checkbox" id="plot-refresh-toggle">
+                    <span class="slider-pill"></span>
+                  </label>
+                  <div class="refresh-input-group" id="plot-input-wrapper">
+                    <input type="number" id="plot-interval-input" min="2" placeholder="2">
+                    <span class="unit">sec</span>
+                  </div>
+                  <button id="plot-config-save" class="refresh-send-btn" title="Save Plot Refresh">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="19" x2="12" y2="5"></line>
+                      <polyline points="5 12 12 5 19 12"></polyline>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="refresh-section-divider"></div>
+
+              <!-- Clear Cache and Refresh Section -->
+              <div class="refresh-section">
+                <button id="clear-cache-refresh-btn" class="clear-cache-btn" title="Clear Cache and Reload Page">
+                  Clear Cache & Refresh Page
+                </button>
+              </div>
             </div>
           </div>
           <button id="toggle-training" class="control-button primary" data-state="paused">Resume</button>

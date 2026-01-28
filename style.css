@@ -3046,6 +3046,35 @@ body.dark-mode .quick-tag-btn {
   /* Pill shape */
 }
 
+.refresh-popover.vertical {
+  flex-direction: column;
+  width: auto;
+  min-width: 280px;
+  gap: 0;
+  padding: 12px;
+  border-radius: 12px;
+}
+
+.refresh-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.refresh-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.refresh-section-divider {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.1);
+  margin: 8px 0;
+}
+
 .refresh-popover-label {
   font-size: 0.75rem;
   font-weight: 700;
@@ -3190,6 +3219,34 @@ body.dark-mode .quick-tag-btn {
   transform: scale(0.95);
 }
 
+.clear-cache-btn {
+  width: 100%;
+  padding: 10px 16px;
+  background: var(--accent-color);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md, 8px);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.clear-cache-btn:hover {
+  background: var(--accent-color-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+}
+
+.clear-cache-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(0, 122, 255, 0.2);
+}
+
 body.dark-mode .slider-pill {
   background-color: rgba(255, 255, 255, 0.15);
 }
@@ -3201,6 +3258,10 @@ body.dark-mode .refresh-popover {
 }
 
 body.dark-mode .refresh-input-divider {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+body.dark-mode .refresh-section-divider {
   background: rgba(255, 255, 255, 0.15);
 }
 
