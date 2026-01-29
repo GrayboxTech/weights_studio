@@ -187,9 +187,8 @@ body.dark-mode .logo-link:hover {
   flex-direction: column;
   gap: 0.2rem;
   background: var(--background-color);
-  overflow-y: auto;
   overflow-x: hidden;
-  height: 100%;
+  min-height: 40;
   padding-bottom: 70px;
   padding-right: 0.75rem;
   margin-right: -0.75rem;
@@ -663,6 +662,10 @@ body.dark-mode .resolution-group input[type='range']::-moz-range-thumb {
 #details-body {
   position: relative;
   overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 body.dark-mode .grid-settings-overlay {
@@ -1643,6 +1646,10 @@ body.dark-mode .inspector-search {
 
 .inspector-section:last-child {
   border-bottom: none;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .inspector-section>summary {
@@ -1661,6 +1668,20 @@ body.dark-mode .inspector-search {
 
 .inspector-group {
   padding: 6px 0 2px;
+}
+
+.inspector-section:last-child .inspector-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.inspector-section:last-child .inspector-group::-webkit-scrollbar {
+  display: none;
 }
 
 /* Rows */
@@ -1697,6 +1718,15 @@ body.dark-mode .inspector-search {
 .details-options-row {
   flex-direction: column;
   align-items: flex-start;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.details-options-row::-webkit-scrollbar {
+  display: none;
 }
 
 /* Old row labels inside panel */
@@ -2744,6 +2774,7 @@ body.dark-mode .tagging-modal .modal-backdrop {
 /* Left: Metadata Panel */
 .modal-metadata {
   width: auto;
+  height: auto;
   max-width: 450px;
   min-width: 280px;
   background: var(--surface-elevated-color);

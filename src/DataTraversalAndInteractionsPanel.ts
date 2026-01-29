@@ -261,6 +261,16 @@ export class DataTraversalAndInteractionsPanel {
     public updateSliderStep(step: number): void {
         if (this.sampleSlider) {
             this.sampleSlider.step = String(step);
+            // Adjust max so slider can only move to positions where we can show 'step' samples
+            // Last valid position is maxSampleId - step, but slider is 0-indexed so we add 1
+            const adjustedMax = Math.max(0, this.maxSampleId - step + 1);
+            this.sampleSlider.max = String(adjustedMax);
+
+            // If current value exceeds new max, clamp it
+            const currentValue = parseInt(this.sampleSlider.value, 10);
+            if (currentValue > adjustedMax) {
+                this.sampleSlider.value = String(adjustedMax);
+            }
         }
     }
 

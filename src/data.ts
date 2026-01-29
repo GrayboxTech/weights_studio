@@ -1072,14 +1072,20 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
                     enabled: true,
                     mode: 'nearest',
                     intersect: false,
+                    callbacks: {
+                        title: (tooltipItems) => {
+                            const item = tooltipItems[0];
+                            return signalName || 'Signal';
+                        },
+                        label: (tooltipItem) => {
+                            const xValue = tooltipItem.parsed.x.toFixed(2);
+                            const yValue = tooltipItem.parsed.y.toFixed(4);
+                            return `Step: ${xValue}, Value: ${yValue}`;
+                        }
+                    },
                     filter: (tooltipItem) => {
                         // Don't show tooltip for markers dataset or std bands
                         if (tooltipItem.datasetIndex === 3 || tooltipItem.datasetIndex === 0 || tooltipItem.datasetIndex === 1) {
-                            return false;
-                        }
-                        // Also check if marker tooltip is currently shown
-                        const markerTooltip = document.getElementById('marker-tooltip');
-                        if (markerTooltip && markerTooltip.style.display === 'block') {
                             return false;
                         }
                         return true;
@@ -2659,7 +2665,9 @@ async function fetchAndDisplaySamples() {
     const startRaw = traversalPanel.getStartIndex();
     const countRaw = traversalPanel.getLeftSamples();
     const start = Number.isFinite(Number(startRaw)) ? Number(startRaw) : 0;
-    const count = Number.isFinite(Number(countRaw)) ? Number(countRaw) : 0;
+    const requestedCount = Number.isFinite(Number(countRaw)) ? Number(countRaw) : 0;
+    const gridCount = gridManager.calculateGridDimensions().gridCount;
+    const count = Math.min(requestedCount, gridCount);
 
     if (count <= 0) {
         console.debug('[Fetch Samples] count <= 0, aborting fetch');
@@ -2786,11 +2794,13 @@ async function fetchAndDisplaySamples() {
                         denyListedStat.value = [0]; // Ensure deny_listed is 0 if not locally tracked
                     }
 
-                    const cell = gridManager.getCellbyIndex(i + index);
+                    // Cell index is relative to the current batch position in the grid
+                    const cellIndex = totalRecordsRetrieved + index;
+                    const cell = gridManager.getCellbyIndex(cellIndex);
                     if (cell) {
                         cell.populate(record, preferences);
                     } else {
-                        console.warn(`Cell at index ${i + index} not found`);
+                        console.warn(`Cell at index ${cellIndex} not found (batch offset: ${i}, record index: ${index}, total retrieved: ${totalRecordsRetrieved})`);
                     }
                 });
 
@@ -3074,10 +3084,7 @@ async function updateLayout() {
     gridManager.updateGridLayout();
     const gridDims = gridManager.calculateGridDimensions();
     console.log(`[updateLayout] Grid dimensions: ${JSON.stringify(gridDims)}`);
-
-    gridManager.clearAllCells();
-    const cellsAfterClear = gridManager.getCells().length;
-    console.log(`[updateLayout] Cells after clear: ${cellsAfterClear}`);
+    console.log(`[updateLayout] Actual cells created: ${gridManager.getCells().length}`);
 
     if (displayOptionsPanel) {
         const preferences = displayOptionsPanel.getDisplayPreferences();
@@ -3087,7 +3094,9 @@ async function updateLayout() {
         }
     }
 
-    traversalPanel.updateSliderStep(gridDims.gridCount);
+    // Use actual cell count from grid, not calculated dimensions
+    const actualCellCount = gridManager.getCells().length;
+    traversalPanel.updateSliderStep(actualCellCount);
     traversalPanel.updateSliderTooltip();
     await fetchAndDisplaySamples();
 }
@@ -3774,6 +3783,39 @@ export async function initializeUIElements() {
         // Initialize state from server with retry logic
         isTraining = await fetchInitialTrainingState();
         syncTrainingUI();
+
+        // Poll is_training hyperparameter every 3 seconds to keep UI in sync
+        setInterval(async () => {
+            try {
+                const cmd = {
+                    getHyperParameters: true,
+                    getInteractiveLayers: false,
+                };
+                const resp = await dataClient.experimentCommand(cmd).response;
+                const hp = resp.hyperParametersDescs || [];
+                const isTrainingDesc = hp.find(d => d.name === 'is_training' || d.label === 'is_training');
+
+                if (isTrainingDesc) {
+                    let fetchedState = false;
+                    // Bool may come as stringValue ('true'/'false') or numericalValue (1/0)
+                    if (typeof isTrainingDesc.stringValue === 'string') {
+                        fetchedState = isTrainingDesc.stringValue.toLowerCase() === 'true';
+                    } else if (typeof isTrainingDesc.numericalValue === 'number') {
+                        fetchedState = isTrainingDesc.numericalValue !== 0;
+                    }
+
+                    // Update UI if state changed
+                    if (isTraining !== fetchedState) {
+                        isTraining = fetchedState;
+                        syncTrainingUI();
+                        localStorage.setItem('training-state', String(fetchedState));
+                        console.log(`Training state updated from server poll: ${fetchedState}`);
+                    }
+                }
+            } catch (e) {
+                console.debug('Failed to poll is_training hyperparameter:', e);
+            }
+        }, 3000); // Poll every 3 seconds
     }
 
     // Initialize display options panel
@@ -4348,7 +4390,7 @@ async function startTrainingStatusStream() {
                     if (justRestoredCheckpoint) {
                         // Create new branch for post-restore training
                         const newHash = mapped.length > 0 ? mapped[0].experimentHash : undefined;
-                        
+
                         // IMPORTANT: Remove any existing branches with the same hash after the restore point
                         // This prevents duplicate markers and branch confusion after restore
                         if (newHash && mapped.length > 0) {
@@ -4356,7 +4398,7 @@ async function startTrainingStatusStream() {
                             entry.branches = entry.branches.filter(branch => {
                                 // Keep branches with different hashes
                                 if (branch.experimentHash !== newHash) return true;
-                                
+
                                 // For branches with same hash, only keep if all points are before restore point
                                 const allPointsBeforeRestore = branch.rawPoints.every(pt => pt.x < restoreStep);
                                 if (!allPointsBeforeRestore) {
@@ -4368,7 +4410,7 @@ async function startTrainingStatusStream() {
                             });
                             console.log(`📊 ${metricName}: Cleaned up duplicate branches with hash ${newHash.substring(0, 8)}... before restore at step ${restoreStep}`);
                         }
-                        
+
                         const savedColor = loadBranchColor(newHash);
                         const newBranch: SignalBranch = {
                             rawPoints: mapped,

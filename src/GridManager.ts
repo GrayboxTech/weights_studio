@@ -49,7 +49,7 @@ export class GridManager {
 
         const cols = Math.max(1, Math.floor(containerWidth / (effectiveCellSize + GRID_GAP)));
         const rows = Math.max(1, Math.floor(availableHeight / (effectiveCellSize + GRID_GAP)));
-        const gridCount = rows * cols;
+        const gridCount = Math.min(rows * cols, 1000); // Cap at 1000 cells maximum
 
         return { rows, cols, gridCount, cellSize: effectiveCellSize };
     }
