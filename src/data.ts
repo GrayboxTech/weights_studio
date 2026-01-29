@@ -79,13 +79,17 @@ function restoreGridSettings(): void {
         if (zoomValue) zoomValue.textContent = `${savedZoomLevel}%`;
     }
 
-    if (savedImageResolutionAuto && imageResolutionAutoInput) {
-        imageResolutionAutoInput.checked = savedImageResolutionAuto === 'true';
+    if (imageResolutionAutoInput) {
+        imageResolutionAutoInput.checked = savedImageResolutionAuto === 'true' || !savedImageResolutionAuto;
     }
 
-    if (savedImageResolutionPercent && imageResolutionPercentInput) {
-        imageResolutionPercentInput.value = savedImageResolutionPercent;
-        if (imageResolutionValue) imageResolutionValue.textContent = `${savedImageResolutionPercent}%`;
+    if (imageResolutionPercentInput && imageResolutionValue) {
+        if (imageResolutionAutoInput?.checked) {
+            imageResolutionValue.textContent = 'Auto';
+        } else if (savedImageResolutionPercent) {
+            imageResolutionPercentInput.value = savedImageResolutionPercent;
+            imageResolutionValue.textContent = `${savedImageResolutionPercent}%`;
+        }
     }
 }
 
@@ -510,6 +514,109 @@ function showRestoreMarkerModal(marker: any, signalName: string): void {
 }
 
 /**
+ * Show modal for selecting from multiple markers when they overlap.
+ */
+function showMarkerSelectionModal(markers: any[], signalName: string): void {
+    let modal = document.getElementById('restore-marker-modal') as HTMLElement;
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'restore-marker-modal';
+        modal.style.position = 'fixed';
+        modal.style.top = '50%';
+        modal.style.left = '50%';
+        modal.style.transform = 'translate(-50%, -50%)';
+        modal.style.background = 'var(--surface-color, #ffffff)';
+        modal.style.border = '1px solid var(--border-color, #d1d5db)';
+        modal.style.borderRadius = 'var(--radius-md, 12px)';
+        modal.style.padding = '24px';
+        modal.style.zIndex = '10001';
+        modal.style.minWidth = '420px';
+        modal.style.maxWidth = '700px';
+        modal.style.boxShadow = 'var(--shadow-soft, 0 18px 45px rgba(15, 23, 42, 0.08))';
+        modal.style.maxHeight = '85vh';
+        modal.style.overflowY = 'auto';
+        modal.style.color = 'var(--primary-text-color, #111827)';
+        document.body.appendChild(modal);
+
+        // Add overlay
+        const overlay = document.createElement('div');
+        overlay.id = 'restore-marker-overlay';
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100%';
+        overlay.style.height = '100%';
+        overlay.style.backgroundColor = 'rgba(15, 23, 42, 0.35)';
+        overlay.style.backdropFilter = 'blur(4px)';
+        overlay.style.zIndex = '10000';
+        overlay.onclick = closeRestoreMarkerModal;
+        document.body.appendChild(overlay);
+    }
+
+    // Build marker list HTML
+    const markerListHTML = markers.map((marker, idx) => {
+        const changeMessage = generateChangeMessage(marker.changeDetail);
+        const fullHash = marker.experimentHash || 'N/A';
+        // Add separator every 8 characters
+        const formattedHash = fullHash.match(/.{1,8}/g)?.join('-') || fullHash;
+
+        return `
+            <div onclick="(window ).selectMarkerForRestore(${idx})"
+                 style="padding: 12px; margin-bottom: 8px; border: 1px solid var(--border-subtle, rgba(209, 213, 219, 0.9)); border-radius: var(--radius-sm, 8px); cursor: pointer; transition: all 0.2s; background: var(--surface-elevated-color, #f9fafb);"
+                 onmouseover="this.style.background='var(--accent-soft, rgba(0, 122, 255, 0.08))'; this.style.borderColor='var(--accent-color, #007aff)'"
+                 onmouseout="this.style.background='var(--surface-elevated-color, #f9fafb)'; this.style.borderColor='var(--border-subtle, rgba(209, 213, 219, 0.9))'">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                    <div style="font-size: 12px; color: var(--muted-text-color, #9ca3af);">Step ${marker.x}</div>
+                    <div style="font-size: 13px; color: var(--primary-text-color, #111827);">Value: ${marker.y.toFixed(4)}</div>
+                </div>
+                <div style="font-family: 'SF Mono', 'Monaco', 'Courier New', monospace; font-size: 13px; color: var(--secondary-text-color, #6b7280); word-break: break-all; margin-bottom: 6px; line-height: 1.6;">${formattedHash}</div>
+                <div style="font-size: 12px; color: var(--secondary-text-color, #6b7280); font-style: italic;">${changeMessage}</div>
+            </div>
+        `;
+    }).join('');
+
+    modal.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle, rgba(209, 213, 219, 0.9));">
+            <h2 style="margin: 0; font-size: 18px; font-weight: 600; color: var(--primary-text-color, #111827);">Select Checkpoint to Restore</h2>
+            <button onclick="(window ).closeRestoreMarkerModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--secondary-text-color, #6b7280); padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: background-color 0.2s;">×</button>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+            <label style="font-weight: 600; font-size: 13px; color: var(--secondary-text-color, #6b7280); display: block; margin-bottom: 8px;">Signal: ${signalName}</label>
+            <div style="font-size: 13px; color: var(--muted-text-color, #9ca3af); margin-bottom: 12px;">${markers.length} checkpoints found in this area. Click one to restore:</div>
+        </div>
+
+        <div style="max-height: 400px; overflow-y: auto; scrollbar-width: none;">
+            ${markerListHTML}
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid var(--border-subtle, rgba(209, 213, 219, 0.9)); margin-top: 16px;">
+            <button onclick="(window ).closeRestoreMarkerModal()" style="padding: 10px 20px; background: var(--surface-elevated-color, #f5f5f5); color: var(--primary-text-color, #111827); border: 1px solid var(--border-subtle, rgba(209, 213, 219, 0.9)); border-radius: var(--radius-sm, 8px); cursor: pointer; font-weight: 500; font-size: 14px; transition: background-color 0.2s;">Cancel</button>
+        </div>
+    `;
+
+    // Store markers for selection
+    (window as any).currentMarkerSelection = markers;
+
+    modal.style.display = 'block';
+    document.getElementById('restore-marker-overlay')!.style.display = 'block';
+}
+
+/**
+ * Handle marker selection from list.
+ */
+(window as any).selectMarkerForRestore = function(index: number) {
+    const markers = (window as any).currentMarkerSelection;
+    if (markers && markers[index]) {
+        closeRestoreMarkerModal();
+        // Show detailed restore modal for selected marker
+        setTimeout(() => {
+            showRestoreMarkerModal(markers[index], 'Selected Signal');
+        }, 100);
+    }
+};
+
+/**
  * Close restore marker modal.
  */
 function closeRestoreMarkerModal(): void {
@@ -672,7 +779,7 @@ function unfreezeUIAfterRestore(): void {
 
 /**
  * Highlight the line segment corresponding to a marker on hover.
- * The segment spans from this marker to the next marker (or end of curve).
+ * Stores the marker X coordinate to highlight that specific point on the curve.
  */
 function highlightSegmentFromMarker(chart: Chart, markerIndex: number, baseColor: string): void {
     const markersDatasetIndex = chart.data.datasets.length - 1;
@@ -681,9 +788,10 @@ function highlightSegmentFromMarker(chart: Chart, markerIndex: number, baseColor
 
     if (markerIndex >= markers.length) return;
 
-    // Store highlight state on chart
-    (chart as any).__highlightedSegment = markerIndex;
-    console.debug('Highlighting segment:', markerIndex);
+    // Store highlight state on chart - just store the X coordinate of the marker
+    const marker = markers[markerIndex];
+    (chart as any).__highlightedMarkerX = marker.x;
+    console.debug('Highlighting marker at X:', marker.x);
     chart.draw();
 }
 
@@ -691,7 +799,7 @@ function highlightSegmentFromMarker(chart: Chart, markerIndex: number, baseColor
  * Clear segment highlighting.
  */
 function clearSegmentHighlight(chart: Chart): void {
-    (chart as any).__highlightedSegment = null;
+    (chart as any).__highlightedMarkerX = null;
     console.debug('clearSegmentHighlight');
     chart.draw();
 }
@@ -879,13 +987,13 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
     const canvas = document.createElement('canvas');
     // Set fixed size for canvas to prevent sync with other charts
     canvas.style.width = '100%';
-    canvas.style.height = '100%';
+    canvas.style.height = '400px';
     canvas.style.display = 'block';
 
     const canvasWrapper = document.createElement('div');
     canvasWrapper.style.position = 'relative';
     canvasWrapper.style.width = '100%';
-    canvasWrapper.style.height = '100%';
+    canvasWrapper.style.height = '400px';
     canvasWrapper.appendChild(canvas);
 
     card.appendChild(header);
@@ -1026,9 +1134,9 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
 
                 // Only handle hover for markers if markers are enabled
                 if (!entry.markersEnabled) {
-                    clearSegmentHighlight(chart);
-                    hideMarkerTooltip();
                     (chart as any).__hoveredMarker = null;
+                    chart.draw();
+                    hideMarkerTooltip();
                     return;
                 }
 
@@ -1044,7 +1152,10 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
                         const marker = markers[markerIndex];
 
                         console.debug('Highlighting marker', markerIndex, 'of', markers.length, 'markers');
-                        highlightSegmentFromMarker(chart, markerIndex, entry.color);
+
+                        // Store marker info for highlighting and click handling
+                        (chart as any).__hoveredMarker = { markerIndex, marker, signalName };
+                        chart.draw();
 
                         // Completely disable and hide Chart.js tooltip
                         if (chart.options.plugins?.tooltip) {
@@ -1067,9 +1178,9 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
 
                     } else {
                         // Not hovering over a marker - clear everything
-                        clearSegmentHighlight(chart);
-                        hideMarkerTooltip();
                         (chart as any).__hoveredMarker = null;
+                        chart.draw();
+                        hideMarkerTooltip();
 
                         // Re-enable Chart.js tooltip
                         if (chart.options.plugins?.tooltip) {
@@ -1078,9 +1189,9 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
                     }
                 } else {
                     // Mouse left the chart - clear highlight
-                    clearSegmentHighlight(chart);
-                    hideMarkerTooltip();
                     (chart as any).__hoveredMarker = null;
+                    chart.draw();
+                    hideMarkerTooltip();
 
                     // Re-enable Chart.js tooltip
                     if (chart.options.plugins?.tooltip) {
@@ -1113,12 +1224,47 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
 
                 if (!isDoubleClick) return;
 
-                const hoveredMarker = (chart as any).__hoveredMarker;
-                console.debug('Opening restore modal for:', hoveredMarker?.marker?.experimentHash);
-                if (hoveredMarker && hoveredMarker.marker) {
-                    showRestoreMarkerModal(hoveredMarker.marker, signalName);
-                    lastMarkerClickTime = 0; // Reset after modal opens
+                // Find all markers near the click point (within hit radius)
+                const clickX = chart.scales.x.getValueForPixel(event.x!);
+                const clickY = chart.scales.y.getValueForPixel(event.y!);
+                const markersDataset = chart.data.datasets[markersDatasetIndex];
+                const allMarkers = markersDataset.data as any[];
+
+                // Get hit radius from marker configuration
+                const hitRadius = (markersDataset as any).pointHitRadius || 25;
+                const xScale = chart.scales.x;
+                const yScale = chart.scales.y;
+
+                const nearbyMarkers: any[] = [];
+                allMarkers.forEach((marker, idx) => {
+                    const markerXPixel = xScale.getPixelForValue(marker.x);
+                    const markerYPixel = yScale.getPixelForValue(marker.y);
+                    const clickXPixel = event.x!;
+                    const clickYPixel = event.y!;
+
+                    const distance = Math.sqrt(
+                        Math.pow(markerXPixel - clickXPixel, 2) +
+                        Math.pow(markerYPixel - clickYPixel, 2)
+                    );
+
+                    if (distance <= hitRadius) {
+                        nearbyMarkers.push({ marker, index: idx });
+                    }
+                });
+
+                console.debug(`Found ${nearbyMarkers.length} markers in click area`);
+
+                if (nearbyMarkers.length === 0) return;
+
+                if (nearbyMarkers.length === 1) {
+                    // Single marker - show restore modal directly
+                    showRestoreMarkerModal(nearbyMarkers[0].marker, signalName);
+                } else {
+                    // Multiple markers - show selection list
+                    showMarkerSelectionModal(nearbyMarkers.map(nm => nm.marker), signalName);
                 }
+
+                lastMarkerClickTime = 0; // Reset after modal opens
             },
         },
         plugins: [
@@ -1126,154 +1272,68 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
                 id: 'segmentHighlight',
                 afterDatasetsDraw(chart: Chart) {
                     const ctx = chart.ctx;
-                    const highlightedSegment = (chart as any).__highlightedSegment;
+                    const hoveredMarker = (chart as any).__hoveredMarker;
 
-                    if (highlightedSegment === null || highlightedSegment === undefined) return;
+                    if (!hoveredMarker || !hoveredMarker.marker) return;
 
-                    // Get markers dataset (always last)
-                    const markersDatasetIndex = chart.data.datasets.length - 1;
-                    const markersDataset = chart.data.datasets[markersDatasetIndex];
-                    const markers = markersDataset.data as any[];
+                    const marker = hoveredMarker.marker;
+                    const markerHash = marker.experimentHash;
 
-                    if (highlightedSegment >= markers.length) return;
-
-                    // Find which branch this marker belongs to by matching experimentHash
-                    const currentMarker = markers[highlightedSegment];
-                    const markerHash = currentMarker.experimentHash;
-                    
-                    let branchIndex = -1;
-                    if (markerHash) {
-                        for (let i = 0; i < entry.branches.length; i++) {
-                            if (entry.branches[i].experimentHash === markerHash) {
-                                branchIndex = i;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // Fallback to last branch if hash not found
-                    if (branchIndex === -1) {
-                        branchIndex = entry.branches.length - 1;
-                    }
-
-                    // Calculate dataset indices for this specific branch
-                    // Each branch has 3 datasets: [lower_std, upper_std, main_line]
-                    const lowerDatasetIndex = branchIndex * 3;
-                    const upperDatasetIndex = branchIndex * 3 + 1;
-                    const mainLineDatasetIndex = branchIndex * 3 + 2;
-
-                    const mainLineDataset = chart.data.datasets[mainLineDatasetIndex];
-                    const upperDataset = chart.data.datasets[upperDatasetIndex];
-                    const lowerDataset = chart.data.datasets[lowerDatasetIndex];
+                    if (!markerHash) return;
 
                     const xScale = chart.scales.x;
                     const yScale = chart.scales.y;
 
-                    const nextMarker = highlightedSegment + 1 < markers.length ? markers[highlightedSegment + 1] : null;
+                    // Find the main line dataset with matching experimentHash using metadata
+                    let mainLineDataset: any = null;
+                    let upperDataset: any = null;
+                    let lowerDataset: any = null;
 
-                    const currentX = currentMarker.x;
-                    const nextX = nextMarker?.x ?? Infinity;
+                    for (const dataset of chart.data.datasets) {
+                        const ds = dataset as any;
+                        if (ds._experimentHash === markerHash) {
+                            if (ds._datasetType === 'main') {
+                                mainLineDataset = ds;
+                            } else if (ds._datasetType === 'upper') {
+                                upperDataset = ds;
+                            } else if (ds._datasetType === 'lower') {
+                                lowerDataset = ds;
+                            }
+                        }
+                    }
+
+                    if (!mainLineDataset) return;
 
                     const mainLinePoints = mainLineDataset.data as any[];
-                    const lowerPoints = lowerDataset.data as any[];
-                    const upperPoints = upperDataset.data as any[];
 
-                    // Find points in the segment
-                    // Markers themselves are points, so include them in the segment
-                    // Combine main line points with marker points for complete segment
-                    let segmentPoints: any[];
-                    let segmentLower: any[];
-                    let segmentUpper: any[];
+                    // Find the branch for color
+                    let targetBranch = entry.branches.find(b => b.experimentHash === markerHash);
+                    if (!targetBranch) return;
 
-                    if (nextMarker) {
-                        // Include points from current marker up to (and including) next marker
-                        // Markers are data points themselves
-                        const linePoints = mainLinePoints.filter((p: any) => p.x >= currentX && p.x <= nextX);
-                        const markerPoints = markers.filter((m: any) => m.x >= currentX && m.x <= nextX);
-                        segmentPoints = [...linePoints, ...markerPoints].sort((a, b) => a.x - b.x);
-
-                        segmentLower = lowerPoints.filter((p: any) => p.x >= currentX && p.x <= nextX);
-                        segmentUpper = upperPoints.filter((p: any) => p.x >= currentX && p.x <= nextX);
-                    } else {
-                        // Last segment: include all points from current marker to end
-                        const linePoints = mainLinePoints.filter((p: any) => p.x >= currentX);
-                        const markerPoints = markers.filter((m: any) => m.x >= currentX);
-                        segmentPoints = [...linePoints, ...markerPoints].sort((a, b) => a.x - b.x);
-
-                        segmentLower = lowerPoints.filter((p: any) => p.x >= currentX);
-                        segmentUpper = upperPoints.filter((p: any) => p.x >= currentX);
-                    }
+                    const highlightColor = targetBranch.customColor || entry.color;
 
                     ctx.save();
 
-                    // Get the branch color (custom or default)
-                    const branch = entry.branches[branchIndex];
-                    const highlightColor = branch.customColor || entry.color;
-
-                    // Draw highlighted std band if available (need at least 2 points for upper and lower)
-                    if (segmentLower.length >= 2 && segmentUpper.length >= 2) {
-                        ctx.fillStyle = hexToRgba(highlightColor, 0.25);
-                        ctx.beginPath();
-
-                        // Draw upper bound
-                        for (let i = 0; i < segmentUpper.length; i++) {
-                            const p = segmentUpper[i];
-                            const xPixel = xScale.getPixelForValue(p.x);
-                            const yPixel = yScale.getPixelForValue(p.y);
-                            if (i === 0) {
-                                ctx.moveTo(xPixel, yPixel);
-                            } else {
-                                ctx.lineTo(xPixel, yPixel);
-                            }
-                        }
-
-                        // Draw lower bound in reverse
-                        for (let i = segmentLower.length - 1; i >= 0; i--) {
-                            const p = segmentLower[i];
-                            const xPixel = xScale.getPixelForValue(p.x);
-                            const yPixel = yScale.getPixelForValue(p.y);
-                            ctx.lineTo(xPixel, yPixel);
-                        }
-
-                        ctx.closePath();
-                        ctx.fill();
-                    }
-
-                    // Draw highlighted main line
+                    // Draw highlighted main line over entire branch
                     ctx.strokeStyle = highlightColor;
-                    ctx.lineWidth = 4;
-                    ctx.globalAlpha = 0.8;
+                    ctx.lineWidth = 5;
+                    ctx.globalAlpha = 0.9;
                     ctx.lineCap = 'round';
                     ctx.lineJoin = 'round';
 
                     ctx.beginPath();
-
-                    if (segmentPoints.length >= 2) {
-                        // Draw line through all points in segment
-                        for (let i = 0; i < segmentPoints.length; i++) {
-                            const p = segmentPoints[i];
-                            const xPixel = xScale.getPixelForValue(p.x);
-                            const yPixel = yScale.getPixelForValue(p.y);
-
-                            if (i === 0) {
-                                ctx.moveTo(xPixel, yPixel);
-                            } else {
-                                ctx.lineTo(xPixel, yPixel);
-                            }
-                        }
-                        ctx.stroke();
-                    } else if (segmentPoints.length === 1 && nextMarker) {
-                        // Only start point exists - draw to next marker position
-                        const p = segmentPoints[0];
+                    for (let i = 0; i < mainLinePoints.length; i++) {
+                        const p = mainLinePoints[i];
                         const xPixel = xScale.getPixelForValue(p.x);
                         const yPixel = yScale.getPixelForValue(p.y);
-                        ctx.moveTo(xPixel, yPixel);
 
-                        const nextXPixel = xScale.getPixelForValue(nextMarker.x);
-                        const nextYPixel = yScale.getPixelForValue(nextMarker.y);
-                        ctx.lineTo(nextXPixel, nextYPixel);
-                        ctx.stroke();
+                        if (i === 0) {
+                            ctx.moveTo(xPixel, yPixel);
+                        } else {
+                            ctx.lineTo(xPixel, yPixel);
+                        }
                     }
+                    ctx.stroke();
 
                     ctx.restore();
                 },
@@ -1303,6 +1363,35 @@ function getOrCreateSignalChart(signalName: string): SignalChart | null {
         e.preventDefault();
         showChartContextMenu(e, chart, entry, signalName);
     });
+
+    // Setup resize handle for horizontal dragging
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    document.addEventListener('mousemove', (e: MouseEvent) => {
+        if (isResizing) {
+            const delta = e.clientX - startX;
+            const newWidth = Math.max(300, startWidth + delta);
+            card.style.width = newWidth + 'px';
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        isResizing = false;
+        chart.resize();
+    });
+
+    const resizeHandle = document.createElement('div');
+    resizeHandle.className = 'signal-card-resize-handle';
+    resizeHandle.title = 'Drag to resize';
+    resizeHandle.addEventListener('mousedown', (e: MouseEvent) => {
+        isResizing = true;
+        startX = e.clientX;
+        startWidth = card.offsetWidth;
+        e.preventDefault();
+    });
+    card.appendChild(resizeHandle);
 
     const entry: SignalChart = {
         chart,
@@ -1373,7 +1462,10 @@ function refreshSignalChart(entry: SignalChart, signalName: string, graphName?: 
             backgroundColor: 'rgba(0,0,0,0)',
             pointRadius: 0,
             pointHoverRadius: 0,
-        });
+            _branchIndex: branchIndex,
+            _datasetType: 'lower',
+            _experimentHash: branch.experimentHash,
+        } as any);
 
         // Add std band (upper)
         chart.data.datasets.push({
@@ -1383,7 +1475,10 @@ function refreshSignalChart(entry: SignalChart, signalName: string, graphName?: 
             backgroundColor: entry.stdEnabled ? hexToRgba(branchColor, 0.15 * branchAlpha) : 'rgba(0,0,0,0)',
             pointRadius: 0,
             pointHoverRadius: 0,
-        });
+            _branchIndex: branchIndex,
+            _datasetType: 'upper',
+            _experimentHash: branch.experimentHash,
+        } as any);
 
         // Add main line
         chart.data.datasets.push({
@@ -1395,10 +1490,12 @@ function refreshSignalChart(entry: SignalChart, signalName: string, graphName?: 
             pointHoverRadius: 0,
             tension: 0,
             borderWidth: 2,
-        });
+            _branchIndex: branchIndex,
+            _datasetType: 'main',
+            _experimentHash: branch.experimentHash,
+        } as any);
 
-        // Add connector from previous branch to this one (if not first branch)
-        // Only connect if current branch starts at same or later step (don't connect backwards)
+        // Add connector from previous branch to this one (solid line for continuity)
         if (branchIndex > 0 && smoothed.length > 0) {
             const prevBranch = entry.branches[branchIndex - 1];
             const prevSmoothed = buildSmoothedSeries(prevBranch.rawPoints, {
@@ -1411,19 +1508,18 @@ function refreshSignalChart(entry: SignalChart, signalName: string, graphName?: 
                 const lastPointOfPrev = prevSmoothed[prevSmoothed.length - 1];
                 const firstPointOfCurrent = smoothed[0];
 
-                // Only connect if not going backwards in steps
+                // Connect if not going backwards in steps
                 if (firstPointOfCurrent.x >= lastPointOfPrev.x) {
-                    // Create connector line dataset
+                    // Create connector line dataset (solid line for continuity)
                     chart.data.datasets.push({
                         data: [lastPointOfPrev, firstPointOfCurrent],
                         fill: false,
-                        borderColor: hexToRgba(branchColor, 0.4), // More transparent for connectors
+                        borderColor: hexToRgba(branchColor, branchAlpha * 0.6),
                         backgroundColor: 'rgba(0,0,0,0)',
                         pointRadius: 0,
                         pointHoverRadius: 0,
                         tension: 0,
                         borderWidth: 2,
-                        borderDash: [5, 5], // Dashed line to distinguish from main curves
                     });
                 }
             }
@@ -1438,9 +1534,23 @@ function refreshSignalChart(entry: SignalChart, signalName: string, graphName?: 
         });
     });
 
+    // Ensure change details compare against previous marker across branches
+    if (allMarkers.length > 1) {
+        const markersByX = [...allMarkers].sort((a, b) => a.x - b.x);
+        let lastHash: string | undefined;
+        markersByX.forEach((marker) => {
+            if (marker.experimentHash) {
+                if (lastHash && lastHash !== marker.experimentHash) {
+                    marker.changeDetail = describeHashChange(lastHash, marker.experimentHash);
+                }
+                lastHash = marker.experimentHash;
+            }
+        });
+    }
+
     // Add single markers dataset for all branches with individual colors
     const markerColors = allMarkers.map(m => m.branchColor || entry.color);
-    
+
     chart.data.datasets.push({
         data: entry.markersEnabled ? allMarkers : [],
         fill: false,
@@ -1448,9 +1558,9 @@ function refreshSignalChart(entry: SignalChart, signalName: string, graphName?: 
         backgroundColor: markerColors,
         pointBackgroundColor: markerColors,
         pointBorderColor: markerColors,
-        pointRadius: 22,
-        pointHoverRadius: 45,
-        pointHitRadius: 90,
+        pointRadius: 20,
+        pointHoverRadius: 30,
+        pointHitRadius: 25,
         pointStyle: 'star',
         showLine: false,
     });
@@ -1519,6 +1629,9 @@ function refreshSignalChart(entry: SignalChart, signalName: string, graphName?: 
         chart.options.scales.x.max = maxX > 0 ? maxX : undefined;
         chart.options.scales.y.min = 0;
         chart.options.scales.y.max = undefined;
+
+        // Force chart redraw to fix markers-only display issue on restore
+        chart.update('active');
     }
 
     entry.pending = true;
@@ -1647,19 +1760,19 @@ function showChartContextMenu(event: MouseEvent, chart: Chart, entry: SignalChar
     // Change Color button (only show if cursor is over a curve)
     const elements = chart.getElementsAtEventForMode(event as any, 'nearest', { intersect: false }, false);
     let colorBtn: HTMLButtonElement | null = null;
-    
+
     if (elements.length > 0) {
         const clickedElement = elements[0];
         const datasetIndex = clickedElement.datasetIndex;
         const markersDatasetIndex = chart.data.datasets.length - 1;
-        
+
         // Only show color picker if NOT clicked on markers
         if (datasetIndex !== markersDatasetIndex) {
             const branchIndex = Math.floor(datasetIndex / 3);
-            
+
             if (branchIndex >= 0 && branchIndex < entry.branches.length) {
                 const branch = entry.branches[branchIndex];
-                
+
                 colorBtn = document.createElement('button');
                 colorBtn.textContent = `Change Curve Color (Branch ${branchIndex + 1})`;
                 colorBtn.style.cssText = menuItemStyles;
@@ -1674,7 +1787,7 @@ function showChartContextMenu(event: MouseEvent, chart: Chart, entry: SignalChar
                     if (menu.parentNode) {
                         menu.parentNode.removeChild(menu);
                     }
-                    
+
                     // Create color picker positioned at mouse click
                     const colorInput = document.createElement('input');
                     colorInput.type = 'color';
@@ -1684,39 +1797,39 @@ function showChartContextMenu(event: MouseEvent, chart: Chart, entry: SignalChar
                     colorInput.style.top = `${event.pageY}px`;
                     colorInput.style.zIndex = '10001';
                     document.body.appendChild(colorInput);
-                    
+
                     colorInput.addEventListener('change', () => {
                         const newColor = colorInput.value;
                         branch.customColor = newColor;
-                        
+
                         // Save color to localStorage by hash
                         saveBranchColor(branch.experimentHash, newColor);
-                        
+
                         // Directly update chart colors without full refresh
                         const lowerDatasetIndex = branchIndex * 3;
                         const upperDatasetIndex = branchIndex * 3 + 1;
                         const mainLineDatasetIndex = branchIndex * 3 + 2;
-                        
+
                         // Update std bands
                         if (chart.data.datasets[upperDatasetIndex]) {
                             chart.data.datasets[upperDatasetIndex].backgroundColor = hexToRgba(newColor, 0.15);
                         }
-                        
+
                         // Update main line
                         if (chart.data.datasets[mainLineDatasetIndex]) {
                             chart.data.datasets[mainLineDatasetIndex].borderColor = newColor;
                         }
-                        
+
                         // Update markers that belong to this branch
                         const markersDataset = chart.data.datasets[markersDatasetIndex];
                         if (markersDataset && markersDataset.data) {
                             const markers = markersDataset.data as any[];
                             const branchHash = branch.experimentHash;
-                            
+
                             // Update point colors for markers matching this branch's hash
                             const bgColors = markersDataset.pointBackgroundColor as any[];
                             const borderColors = markersDataset.pointBorderColor as any[];
-                            
+
                             if (bgColors && borderColors) {
                                 markers.forEach((marker, idx) => {
                                     if (marker.experimentHash === branchHash) {
@@ -1726,23 +1839,23 @@ function showChartContextMenu(event: MouseEvent, chart: Chart, entry: SignalChar
                                 });
                             }
                         }
-                        
+
                         // Update chart without full refresh
                         chart.update('none');
-                        
+
                         // Safe removal
                         if (colorInput.parentNode) {
                             colorInput.parentNode.removeChild(colorInput);
                         }
                     });
-                    
+
                     colorInput.addEventListener('cancel', () => {
                         // Safe removal
                         if (colorInput.parentNode) {
                             colorInput.parentNode.removeChild(colorInput);
                         }
                     });
-                    
+
                     colorInput.addEventListener('blur', () => {
                         // Safe removal when color picker loses focus
                         setTimeout(() => {
@@ -1751,7 +1864,7 @@ function showChartContextMenu(event: MouseEvent, chart: Chart, entry: SignalChar
                             }
                         }, 100);
                     });
-                    
+
                     // Trigger color picker after a small delay
                     setTimeout(() => {
                         colorInput.click();
@@ -1760,7 +1873,7 @@ function showChartContextMenu(event: MouseEvent, chart: Chart, entry: SignalChar
             }
         }
     }
-    
+
     const separator2 = document.createElement('div');
     separator2.style.height = '1px';
     separator2.style.background = 'var(--border-subtle, rgba(209, 213, 219, 0.9))';
@@ -2324,11 +2437,11 @@ function generateSplitColor(split: string, index: number, _total: number): strin
     const h = hue / 360;
     const s = saturation / 100;
     const l = lightness / 100;
-    
+
     const c = (1 - Math.abs(2 * l - 1)) * s;
     const x = c * (1 - Math.abs((h * 6) % 2 - 1));
     const m = l - c / 2;
-    
+
     let r = 0, g = 0, b = 0;
     if (h < 1/6) { r = c; g = x; b = 0; }
     else if (h < 2/6) { r = x; g = c; b = 0; }
@@ -2336,12 +2449,12 @@ function generateSplitColor(split: string, index: number, _total: number): strin
     else if (h < 4/6) { r = 0; g = x; b = c; }
     else if (h < 5/6) { r = x; g = 0; b = c; }
     else { r = c; g = 0; b = x; }
-    
+
     const toHex = (n: number) => {
         const hex = Math.round((n + m) * 255).toString(16);
         return hex.length === 1 ? '0' + hex : hex;
     };
-    
+
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
@@ -2354,27 +2467,27 @@ function getColorForMetric(metricName: string): string {
     const parts = metricName.split('/');
     if (parts.length >= 2) {
         const splitName = parts[0].toLowerCase();
-        
+
         // Check localStorage for this split's color
         const lcKey = `${splitName}-color`;
         const savedSplitColor = localStorage.getItem(lcKey);
         if (savedSplitColor) {
             return savedSplitColor;
         }
-        
+
         // Use default colors for common splits
         if (splitName === 'train') return '#c57a09';
         if (splitName === 'eval' || splitName === 'val' || splitName === 'test' || splitName === 'validation') {
             return '#16bb07';
         }
     }
-    
+
     // Fallback: check if there's a saved color for this specific signal
     const savedSignalColor = localStorage.getItem(`signal-color-${metricName}`);
     if (savedSignalColor) {
         return savedSignalColor;
     }
-    
+
     // Final fallback: use a default color (blue instead of white)
     return '#007aff';
 }
@@ -2434,19 +2547,19 @@ async function fetchAndCreateSplitColorPickers(): Promise<void> {
 
                 // Get default color for this split
                 const defaultColor = generateSplitColor(split, index, availableSplits.length);
-                
+
                 // Restore from localStorage or use default
                 const lcKey = `${split.toLowerCase()}-color`;
                 const savedColor = localStorage.getItem(lcKey);
                 const finalColor = savedColor || defaultColor;
-                
+
                 // Ensure the color is valid (not black/empty)
                 if (finalColor && finalColor !== '#000000' && finalColor !== '') {
                     input.value = finalColor;
                 } else {
                     input.value = defaultColor;
                 }
-                
+
                 // Save to localStorage if not already saved or if it was invalid
                 if (!savedColor || savedColor === '#000000' || savedColor === '') {
                     localStorage.setItem(lcKey, input.value);
@@ -3968,13 +4081,13 @@ export async function initializeUIElements() {
         if (clearCacheRefreshBtn) {
             clearCacheRefreshBtn.addEventListener('click', () => {
                 console.log('[Cache] Clearing localStorage and refreshing page...');
-                
+
                 // Clear all localStorage (including branch colors, settings, etc.)
                 localStorage.clear();
-                
+
                 // Clear session storage
                 sessionStorage.clear();
-                
+
                 // Force reload the page (bypassing cache)
                 window.location.reload();
             });
@@ -4235,6 +4348,27 @@ async function startTrainingStatusStream() {
                     if (justRestoredCheckpoint) {
                         // Create new branch for post-restore training
                         const newHash = mapped.length > 0 ? mapped[0].experimentHash : undefined;
+                        
+                        // IMPORTANT: Remove any existing branches with the same hash after the restore point
+                        // This prevents duplicate markers and branch confusion after restore
+                        if (newHash && mapped.length > 0) {
+                            const restoreStep = mapped[0].x;
+                            entry.branches = entry.branches.filter(branch => {
+                                // Keep branches with different hashes
+                                if (branch.experimentHash !== newHash) return true;
+                                
+                                // For branches with same hash, only keep if all points are before restore point
+                                const allPointsBeforeRestore = branch.rawPoints.every(pt => pt.x < restoreStep);
+                                if (!allPointsBeforeRestore) {
+                                    // Truncate points after restore step
+                                    branch.rawPoints = branch.rawPoints.filter(pt => pt.x < restoreStep);
+                                    return branch.rawPoints.length > 0;
+                                }
+                                return true;
+                            });
+                            console.log(`📊 ${metricName}: Cleaned up duplicate branches with hash ${newHash.substring(0, 8)}... before restore at step ${restoreStep}`);
+                        }
+                        
                         const savedColor = loadBranchColor(newHash);
                         const newBranch: SignalBranch = {
                             rawPoints: mapped,
@@ -4248,7 +4382,7 @@ async function startTrainingStatusStream() {
                         // Normal full history: group points by hash to avoid markers on every hash change
                         const hashGroups = new Map<string, typeof mapped>();
                         const hashOrder: string[] = [];
-                        
+
                         for (const pt of mapped) {
                             const hash = pt.experimentHash || 'unknown';
                             if (!hashGroups.has(hash)) {
@@ -4262,7 +4396,7 @@ async function startTrainingStatusStream() {
 
                         // Clear existing branches and create one branch per hash group
                         entry.branches = [];
-                        
+
                         for (const hash of hashOrder) {
                             const hashPoints = hashGroups.get(hash)!;
                             const expHash = hash !== 'unknown' ? hash : undefined;
@@ -4415,7 +4549,7 @@ async function startTrainingStatusStream() {
                 // Group points by hash to create separate branches
                 const hashGroups = new Map<string, typeof mapped>();
                 const hashOrder: string[] = []; // Track order of first appearance
-                
+
                 for (const pt of mapped) {
                     const hash = pt.experimentHash || 'unknown';
                     if (!hashGroups.has(hash)) {
@@ -4429,7 +4563,7 @@ async function startTrainingStatusStream() {
 
                 // Clear existing branches and create one branch per hash group
                 entry.branches = [];
-                
+
                 for (const hash of hashOrder) {
                     const hashPoints = hashGroups.get(hash)!;
                     const expHash = hash !== 'unknown' ? hash : undefined;
@@ -4455,7 +4589,7 @@ async function startTrainingStatusStream() {
                 // Refresh chart
                 refreshSignalChart(entry, metricName, metricName);
                 entry.chart.update('none');
-                
+
                 const totalPoints = entry.branches.reduce((sum, b) => sum + b.rawPoints.length, 0);
                 console.log(`📊 Chart initialized for ${metricName} with ${totalPoints} points across ${entry.branches.length} branches`);
             }
@@ -5368,6 +5502,11 @@ function updateUniqueTags(tags: string[]) {
     }
 }
 
+function ensureTagMetadataEnabled(): void {
+    if (!displayOptionsPanel) return;
+    displayOptionsPanel.enableField('tags');
+}
+
 function openTaggingModal(sampleIds: number[], origins: string[]) {
     const modal = document.getElementById('tagging-modal');
     const input = document.getElementById('tag-input') as HTMLInputElement;
@@ -5459,6 +5598,7 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
         try {
             const response = await dataClient.editDataSample(request).response;
             if (response.success) {
+                ensureTagMetadataEnabled();
                 selectedCells.forEach(cell => {
                     const gridCell = getGridCell(cell);
                     if (gridCell) {
@@ -5501,6 +5641,7 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
         try {
             const response = await dataClient.editDataSample(request).response;
             if (response.success) {
+                ensureTagMetadataEnabled();
                 if (!uniqueTags.includes(tag)) {
                     updateUniqueTags([...uniqueTags, tag].sort());
                 }
@@ -5533,6 +5674,7 @@ function openTaggingModal(sampleIds: number[], origins: string[]) {
             await ensureTrainingPaused();
 
             await removeTag(sampleIds, origins);
+            ensureTagMetadataEnabled();
             cleanup();
         }
     };
@@ -5580,6 +5722,7 @@ async function removeTag(sampleIds: number[], origins: string[]) {
     try {
         const response = await dataClient.editDataSample(request).response;
         if (response.success) {
+            ensureTagMetadataEnabled();
             selectedCells.forEach(cell => {
                 const gridCell = getGridCell(cell);
                 if (gridCell) {
@@ -5633,6 +5776,8 @@ async function paintCell(cell: HTMLElement) {
         // Optimistic update
         gridCell.updateStats({ "tags": newTagsStr });
 
+        ensureTagMetadataEnabled();
+
 
         // Send remove requests
         tagsToRemove.forEach((tag: string) => {
@@ -5663,6 +5808,8 @@ async function paintCell(cell: HTMLElement) {
 
         // Optimistic update
         gridCell.updateStats({ "tags": newTagsStr });
+
+        ensureTagMetadataEnabled();
 
 
         // Send add requests
