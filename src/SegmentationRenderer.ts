@@ -285,11 +285,13 @@ export class SegmentationRenderer {
                 float predVal = texture2D(u_predMask, uv).a * 255.0;
 
                 if (abs(gtVal - predVal) < 0.1) {
-                    gl_FragColor = baseColor;
+                    // Correct prediction - show green
+                    vec4 greenOverlay = vec4(0.2, 0.8, 0.3, 0.4);  // Green
+                    gl_FragColor = mix(baseColor, vec4(greenOverlay.rgb, 1.0), greenOverlay.a);
                 } else {
-                    // Mild Orange for one direction, Milder Blue for the other
-                    vec4 overlay = (gtVal > predVal) ? vec4(0.1, 0.45, 1.0, 0.65) : vec4(1.0, 0.5, 0.0, 0.65);
-                    gl_FragColor = mix(baseColor, vec4(overlay.rgb, 1.0), overlay.a);
+                    // Wrong prediction - show orange
+                    vec4 errorOverlay = vec4(1.0, 0.5, 0.0, 0.65);  // Orange
+                    gl_FragColor = mix(baseColor, vec4(errorOverlay.rgb, 1.0), errorOverlay.a);
                 }
             } else {
                 vec4 res = baseColor;
