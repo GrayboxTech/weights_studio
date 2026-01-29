@@ -79,6 +79,7 @@ export class GridCell {
         const showGt = this.displayPreferences['showGtMask'] as boolean ?? true;
         const showPred = this.displayPreferences['showPredMask'] as boolean ?? true;
         const showDiff = this.displayPreferences['showDiffMask'] as boolean ?? false;
+        const showSplitView = this.displayPreferences['showSplitView'] as boolean ?? false;
 
         this.applySegmentationVisualization(
             baseImageUrl,
@@ -87,7 +88,8 @@ export class GridCell {
             showRaw,
             showGt,
             showPred,
-            showDiff
+            showDiff,
+            showSplitView
         );
     }
 
@@ -235,7 +237,8 @@ export class GridCell {
         showRaw: boolean,
         showGt: boolean,
         showPred: boolean,
-        showDiff: boolean
+        showDiff: boolean,
+        showSplitView: boolean
     ): void {
         const img = new Image();
         img.onload = () => {
@@ -279,6 +282,7 @@ export class GridCell {
                     showGt,
                     showPred,
                     showDiff,
+                    showSplitView,
                     alpha: 0.45,
                     classPrefs: classPrefs
                 }
@@ -484,7 +488,8 @@ export class GridCell {
                     showRaw,
                     showGt,
                     showPred,
-                    showDiff
+                    showDiff,
+                    displayPreferences.showSplitView ?? false
                 );
                 return;
             }

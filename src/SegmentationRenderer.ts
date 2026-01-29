@@ -113,6 +113,7 @@ export class SegmentationRenderer {
             showGt: boolean,
             showPred: boolean,
             showDiff: boolean,
+            showSplitView: boolean,
             alpha: number,
             classPrefs?: Record<number, ClassPreference>
         }
@@ -183,6 +184,8 @@ export class SegmentationRenderer {
         this.gl.uniform1i(this.gl.getUniformLocation(this.program, 'u_showPred'), (options.showPred && hasPredMask) ? 1 : 0);
         // Only show Diff if both are available
         this.gl.uniform1i(this.gl.getUniformLocation(this.program, 'u_hasBothMasks'), (hasGtMask && hasPredMask) ? 1 : 0);
+        // Split Mode
+        this.gl.uniform1i(this.gl.getUniformLocation(this.program, 'u_splitView'), options.showSplitView ? 1 : 0);
 
         this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
 
@@ -224,38 +227,83 @@ export class SegmentationRenderer {
         uniform bool u_showPred;
         uniform bool u_diffMode;
         uniform bool u_hasBothMasks;
+        uniform bool u_splitView;
         varying vec2 v_texCoord;
 
         void main() {
-            vec4 baseColor = texture2D(u_image, v_texCoord);
+            vec2 uv = v_texCoord;
+            bool localShowGt = u_showGt;
+            bool localShowPred = u_showPred;
+            bool localDiffMode = u_diffMode;
+
+            if (u_splitView) {
+                // Layout: [TL: Raw, TR: GT] / [BL: Diff, BR: Pred]
+                // Note: y=0 is visual Top in this setup.
+                
+                if (uv.y < 0.5) {
+                    // Visual Top Row (y in [0.0, 0.5])
+                    uv.y = uv.y * 2.0;
+                    if (uv.x < 0.5) {
+                        // Top-Left: Raw
+                        uv.x = uv.x * 2.0;
+                        localShowGt = false;
+                        localShowPred = false;
+                        localDiffMode = false;
+                    } else {
+                        // Top-Right: GT
+                        uv.x = (uv.x - 0.5) * 2.0;
+                        localShowGt = true;
+                        localShowPred = false;
+                        localDiffMode = false;
+                    }
+                } else {
+                    // Visual Bottom Row (y in [0.5, 1.0])
+                    uv.y = (uv.y - 0.5) * 2.0;
+                    if (uv.x < 0.5) {
+                        // Bottom-Left: Diff
+                        uv.x = uv.x * 2.0;
+                        localShowGt = false;
+                        localShowPred = false;
+                        localDiffMode = true;
+                    } else {
+                        // Bottom-Right: Pred
+                        uv.x = (uv.x - 0.5) * 2.0;
+                        localShowGt = false;
+                        localShowPred = true;
+                        localDiffMode = false;
+                    }
+                }
+            }
+
+            vec4 baseColor = texture2D(u_image, uv);
             if (!u_showRaw) {
                 baseColor = vec4(0, 0, 0, 1);
             }
 
-            if (u_diffMode && u_hasBothMasks) {
-                // Only render diff if both masks are available
-                float gtVal = texture2D(u_mask, v_texCoord).a * 255.0;
-                float predVal = texture2D(u_predMask, v_texCoord).a * 255.0;
+            if (localDiffMode && u_diffMode && u_hasBothMasks) {
+                float gtVal = texture2D(u_mask, uv).a * 255.0;
+                float predVal = texture2D(u_predMask, uv).a * 255.0;
 
                 if (abs(gtVal - predVal) < 0.1) {
-                    gl_FragColor = baseColor;
+                    // Correct prediction - show green
+                    vec4 greenOverlay = vec4(0.2, 0.8, 0.3, 0.4);  // Green
+                    gl_FragColor = mix(baseColor, vec4(greenOverlay.rgb, 1.0), greenOverlay.a);
                 } else {
-                    vec4 overlay = (gtVal > predVal) ? vec4(0.0, 0.0, 1.0, 0.78) : vec4(1.0, 0.0, 0.0, 0.78);
-                    gl_FragColor = mix(baseColor, vec4(overlay.rgb, 1.0), overlay.a);
+                    // Wrong prediction - show orange
+                    vec4 errorOverlay = vec4(1.0, 0.5, 0.0, 0.65);  // Orange
+                    gl_FragColor = mix(baseColor, vec4(errorOverlay.rgb, 1.0), errorOverlay.a);
                 }
             } else {
                 vec4 res = baseColor;
-                if (u_showGt) {
-                    // Only render GT if it's being shown and is available
-                    float gtId = texture2D(u_mask, v_texCoord).a * 255.0;
+                if (localShowGt && u_showGt) {
+                    float gtId = texture2D(u_mask, uv).a * 255.0;
                     vec4 gtColor = texture2D(u_palette, vec2((gtId + 0.5) / 256.0, 0.5));
                     if (gtColor.a > 0.0) {
                         res = mix(res, vec4(gtColor.rgb, 1.0), u_alpha);
                     }
                 }
-                if (u_showPred) {
-                    // Only render Pred if it's being shown and is available
-                    float predId = texture2D(u_predMask, v_texCoord).a * 255.0;
+                if (localShowPred && u_showPred) {
+                    float predId = texture2D(u_predMask, uv).a * 255.0;
                     vec4 predColor = texture2D(u_palette, vec2((predId + 0.5) / 256.0, 0.5));
                     if (predColor.a > 0.0) {
                         res = mix(res, vec4(predColor.rgb, 1.0), u_alpha * 0.8);

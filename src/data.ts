@@ -161,6 +161,7 @@ let datasetInfoReady = false;
 let isPainterMode = false;
 let isPainterRemoveMode = false;
 let activeBrushTags = new Set<string>();
+let currentAbortController: AbortController | null = null;
 
 // Training metrics for display: map of metricName -> { value, timestamp }
 const latestMetrics = new Map<string, { value: number; timestamp: number }>();
@@ -216,6 +217,7 @@ let lastFetchedBatchStart: number = 0; // Track navigation direction
 
 // Track discarded sample IDs locally to persist state across refreshes
 const locallyDiscardedSampleIds = new Set<number>();
+const locallyRestoredSampleIds = new Set<number>();
 
 function getCacheKey(startIndex: number, count: number, resizeWidth: number, resizeHeight: number): string {
     return `${startIndex}-${count}-${resizeWidth}-${resizeHeight}`;
@@ -2688,9 +2690,9 @@ async function fetchAndDisplaySamples() {
         resizeWidth = -resolutionPercent;
         resizeHeight = -resolutionPercent;
     } else {
-        const cellSize = gridManager.calculateGridDimensions().cellSize;
-        resizeWidth = cellSize;
-        resizeHeight = cellSize;
+        const { cellWidth, cellHeight } = gridManager.calculateGridDimensions();
+        resizeWidth = cellWidth;
+        resizeHeight = cellHeight;
     }
 
     // Check cache first for the entire batch
@@ -2702,10 +2704,14 @@ async function fetchAndDisplaySamples() {
         cachedResponse.dataRecords.forEach((record, index) => {
             // Apply locally-tracked discard state to maintain consistency across refreshes
             const denyListedStat = record.dataStats.find(stat => stat.name === 'deny_listed');
-            if (denyListedStat && locallyDiscardedSampleIds.has(record.sampleId)) {
-                denyListedStat.value = [1]; // Ensure deny_listed is 1 if locally tracked
-            } else if (denyListedStat && !locallyDiscardedSampleIds.has(record.sampleId)) {
-                denyListedStat.value = [0]; // Ensure deny_listed is 0 if not locally tracked
+            if (denyListedStat) {
+                if (locallyDiscardedSampleIds.has(record.sampleId)) {
+                    denyListedStat.value = [1]; // Force to 1 if locally discarded
+                    denyListedStat.valueString = '1';
+                } else if (locallyRestoredSampleIds.has(record.sampleId)) {
+                    denyListedStat.value = [0]; // Force to 0 if locally restored
+                    denyListedStat.valueString = '0';
+                }
             }
 
             const cell = gridManager.getCellbyIndex(index);
@@ -2759,9 +2765,9 @@ async function fetchAndDisplaySamples() {
                 resizeHeight = -resolutionPercent;
             } else {
                 // Auto mode: use grid cell size
-                const cellSize = gridManager.calculateGridDimensions().cellSize;
-                resizeWidth = cellSize;
-                resizeHeight = cellSize;
+                const { cellWidth, cellHeight } = gridManager.calculateGridDimensions();
+                resizeWidth = cellWidth;
+                resizeHeight = cellHeight;
             }
 
             const request: DataSamplesRequest = {
@@ -2788,10 +2794,14 @@ async function fetchAndDisplaySamples() {
                 response.dataRecords.forEach((record, index) => {
                     // Apply locally-tracked discard state to maintain consistency
                     const denyListedStat = record.dataStats.find(stat => stat.name === 'deny_listed');
-                    if (denyListedStat && locallyDiscardedSampleIds.has(record.sampleId)) {
-                        denyListedStat.value = [1]; // Ensure deny_listed is 1 if locally tracked
-                    } else if (denyListedStat && !locallyDiscardedSampleIds.has(record.sampleId)) {
-                        denyListedStat.value = [0]; // Ensure deny_listed is 0 if not locally tracked
+                    if (denyListedStat) {
+                        if (locallyDiscardedSampleIds.has(record.sampleId)) {
+                            denyListedStat.value = [1]; // Force to 1 if locally discarded
+                            denyListedStat.valueString = '1';
+                        } else if (locallyRestoredSampleIds.has(record.sampleId)) {
+                            denyListedStat.value = [0]; // Force to 0 if locally restored
+                            denyListedStat.valueString = '0';
+                        }
                     }
 
                     // Cell index is relative to the current batch position in the grid
@@ -2818,6 +2828,27 @@ async function fetchAndDisplaySamples() {
         }
 
         console.debug(`Retrieved ${totalRecordsRetrieved} records for grid of size ${count}.`);
+
+        // Detect and apply aspect ratio from the first batch of results
+        if (allRecords.length > 0) {
+            const firstRecord = allRecords[0];
+            const rawStat = firstRecord.dataStats.find((s: any) => s.name === 'raw_data' || s.name === 'image');
+            if (rawStat && rawStat.shape && rawStat.shape.length >= 2) {
+                // Shape is usually [H, W, C] in the backend for raw_data
+                // but let's be careful. common: [H, W, 3]
+                const h = rawStat.shape[0];
+                const w = rawStat.shape[1];
+                if (h > 0 && w > 0) {
+                    const ratio = w / h;
+                    if (gridManager.setAspectRatio(ratio)) {
+                        console.info(`[Aspect Ratio] Detected new ratio: ${ratio.toFixed(2)}. Re-triggering layout.`);
+                        // If ratio changed, we must rebuild the grid
+                        updateLayout();
+                        // Recursive call might be overkill, let's just finish this cycle
+                    }
+                }
+            }
+        }
 
         // Cache the complete response
         if (allRecords.length > 0) {
@@ -3169,7 +3200,7 @@ export async function handleQuerySubmit(query: string, isNaturalLanguage: boolea
         await ensureTrainingPaused();
 
         const request: DataQueryRequest = { query, accumulate: false, isNaturalLanguage };
-        const response: DataQueryResponse = await dataClient.applyDataQuery(request).response;
+        const response: DataQueryResponse = await dataClient.applyDataQuery(request, { abort: abortSignal }).response;
 
         // Handle Analysis Intent (Chat Mode)
         if (response.agentIntentType === AgentIntentType.INTENT_ANALYSIS) {
@@ -3302,10 +3333,14 @@ export async function initializeUIElements() {
         if (chatInput && chatInput.value.trim() && chatSendBtn) {
             const query = chatInput.value.trim();
 
-            // Set loading state
-            chatSendBtn.disabled = true;
+            // Set loading state (keep enabled for cancellation)
+            // chatSendBtn.disabled = true;
             chatSendBtn.classList.add('loading');
+            chatSendBtn.title = "Click to abort";
             chatInput.disabled = true;
+
+            // Create AbortController
+            currentAbortController = new AbortController();
 
             // 1. Add User Message immediately
             addChatMessage(query, 'user');
@@ -3315,17 +3350,23 @@ export async function initializeUIElements() {
             const typingMsg = addChatMessage('', 'agent', true);
 
             try {
-                await handleQuerySubmit(query);
+                await handleQuerySubmit(query, true, currentAbortController.signal);
             } catch (error: any) {
-                console.error("Query failed:", error);
-                // 3. Add Error Message to history
-                addChatMessage(`Error: ${error.message || "Unknown error"}`, 'agent');
+                if (error.name === 'AbortError' || error.message.includes('aborted')) {
+                    addChatMessage("Process Aborted.", 'agent');
+                } else {
+                    console.error("Query failed:", error);
+                    // 3. Add Error Message to history
+                    addChatMessage(`Error: ${error.message || "Unknown error"}`, 'agent');
+                }
             } finally {
                 // Remove typing indicator if it exists
                 if (typingMsg) typingMsg.remove();
                 // Reset state
+                currentAbortController = null;
                 chatSendBtn.disabled = false;
                 chatSendBtn.classList.remove('loading');
+                chatSendBtn.title = "Send query";
                 chatInput.disabled = false;
                 chatInput.focus();
             }
@@ -3352,7 +3393,13 @@ export async function initializeUIElements() {
 
     if (chatSendBtn) {
         chatSendBtn.addEventListener('click', async () => {
-            await submitQuery();
+            if (chatSendBtn.classList.contains('loading')) {
+                if (currentAbortController) {
+                    currentAbortController.abort();
+                }
+            } else {
+                await submitQuery();
+            }
         });
     }
 
@@ -3725,7 +3772,7 @@ export async function initializeUIElements() {
                     }).response;
 
                     const hp = initResp.hyperParametersDescs || [];
-                    const isTrainingDesc = hp.find(d => d.name === 'is_training' || d.label === 'is_training');
+                    const isTrainingDesc = hp.find((d: any) => d.name === 'is_training' || d.label === 'is_training');
 
                     if (isTrainingDesc) {
                         let fetchedState = false;
@@ -4178,6 +4225,33 @@ export async function initializeUIElements() {
             if (!uniqueTags.includes(newTag)) {
                 updateUniqueTags([...uniqueTags, newTag].sort());
             }
+            
+            // Create a manual tag chip if it doesn't exist
+            const tagsContainer = document.getElementById('painter-tags-list');
+            if (tagsContainer) {
+                let existingChip = Array.from(tagsContainer.querySelectorAll('.tag-chip')).find(
+                    chip => (chip as HTMLElement).textContent === newTag
+                );
+                
+                if (!existingChip) {
+                    const chip = document.createElement('div');
+                    chip.className = 'tag-chip';
+                    chip.dataset.manual = 'true'; // Mark as manually added
+                    chip.dataset.tag = newTag;
+                    chip.textContent = newTag;
+                    chip.onclick = (e) => {
+                        setActiveBrush(newTag);
+                    };
+                    
+                    const inlineInput = tagsContainer.querySelector('.inline-tag-input');
+                    if (inlineInput) {
+                        tagsContainer.insertBefore(chip, inlineInput);
+                    } else {
+                        tagsContainer.appendChild(chip);
+                    }
+                }
+            }
+            
             setActiveBrush(newTag);
 
             // Clear input
@@ -4933,7 +5007,7 @@ function showContextMenu(x: number, y: number) {
 
     // Show/hide restore option based on selection
     const discardBtn = contextMenu.querySelector('[data-action="discard"]') as HTMLElement;
-    const restoreBtn = contextMenu.querySelector('[data-action="restore"]') as HTMLElement;
+    const restoreBtn = contextMenu.querySelector('[data-action="undiscard"]') as HTMLElement;
 
     if (anyDiscarded && allDiscarded) {
         // All selected cells are discarded: show restore, hide discard
@@ -5016,7 +5090,8 @@ contextMenu.addEventListener('click', async (e) => {
                 let newlyDiscardedCount = 0;
                 // Track discarded samples locally to maintain state across refreshes
                 sample_ids.forEach(id => {
-                     locallyDiscardedSampleIds.add(id);
+                    locallyDiscardedSampleIds.add(id);
+                    locallyRestoredSampleIds.delete(id);
                 });
 
                 selectedCells.forEach(cell => {
@@ -5063,6 +5138,11 @@ contextMenu.addEventListener('click', async (e) => {
                 await ensureTrainingPaused();
 
                 let newlyRestoredCount = 0;
+                // Update local tracking
+                sample_ids.forEach(id => {
+                    locallyDiscardedSampleIds.delete(id);
+                    locallyRestoredSampleIds.add(id);
+                });
                 selectedCells.forEach(cell => {
                     const gridCell = getGridCell(cell);
                     if (gridCell) {
@@ -5075,7 +5155,9 @@ contextMenu.addEventListener('click', async (e) => {
                             newlyRestoredCount++;
                         }
 
+                        // Update cell display immediately - mark as restored (deny_listed = 0)
                         gridCell.updateStats({ deny_listed: 0 });
+                        gridCell.updateDisplay();
                     }
                 });
 
@@ -5102,7 +5184,8 @@ contextMenu.addEventListener('click', async (e) => {
                     console.error("Error restoring:", error);
                 }
                 clearSelection();
-                debouncedFetchAndDisplay();
+                // Don't refetch - we already updated the cells directly above
+                // debouncedFetchAndDisplay();
                 break;
         }
     }
@@ -5167,6 +5250,7 @@ function applySegmentationToModal(
                 showGt,
                 showPred,
                 showDiff,
+                showSplitView: displayOptionsPanel?.getDisplayPreferences().showSplitView ?? false,
                 alpha: 0.45,
                 classPrefs: classPreferences
             }
@@ -5505,26 +5589,29 @@ function updateUniqueTags(tags: string[]) {
     // 2. Update Painter Mode Tag List (Chips)
     const tagsContainer = document.getElementById('painter-tags-list');
     if (tagsContainer) {
-        // Preserve the inline input before clearing
+        // Preserve the inline input and manually added tags (with data-manual attribute)
         const inlineInput = tagsContainer.querySelector('.inline-tag-input');
+        const manualTags = Array.from(tagsContainer.querySelectorAll('[data-manual="true"]')) as HTMLElement[];
 
-        // Clear only the chips (avoid wiping the inline input if it exists)
-        // We can do this by removing all children distinct from inlineInput
+        // Store references to manual tags to preserve them
+        const manualTagTexts = new Set(manualTags.map(t => t.textContent));
+
+        // Clear only the auto-generated chips (those without data-manual)
         Array.from(tagsContainer.children).forEach(child => {
-            if (child !== inlineInput) {
+            if (child !== inlineInput && !(child as any).dataset?.manual) {
                 child.remove();
             }
         });
 
-        if (uniqueTags.length === 0) {
-            // If no tags, maybe show a small text? or just show nothing before the input
-            // For now, let's just leave it clean or add a placeholder text if needed
-            // tagsContainer.insertAdjacentHTML('afterbegin', '<span class="empty-text">No tags</span>');
-        } else {
+        if (uniqueTags.length > 0) {
             // Sort tags if needed, they usually come sorted
             uniqueTags.forEach(tag => {
+                // Don't recreate if it's a manual tag that still exists
+                if (manualTagTexts.has(tag)) return;
+
                 const chip = document.createElement('div');
                 chip.className = 'tag-chip';
+                chip.dataset.manual = 'false'; // Mark as auto-generated
                 if (activeBrushTags.has(tag)) chip.classList.add('active');
                 chip.dataset.tag = tag;
                 chip.textContent = tag;
@@ -5805,7 +5892,7 @@ async function paintCell(cell: HTMLElement) {
     const currentTags = Array.from(new Set(currentTagsStr
         .split(/[;,]/)
         .map((t: string) => t.trim())
-        .filter((t: string) => t && t !== 'None')));
+        .filter((t: any) => t && t !== 'None')));
 
     if (isPainterRemoveMode) {
         // REMOVE MODE: Remove any selected tags that exist

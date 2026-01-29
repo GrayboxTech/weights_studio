@@ -17,6 +17,7 @@ export type DisplayPreferences = {
     showGtMask?: boolean;
     showPredMask?: boolean;
     showDiffMask?: boolean;
+    showSplitView?: boolean;
 
     classPreferences?: Record<number, ClassPreference>;
 };
@@ -61,9 +62,11 @@ export class DataDisplayOptionsPanel {
     private isSegmentationDataset = false;
 
     private updateOverlayToggleAvailability(hasGtMask: boolean, hasPredMask: boolean): void {
+        const toggleRaw = document.getElementById('toggle-raw') as HTMLInputElement | null;
         const toggleGt = document.getElementById('toggle-gt') as HTMLInputElement | null;
         const togglePred = document.getElementById('toggle-pred') as HTMLInputElement | null;
         const toggleDiff = document.getElementById('toggle-diff') as HTMLInputElement | null;
+        const toggleSplitView = document.getElementById('toggle-split-view') as HTMLInputElement | null;
 
         const isSegmentation = this.isSegmentationDataset;
 
@@ -71,11 +74,19 @@ export class DataDisplayOptionsPanel {
         const predDisabled = !isSegmentation || !hasPredMask;
         const diffDisabled = !isSegmentation || !hasGtMask || !hasPredMask;
 
-        const applyState = (el: HTMLInputElement | null, disabled: boolean, reason: string) => {
+        const applyState = (el: HTMLInputElement | null, disabled: boolean, reason: string, storageKey: string, defaultVal: boolean) => {
             if (!el) return;
             el.disabled = disabled;
             if (disabled) {
                 el.checked = false;
+            } else {
+                // If not disabled, restore from localStorage OR use defaultVal
+                const saved = localStorage.getItem(storageKey);
+                if (saved !== null) {
+                    el.checked = saved === 'true';
+                } else {
+                    el.checked = defaultVal;
+                }
             }
             const label = el.closest('label');
             if (label) {
@@ -93,19 +104,11 @@ export class DataDisplayOptionsPanel {
         const predMsg = !isSegmentation ? segmentationMsg : 'Disabled: no prediction mask present.';
         const diffMsg = !isSegmentation ? segmentationMsg : 'Disabled: need both ground-truth and prediction masks.';
 
-        applyState(toggleGt, gtDisabled, gtMsg);
-        applyState(togglePred, predDisabled, predMsg);
-        applyState(toggleDiff, diffDisabled, diffMsg);
-
-        // Auto-toggle GT if available
-        if (toggleGt && !toggleGt.disabled && hasGtMask) {
-            toggleGt.checked = true;
-        }
-
-        // Auto-toggle Pred if available
-        if (togglePred && !togglePred.disabled && hasPredMask) {
-            togglePred.checked = true;
-        }
+        applyState(toggleRaw, false, '', 'grid-toggle-raw', true);
+        applyState(toggleGt, gtDisabled, gtMsg, 'grid-toggle-gt', true);
+        applyState(togglePred, predDisabled, predMsg, 'grid-toggle-pred', true);
+        applyState(toggleDiff, diffDisabled, diffMsg, 'grid-toggle-diff', false);
+        applyState(toggleSplitView, false, '', 'grid-toggle-split-view', false);
 
         // Note: Diff is NOT auto-toggled (user must explicitly enable it)
 
@@ -212,10 +215,9 @@ export class DataDisplayOptionsPanel {
                 record.dataStats.forEach((stat: any) => {
                     if (stat.name === "raw_data" ||
                         stat.name === "pred_mask" ||
-                        stat.name === "label" ||
                         stat.name === "task_type" ||
                         /^class(_\d+)?$/i.test(stat.name) ||
-                        (this.isSegmentationDataset && SEGMENTATION_HIDDEN_FIELDS.has(stat.name))) {
+                        (stat.name === "label" && this.isSegmentationDataset)) {
                         return;
                     }
                     availableFields.add(stat.name);
@@ -251,8 +253,7 @@ export class DataDisplayOptionsPanel {
                     name === "pred_mask" ||
                     name === "task_type" ||
                     /^class(_\d+)?$/i.test(name) ||
-                    (name === "label" && this.isSegmentationDataset && SEGMENTATION_HIDDEN_FIELDS.has(name)) ||
-                    (this.isSegmentationDataset && SEGMENTATION_HIDDEN_FIELDS.has(name))
+                    (name === "label" && this.isSegmentationDataset)
                 ) {
                     return;
                 }
@@ -713,6 +714,8 @@ export class DataDisplayOptionsPanel {
         preferences.showGtMask = gtToggle ? gtToggle.checked : true;
         preferences.showPredMask = predToggle ? predToggle.checked : true;
         preferences.showDiffMask = diffToggle ? diffToggle.checked : false;
+        const splitToggle = document.getElementById("toggle-split-view") as HTMLInputElement | null;
+        preferences.showSplitView = splitToggle ? splitToggle.checked : false;
 
         const classPreferences: Record<number, ClassPreference> = {};
         for (const id of this.classIds) {
@@ -760,6 +763,7 @@ export class DataDisplayOptionsPanel {
         const gtToggle = document.getElementById("toggle-gt") as HTMLInputElement | null;
         const predToggle = document.getElementById("toggle-pred") as HTMLInputElement | null;
         const diffToggle = document.getElementById("toggle-diff") as HTMLInputElement | null;
+        const splitToggle = document.getElementById("toggle-split-view") as HTMLInputElement | null;
 
         const imageResolutionAuto = document.getElementById("image-resolution-auto") as HTMLInputElement | null;
         const imageResolutionPercent = document.getElementById("image-resolution-percent") as HTMLInputElement | null;
@@ -786,12 +790,18 @@ export class DataDisplayOptionsPanel {
             });
         }
 
-        const onToggleChange = () => { this.updateCallback?.(); };
+        const onToggleChange = (id: string, el: HTMLInputElement | null) => {
+            if (el) {
+                localStorage.setItem(`grid-${id}`, el.checked.toString());
+            }
+            this.updateCallback?.();
+        };
 
-        if (rawToggle) rawToggle.addEventListener("change", onToggleChange);
-        if (gtToggle) gtToggle.addEventListener("change", onToggleChange);
-        if (predToggle) predToggle.addEventListener("change", onToggleChange);
-        if (diffToggle) diffToggle.addEventListener("change", onToggleChange);
+        if (rawToggle) rawToggle.addEventListener("change", () => onToggleChange("toggle-raw", rawToggle));
+        if (gtToggle) gtToggle.addEventListener("change", () => onToggleChange("toggle-gt", gtToggle));
+        if (predToggle) predToggle.addEventListener("change", () => onToggleChange("toggle-pred", predToggle));
+        if (diffToggle) diffToggle.addEventListener("change", () => onToggleChange("toggle-diff", diffToggle));
+        if (splitToggle) splitToggle.addEventListener("change", () => onToggleChange("toggle-split-view", splitToggle));
     }
 
     getCellSize(): number {
