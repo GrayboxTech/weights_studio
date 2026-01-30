@@ -56,7 +56,7 @@ const DOUBLE_CLICK_THRESHOLD_MS = 300;
 let lastMarkerClickTime: number = 0;  // Double-click detection for markers
 let signalsContainer: HTMLElement | null = null;
 let plotRefreshEnabled = true;
-let plotRefreshIntervalMs = 2000;
+let plotRefreshIntervalMs = 5000;
 
 // External module reference (will be set by main.ts)
 let gridDataManager: any = null;
@@ -150,6 +150,10 @@ export function getOrCreateSignalChart(signalName: string): SignalChart | null {
     card.appendChild(canvasWrapper);
     container.appendChild(card);
 
+    const wrapperRect = canvasWrapper.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.floor(wrapperRect.width));
+    canvas.height = Math.max(1, Math.floor(wrapperRect.height));
+
     const ctx = canvas.getContext('2d');
     if (!ctx) {
         console.error('Unable to initialize chart canvas for signal', signalName);
@@ -185,8 +189,8 @@ export function getOrCreateSignalChart(signalName: string): SignalChart | null {
                     data: [],
                     borderColor: savedColor,
                     backgroundColor: hexToRgba(savedColor, 0),
-                    pointRadius: 0,
-                    pointHitRadius: 6,
+                    pointRadius: 1,
+                    pointHitRadius: 5,
                     borderWidth: 2,
                     tension: 0,
                 },
@@ -195,10 +199,10 @@ export function getOrCreateSignalChart(signalName: string): SignalChart | null {
                     data: [],
                     borderColor: '#ff6b6b',
                     backgroundColor: '#ff6b6b',
-                    pointStyle: 'star',
+                    pointStyle: 'circle',
                     pointRadius: 12,
                     pointHoverRadius: 22,
-                    pointHitRadius: 10,
+                    pointHitRadius: 5,
                     borderWidth: 1,
                     showLine: false,
                 },
@@ -211,16 +215,14 @@ export function getOrCreateSignalChart(signalName: string): SignalChart | null {
             animation: false,
             normalized: true,
             interaction: {
-                mode: 'point',
-                intersect: false,
-                axis: 'xy'
+                mode: 'nearest',
             },
             plugins: {
                 legend: { display: false },
                 title: { display: false },
                 tooltip: {
                     enabled: true,
-                    mode: 'nearest',
+                    mode: 'index',
                     intersect: false,
                     callbacks: {
                         title: (tooltipItems: any) => {
@@ -287,6 +289,11 @@ export function getOrCreateSignalChart(signalName: string): SignalChart | null {
             onHover: (event: any, activeElements: any) => {
                 // Find markers dataset (last dataset)
                 const markersDatasetIndex = chart.data.datasets.length - 1;
+
+                // Completely disable and hide Chart.js tooltip
+                if (chart.options.plugins?.tooltip) {
+                    chart.options.plugins.tooltip.enabled = false;
+                }
 
                 // Only handle hover for markers if markers are enabled
                 if (!entry.markersEnabled) {
@@ -745,10 +752,10 @@ export function refreshSignalChart(entry: SignalChart, signalName: string, graph
         backgroundColor: markerColors,
         pointBackgroundColor: markerColors,
         pointBorderColor: markerColors,
-        pointRadius: 20,
-        pointHoverRadius: 30,
-        pointHitRadius: 25,
-        pointStyle: 'star',
+        pointRadius: 12,
+        pointHoverRadius: 22,
+        pointHitRadius: 5,
+        pointStyle: 'circle',
         showLine: false,
     });
 
@@ -1657,6 +1664,14 @@ export function applyStride(points: SignalRawPoint[], stride: number): SignalRaw
     for (let i = 0; i < points.length; i++) {
         if (i % stride === 0) {
             out.push(points[i]);
+        }
+    }
+    const tailCount = Math.min(5, points.length);
+    for (let i = points.length - tailCount; i < points.length; i++) {
+        const p = points[i];
+        const last = out[out.length - 1];
+        if (!last || last !== p) {
+            out.push(p);
         }
     }
     return out;

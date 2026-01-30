@@ -358,10 +358,10 @@
           </div>
         </div>
 
-        <!-- GRID -->
-        <div class="main-content">
-          <!-- Content Header: Chat -->
-          <div class="content-header">
+        <!-- GRID AREA -->
+        <div class="main-area">
+          <!-- Agent Header: Chat -->
+          <div class="agent-header">
             <div class="chat-input-container">
               <input type="text" id="chat-input" placeholder="Ask a question or describe a filter..." />
               <button id="chat-send" class="chat-send-button">
@@ -390,6 +390,9 @@
             </div>
           </div>
 
+          <!-- Main Content (scrollable) -->
+          <div class="main-content">
+
           <div id="signals-board" class="signals-board"></div>
 
           <div class="grid-wrapper">
@@ -414,7 +417,6 @@
 
           <div class="stat-row" title="Total available samples (including discarded)">
             <span id="stat-total-count" class="stat-count primary">0</span>
-            <span class="stat-label">Total (Active)</span>
           </div>
           <!-- <div class="stat-row" title="Active samples used by model (excluding discarded)">
             <span id="stat-active-count" class="stat-count secondary">0</span>

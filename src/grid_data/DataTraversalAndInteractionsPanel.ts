@@ -205,7 +205,7 @@ export class DataTraversalAndInteractionsPanel {
         this.sampleSlider.step = "1";
 
         // Initial defaults
-        if (this.statTotalCount) this.statTotalCount.textContent = this.maxSampleId.toString() + ' - (' + this.maxSampleId.toString() + ')';
+        if (this.statTotalCount) this.statTotalCount.textContent = 'Total: ' + this.maxSampleId.toString() + '   Active: ' + this.maxSampleId.toString();
 
         // Initialize batch index labels
         if (this.batchStartIndex) this.batchStartIndex.textContent = "0";
@@ -383,7 +383,7 @@ export class DataTraversalAndInteractionsPanel {
 
     public updateSampleCounts(availableSamples: number, totalSamples: number): void {
         this.maxSampleId = availableSamples;
-        this.totalSamples = totalSamples; // This is the 'active' count (in loop)
+        this.totalSamples = totalSamples; // This is the '   Active' count (in loop)
 
         if (this.sampleSlider) {
             this.sampleSlider.max = availableSamples.toString();
@@ -396,7 +396,7 @@ export class DataTraversalAndInteractionsPanel {
 
         // Update stats breakdown
         if (this.statTotalCount) {
-            this.statTotalCount.textContent = availableSamples.toString() + ' - (' + totalSamples.toString() + ')';
+            this.statTotalCount.textContent = 'Total: ' + availableSamples.toString() + '   Active: ' + totalSamples.toString();
         }
     }
 
@@ -404,8 +404,7 @@ export class DataTraversalAndInteractionsPanel {
         if (amount <= 0) return;
         this.totalSamples = Math.max(0, this.totalSamples - amount);
         if (this.statTotalCount) {
-            // this.statActiveCount.textContent = this.totalSamples.toString();
-            this.statTotalCount.textContent = this.maxSampleId.toString() + ' - (' + this.totalSamples.toString() + ')';
+            this.statTotalCount.textContent = 'Total: ' + this.maxSampleId.toString() + '   Active: ' + this.totalSamples.toString();
 
         }
     }
@@ -414,8 +413,7 @@ export class DataTraversalAndInteractionsPanel {
         if (amount <= 0) return;
         this.totalSamples += amount;
         if (this.statTotalCount) {
-            // this.statActiveCount.textContent = this.totalSamples.toString();
-            this.statTotalCount.textContent = this.maxSampleId.toString() + ' - (' + this.totalSamples.toString() + ')';
+            this.statTotalCount.textContent = 'Total: ' + this.maxSampleId.toString() + '   Active: ' + this.totalSamples.toString();
         }
     }
 

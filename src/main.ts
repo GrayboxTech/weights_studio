@@ -703,11 +703,16 @@ export async function initializeUIElements() {
     if (toggleBtn) {
         const syncTrainingUI = async () => {
             if (toggleBtn) {
+                toggleBtn.style.removeProperty('background-color');
+                toggleBtn.style.removeProperty('border-color');
+                toggleBtn.style.removeProperty('color');
                 toggleBtn.textContent = isTraining ? 'Pause' : 'Resume';
                 toggleBtn.classList.toggle('running', isTraining);
                 toggleBtn.classList.toggle('paused', !isTraining);
             }
             if (trainingStatePill) {
+                trainingStatePill.style.removeProperty('background-color');
+                trainingStatePill.style.removeProperty('color');
                 trainingStatePill.classList.toggle('pill-running', isTraining);
                 trainingStatePill.classList.toggle('pill-paused', !isTraining);
             }
@@ -905,7 +910,7 @@ export async function initializeUIElements() {
         isTraining = await fetchInitialTrainingState();
         syncTrainingUI();
 
-        // Poll is_training hyperparameter every 3 seconds to keep UI in sync
+        // Poll is_training hyperparameter every 1 second to keep UI in sync
         setInterval(async () => {
             try {
                 const cmd = {
@@ -936,7 +941,7 @@ export async function initializeUIElements() {
             } catch (e) {
                 console.debug('Failed to poll is_training hyperparameter:', e);
             }
-        }, 3000); // Poll every 3 seconds
+        }, 1000); // Poll every 1 second
     }
 
     // Initialize display options panel
@@ -1451,11 +1456,16 @@ let trackedSignals: Set<string> = new Set();
 function updateTrainingUI(): void {
     const toggleBtn = document.getElementById('toggle-training') as HTMLButtonElement | null;
     if (toggleBtn) {
+        toggleBtn.style.removeProperty('background-color');
+        toggleBtn.style.removeProperty('border-color');
+        toggleBtn.style.removeProperty('color');
         toggleBtn.textContent = isTraining ? 'Pause' : 'Resume';
         toggleBtn.classList.toggle('running', isTraining);
         toggleBtn.classList.toggle('paused', !isTraining);
     }
     if (trainingStatePill) {
+        trainingStatePill.style.removeProperty('background-color');
+        trainingStatePill.style.removeProperty('color');
         trainingStatePill.classList.toggle('pill-running', isTraining);
         trainingStatePill.classList.toggle('pill-paused', !isTraining);
     }
@@ -1532,8 +1542,13 @@ async function startTrainingStatusStream() {
     };
 
     async function pollLoggerData() {
-        // Skip polling if training is paused OR plot refresh is disabled
-        if (!isTraining || !getPlotRefreshEnabled()) {
+        // Skip polling if plot refresh is disabled
+        if (!getPlotRefreshEnabled()) {
+            return;
+        }
+
+        // If training is paused, only allow the initial full-history fetch
+        if (!isTraining && !isFirstPoll) {
             return;
         }
 
@@ -2037,8 +2052,15 @@ document.addEventListener('mouseup', (e) => {
 
         if (!movedDuringDrag && cell) { // This was a click, not a drag.
             if (e.ctrlKey || e.metaKey) {
-                // With Ctrl, toggle the clicked cell.
-                toggleCellSelection(cell);
+                // With Ctrl, add/maintain the clicked cell in selection
+                if (!cell.classList.contains('selected')) {
+                    addCellToSelection(cell);
+                    // Cache sample data for this cell
+                    const sampleData = extractSampleData(cell);
+                    if (sampleData && !selectedSampleData.has(cell)) {
+                        selectedSampleData.set(cell, sampleData);
+                    }
+                }
             } else {
                 // Without Ctrl, it's a simple click.
                 // If the cell wasn't already part of a multi-selection, clear others and select just this one.

@@ -411,7 +411,11 @@ export function setActiveBrush(tag: string): void {
 // Update unique tags in painter mode and UI
 export function updateUniqueTags(tags: string[]): void {
     // Filter out None, null, undefined, empty strings, and whitespace-only strings
-    const uniqueTags = (tags || []).filter(t => t && t.trim() !== '' && t !== 'None');
+    const uniqueTags = Array.from(new Set(
+        (tags || [])
+            .map(t => (typeof t === 'string' ? t.trim() : String(t).trim()))
+            .filter(t => t && t !== 'None')
+    ));
 
     // 1. Update existing tags datalist (for tagging modal)
     const datalist = document.getElementById('existing-tags');
@@ -427,7 +431,7 @@ export function updateUniqueTags(tags: string[]): void {
         const manualTags = Array.from(tagsContainer.querySelectorAll('[data-manual="true"]')) as HTMLElement[];
 
         // Store references to manual tags to preserve them
-        const manualTagTexts = new Set(manualTags.map(t => t.textContent));
+        const manualTagTexts = new Set(manualTags.map(t => (t.textContent || '').trim()));
 
         // Clear only the auto-generated chips (those without data-manual)
         Array.from(tagsContainer.children).forEach(child => {
