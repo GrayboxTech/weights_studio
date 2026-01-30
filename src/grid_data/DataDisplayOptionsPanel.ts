@@ -130,6 +130,15 @@ export class DataDisplayOptionsPanel {
         this.element.addEventListener("preferencesChange", () => callback());
     }
 
+    enableField(fieldName: string): void {
+        const checkbox = this.checkboxes.get(fieldName);
+        if (!checkbox) return;
+        if (!checkbox.checked) {
+            checkbox.checked = true;
+            this.element.dispatchEvent(new Event("preferencesChange"));
+        }
+    }
+
     private updateGlobalModeFlags(): void {
         document.body.classList.toggle("segmentation-mode", this.isSegmentationDataset);
         document.body.classList.toggle("classification-mode", !this.isSegmentationDataset);
@@ -758,16 +767,25 @@ export class DataDisplayOptionsPanel {
 
         const imageResolutionAuto = document.getElementById("image-resolution-auto") as HTMLInputElement | null;
         const imageResolutionPercent = document.getElementById("image-resolution-percent") as HTMLInputElement | null;
+        const imageResolutionValue = document.getElementById("image-resolution-value") as HTMLSpanElement | null;
 
         if (imageResolutionAuto) {
             imageResolutionAuto.addEventListener("change", () => {
                 localStorage.setItem('grid-image-resolution-auto', imageResolutionAuto.checked.toString());
+                if (imageResolutionValue) {
+                    imageResolutionValue.textContent = imageResolutionAuto.checked
+                        ? 'Auto'
+                        : `${imageResolutionPercent?.value ?? 0}%`;
+                }
                 this.updateCallback?.();
             });
         }
         if (imageResolutionPercent) {
             imageResolutionPercent.addEventListener("input", () => {
                 localStorage.setItem('grid-image-resolution-percent', imageResolutionPercent.value);
+                if (imageResolutionValue && !imageResolutionAuto?.checked) {
+                    imageResolutionValue.textContent = `${imageResolutionPercent.value}%`;
+                }
                 this.updateCallback?.();
             });
         }

@@ -17,6 +17,53 @@ import { MessageType } from "@protobuf-ts/runtime";
 export interface Empty {
 }
 /**
+ * @generated from protobuf message GetLatestLoggerDataRequest
+ */
+export interface GetLatestLoggerDataRequest {
+    /**
+     * @generated from protobuf field: bool request_full_history = 1
+     */
+    requestFullHistory: boolean;
+    /**
+     * @generated from protobuf field: int32 max_points = 2
+     */
+    maxPoints: number;
+}
+/**
+ * @generated from protobuf message LoggerDataPoint
+ */
+export interface LoggerDataPoint {
+    /**
+     * @generated from protobuf field: string metric_name = 1
+     */
+    metricName: string;
+    /**
+     * @generated from protobuf field: int32 model_age = 2
+     */
+    modelAge: number;
+    /**
+     * @generated from protobuf field: float metric_value = 3
+     */
+    metricValue: number;
+    /**
+     * @generated from protobuf field: string experiment_hash = 4
+     */
+    experimentHash: string;
+    /**
+     * @generated from protobuf field: int64 timestamp = 5
+     */
+    timestamp: string;
+}
+/**
+ * @generated from protobuf message GetLatestLoggerDataResponse
+ */
+export interface GetLatestLoggerDataResponse {
+    /**
+     * @generated from protobuf field: repeated LoggerDataPoint points = 1
+     */
+    points: LoggerDataPoint[];
+}
+/**
  * @generated from protobuf message NeuronId
  */
 export interface NeuronId {
@@ -880,6 +927,28 @@ export interface AgentHealthResponse {
     message: string;
 }
 /**
+ * @generated from protobuf message RestoreCheckpointRequest
+ */
+export interface RestoreCheckpointRequest {
+    /**
+     * @generated from protobuf field: string experiment_hash = 1
+     */
+    experimentHash: string;
+}
+/**
+ * @generated from protobuf message RestoreCheckpointResponse
+ */
+export interface RestoreCheckpointResponse {
+    /**
+     * @generated from protobuf field: bool success = 1
+     */
+    success: boolean;
+    /**
+     * @generated from protobuf field: string message = 2
+     */
+    message: string;
+}
+/**
  * @generated from protobuf enum WeightOperationType
  */
 export enum WeightOperationType {
@@ -993,6 +1062,188 @@ class Empty$Type extends MessageType<Empty> {
  * @generated MessageType for protobuf message Empty
  */
 export const Empty = new Empty$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class GetLatestLoggerDataRequest$Type extends MessageType<GetLatestLoggerDataRequest> {
+    constructor() {
+        super("GetLatestLoggerDataRequest", [
+            { no: 1, name: "request_full_history", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
+            { no: 2, name: "max_points", kind: "scalar", T: 5 /*ScalarType.INT32*/ }
+        ]);
+    }
+    create(value?: PartialMessage<GetLatestLoggerDataRequest>): GetLatestLoggerDataRequest {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        message.requestFullHistory = false;
+        message.maxPoints = 0;
+        if (value !== undefined)
+            reflectionMergePartial<GetLatestLoggerDataRequest>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: GetLatestLoggerDataRequest): GetLatestLoggerDataRequest {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* bool request_full_history */ 1:
+                    message.requestFullHistory = reader.bool();
+                    break;
+                case /* int32 max_points */ 2:
+                    message.maxPoints = reader.int32();
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: GetLatestLoggerDataRequest, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* bool request_full_history = 1; */
+        if (message.requestFullHistory !== false)
+            writer.tag(1, WireType.Varint).bool(message.requestFullHistory);
+        /* int32 max_points = 2; */
+        if (message.maxPoints !== 0)
+            writer.tag(2, WireType.Varint).int32(message.maxPoints);
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+/**
+ * @generated MessageType for protobuf message GetLatestLoggerDataRequest
+ */
+export const GetLatestLoggerDataRequest = new GetLatestLoggerDataRequest$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class LoggerDataPoint$Type extends MessageType<LoggerDataPoint> {
+    constructor() {
+        super("LoggerDataPoint", [
+            { no: 1, name: "metric_name", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
+            { no: 2, name: "model_age", kind: "scalar", T: 5 /*ScalarType.INT32*/ },
+            { no: 3, name: "metric_value", kind: "scalar", T: 2 /*ScalarType.FLOAT*/ },
+            { no: 4, name: "experiment_hash", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
+            { no: 5, name: "timestamp", kind: "scalar", T: 3 /*ScalarType.INT64*/ }
+        ]);
+    }
+    create(value?: PartialMessage<LoggerDataPoint>): LoggerDataPoint {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        message.metricName = "";
+        message.modelAge = 0;
+        message.metricValue = 0;
+        message.experimentHash = "";
+        message.timestamp = "0";
+        if (value !== undefined)
+            reflectionMergePartial<LoggerDataPoint>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: LoggerDataPoint): LoggerDataPoint {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* string metric_name */ 1:
+                    message.metricName = reader.string();
+                    break;
+                case /* int32 model_age */ 2:
+                    message.modelAge = reader.int32();
+                    break;
+                case /* float metric_value */ 3:
+                    message.metricValue = reader.float();
+                    break;
+                case /* string experiment_hash */ 4:
+                    message.experimentHash = reader.string();
+                    break;
+                case /* int64 timestamp */ 5:
+                    message.timestamp = reader.int64().toString();
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: LoggerDataPoint, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* string metric_name = 1; */
+        if (message.metricName !== "")
+            writer.tag(1, WireType.LengthDelimited).string(message.metricName);
+        /* int32 model_age = 2; */
+        if (message.modelAge !== 0)
+            writer.tag(2, WireType.Varint).int32(message.modelAge);
+        /* float metric_value = 3; */
+        if (message.metricValue !== 0)
+            writer.tag(3, WireType.Fixed32).float(message.metricValue);
+        /* string experiment_hash = 4; */
+        if (message.experimentHash !== "")
+            writer.tag(4, WireType.LengthDelimited).string(message.experimentHash);
+        /* int64 timestamp = 5; */
+        if (message.timestamp !== "0")
+            writer.tag(5, WireType.Varint).int64(message.timestamp);
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+/**
+ * @generated MessageType for protobuf message LoggerDataPoint
+ */
+export const LoggerDataPoint = new LoggerDataPoint$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class GetLatestLoggerDataResponse$Type extends MessageType<GetLatestLoggerDataResponse> {
+    constructor() {
+        super("GetLatestLoggerDataResponse", [
+            { no: 1, name: "points", kind: "message", repeat: 2 /*RepeatType.UNPACKED*/, T: () => LoggerDataPoint }
+        ]);
+    }
+    create(value?: PartialMessage<GetLatestLoggerDataResponse>): GetLatestLoggerDataResponse {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        message.points = [];
+        if (value !== undefined)
+            reflectionMergePartial<GetLatestLoggerDataResponse>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: GetLatestLoggerDataResponse): GetLatestLoggerDataResponse {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* repeated LoggerDataPoint points */ 1:
+                    message.points.push(LoggerDataPoint.internalBinaryRead(reader, reader.uint32(), options));
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: GetLatestLoggerDataResponse, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* repeated LoggerDataPoint points = 1; */
+        for (let i = 0; i < message.points.length; i++)
+            LoggerDataPoint.internalBinaryWrite(message.points[i], writer.tag(1, WireType.LengthDelimited).fork(), options).join();
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+
+/**
+ * @generated MessageType for protobuf message GetLatestLoggerDataResponse
+ */
+export const GetLatestLoggerDataResponse = new GetLatestLoggerDataResponse$Type();
 // @generated message type with reflection information, may provide speed optimized methods
 class NeuronId$Type extends MessageType<NeuronId> {
     constructor() {
@@ -3388,25 +3639,25 @@ class DataSamplesRequest$Type extends MessageType<DataSamplesRequest> {
     }
     internalBinaryWrite(message: DataSamplesRequest, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
         /* int32 start_index = 1; */
-        if (message.startIndex !== 0)
+        if (message.startIndex !== undefined && message.startIndex !== 0)
             writer.tag(1, WireType.Varint).int32(message.startIndex);
         /* int32 records_cnt = 2; */
-        if (message.recordsCnt !== 0)
+        if (message.recordsCnt !== undefined && message.recordsCnt !== 0)
             writer.tag(2, WireType.Varint).int32(message.recordsCnt);
         /* bool include_transformed_data = 3; */
-        if (message.includeTransformedData !== false)
+        if (message.includeTransformedData !== undefined && message.includeTransformedData !== false)
             writer.tag(3, WireType.Varint).bool(message.includeTransformedData);
         /* bool include_raw_data = 4; */
-        if (message.includeRawData !== false)
+        if (message.includeRawData !== undefined && message.includeRawData !== false)
             writer.tag(4, WireType.Varint).bool(message.includeRawData);
         /* repeated string stats_to_retrieve = 5; */
         for (let i = 0; i < message.statsToRetrieve.length; i++)
             writer.tag(5, WireType.LengthDelimited).string(message.statsToRetrieve[i]);
         /* int32 resize_width = 6; */
-        if (message.resizeWidth !== 0)
+        if (message.resizeWidth !== undefined && message.resizeWidth !== 0)
             writer.tag(6, WireType.Varint).int32(message.resizeWidth);
         /* int32 resize_height = 7; */
-        if (message.resizeHeight !== 0)
+        if (message.resizeHeight !== undefined && message.resizeHeight !== 0)
             writer.tag(7, WireType.Varint).int32(message.resizeHeight);
         let u = options.writeUnknownFields;
         if (u !== false)
@@ -3852,19 +4103,122 @@ class AgentHealthResponse$Type extends MessageType<AgentHealthResponse> {
  * @generated MessageType for protobuf message AgentHealthResponse
  */
 export const AgentHealthResponse = new AgentHealthResponse$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class RestoreCheckpointRequest$Type extends MessageType<RestoreCheckpointRequest> {
+    constructor() {
+        super("RestoreCheckpointRequest", [
+            { no: 1, name: "experiment_hash", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
+        ]);
+    }
+    create(value?: PartialMessage<RestoreCheckpointRequest>): RestoreCheckpointRequest {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        message.experimentHash = "";
+        if (value !== undefined)
+            reflectionMergePartial<RestoreCheckpointRequest>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: RestoreCheckpointRequest): RestoreCheckpointRequest {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* string experiment_hash */ 1:
+                    message.experimentHash = reader.string();
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: RestoreCheckpointRequest, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* string experiment_hash = 1; */
+        if (message.experimentHash !== "")
+            writer.tag(1, WireType.LengthDelimited).string(message.experimentHash);
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+/**
+ * @generated MessageType for protobuf message RestoreCheckpointRequest
+ */
+export const RestoreCheckpointRequest = new RestoreCheckpointRequest$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class RestoreCheckpointResponse$Type extends MessageType<RestoreCheckpointResponse> {
+    constructor() {
+        super("RestoreCheckpointResponse", [
+            { no: 1, name: "success", kind: "scalar", T: 8 /*ScalarType.BOOL*/ },
+            { no: 2, name: "message", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
+        ]);
+    }
+    create(value?: PartialMessage<RestoreCheckpointResponse>): RestoreCheckpointResponse {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        message.success = false;
+        message.message = "";
+        if (value !== undefined)
+            reflectionMergePartial<RestoreCheckpointResponse>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: RestoreCheckpointResponse): RestoreCheckpointResponse {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* bool success */ 1:
+                    message.success = reader.bool();
+                    break;
+                case /* string message */ 2:
+                    message.message = reader.string();
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: RestoreCheckpointResponse, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* bool success = 1; */
+        if (message.success !== false)
+            writer.tag(1, WireType.Varint).bool(message.success);
+        /* string message = 2; */
+        if (message.message !== "")
+            writer.tag(2, WireType.LengthDelimited).string(message.message);
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+/**
+ * @generated MessageType for protobuf message RestoreCheckpointResponse
+ */
+export const RestoreCheckpointResponse = new RestoreCheckpointResponse$Type();
 /**
  * @generated ServiceType for protobuf service ExperimentService
  */
 export const ExperimentService = new ServiceType("ExperimentService", [
-    { name: "StreamStatus", serverStreaming: true, options: {}, I: Empty, O: TrainingStatusEx },
+    { name: "GetLatestLoggerData", options: {}, I: GetLatestLoggerDataRequest, O: GetLatestLoggerDataResponse },
     { name: "ExperimentCommand", options: {}, I: TrainerCommand, O: CommandResponse },
     { name: "ManipulateWeights", options: {}, I: WeightsOperationRequest, O: WeightsOperationResponse },
     { name: "GetWeights", options: {}, I: WeightsRequest, O: WeightsResponse },
     { name: "GetActivations", options: {}, I: ActivationRequest, O: ActivationResponse },
     { name: "GetSamples", options: {}, I: BatchSampleRequest, O: BatchSampleResponse },
     { name: "ApplyDataQuery", options: {}, I: DataQueryRequest, O: DataQueryResponse },
-    { name: "GetDataSplits", options: {}, I: Empty, O: DataSplitsResponse },
     { name: "GetDataSamples", options: {}, I: DataSamplesRequest, O: DataSamplesResponse },
     { name: "EditDataSample", options: {}, I: DataEditsRequest, O: DataEditsResponse },
-    { name: "CheckAgentHealth", options: {}, I: Empty, O: AgentHealthResponse }
+    { name: "GetDataSplits", options: {}, I: Empty, O: DataSplitsResponse },
+    { name: "CheckAgentHealth", options: {}, I: Empty, O: AgentHealthResponse },
+    { name: "RestoreCheckpoint", options: {}, I: RestoreCheckpointRequest, O: RestoreCheckpointResponse }
 ]);

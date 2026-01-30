@@ -69,27 +69,38 @@ Follow these steps to set up the environment for both `weightslab` (backend) and
    cd ./docker
    docker compose up -d weights_studio
    ```
+More details can be found in weights_studio/docker/DOCKER_DEPLOYMENT.md
+
 
 ### Checklist to verify if it works (addresses depend on your environment variables being defined).
 - Check Envoy administration page is reachable: http://localhost:9091/
 - Check OLLAMA is reachable: http://localhost:11435/
 - Check if Weights Studio page is reachable: http://localhost:5173/
+
+
 ### Agent Configuration
 
 The WeightsLab Agent allows you to manipulate data using natural language. It supports local models (via Ollama) and remote APIs (OpenRouter, Google Gemini, OpenAI).
 
-#### 1. Global Settings (`agent_config.yaml`)
+#### 1. Global Settings (`agent_config.yaml`) for local agent
 Behavioral settings (provider and model selection) are managed in `weightslab/agent_config.yaml`.
 
 ```yaml
 agent:
-  provider: ollama  # options: ollama, openrouter, google, openai
+  # Select the model provider.
+  # Local: 'ollama'
+  # Remote: 'openrouter', 'google', 'openai' (requires API tokens in .env)
+  provider: ollama
+
+  # Local configuration
   ollama_model: qwen2.5:3b-instruct
   fallback_to_local: true
+
+  # ...
 ```
 
-#### 2. Private Keys (`.env`)
-API keys and secrets must be kept private in the `.env` file (which is ignored by Git).
+#### 2. Private Keys (`.env`) for online agent
+API keys and secrets must be kept private in the `.env` file (which is ignored by Git),
 
 1. Copy the template:
    ```bash
@@ -97,6 +108,23 @@ API keys and secrets must be kept private in the `.env` file (which is ignored b
    cp .env.template .env
    ```
 2. Edit `.env` and add your keys (e.g., `OPENROUTER_API_KEY`).
+3. Declare the environment variables in `.env`.
+4. Content of the `agent_config.yaml` file
+```yaml
+agent:
+  # Select the model provider.
+  # Local: 'ollama'
+  # Remote: 'openrouter', 'google', 'openai' (requires API tokens in .env)
+  provider: openrouter
+
+  # ...
+
+  # Remote Model Selection
+  openrouter_model: meta-llama/llama-3.1-8b-instruct:nitro
+  google_model: gemini-1.5-flash
+  openai_model: gpt-4o-mini
+  # OPENROUTER_API_KEY: ....  # Environment variable to set private APY key
+```
 
 ### Usage
 Access the UI at `http://localhost:5173`.

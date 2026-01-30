@@ -21,7 +21,7 @@
       const cachedTogglePred = localStorage.getItem('grid-toggle-pred');
       const cachedToggleDiff = localStorage.getItem('grid-toggle-diff');
 
-      // Store in a global object for later use by data.ts
+      // Store in a global object for later use by main.ts
       window.__cachedGridSettings = {
         cellSize: cachedCellSize,
         zoomLevel: cachedZoomLevel,
@@ -80,26 +80,61 @@
               </svg>
             </button>
 
-            <div id="refresh-config-popover" class="refresh-popover horizontal hidden">
-              <span class="refresh-popover-label">Auto-Refresh</span>
-              <label class="switch-premium" title="Enable/Disable Auto-Refresh">
-                <input type="checkbox" id="refresh-auto-toggle">
-                <span class="slider-pill"></span>
-              </label>
-
-              <div class="refresh-input-divider"></div>
-
-              <div class="refresh-input-group" id="refresh-input-wrapper">
-                <input type="number" id="refresh-interval-input" min="1" placeholder="5">
-                <span class="unit">sec</span>
+            <div id="refresh-config-popover" class="refresh-popover vertical hidden">
+              <!-- Data Auto-Refresh Section -->
+              <div class="refresh-section">
+                <span class="refresh-popover-label">Data auto-refresh</span>
+                <div class="refresh-row">
+                  <label class="switch-premium" title="Enable/Disable Data Auto-Refresh">
+                    <input type="checkbox" id="refresh-auto-toggle">
+                    <span class="slider-pill"></span>
+                  </label>
+                  <div class="refresh-input-group" id="refresh-input-wrapper">
+                    <input type="number" id="refresh-interval-input" min="1" placeholder="5">
+                    <span class="unit">sec</span>
+                  </div>
+                  <button id="refresh-config-save" class="refresh-send-btn" title="Save Data Refresh">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="19" x2="12" y2="5"></line>
+                      <polyline points="5 12 12 5 19 12"></polyline>
+                    </svg>
+                  </button>
+                </div>
               </div>
-              <button id="refresh-config-save" class="refresh-send-btn" title="Save Frequency">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
-                  stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="12" y1="19" x2="12" y2="5"></line>
-                  <polyline points="5 12 12 5 19 12"></polyline>
-                </svg>
-              </button>
+
+              <div class="refresh-section-divider"></div>
+
+              <!-- Plot Auto-Refresh Section -->
+              <div class="refresh-section">
+                <span class="refresh-popover-label">Plot auto-refresh</span>
+                <div class="refresh-row">
+                  <label class="switch-premium" title="Enable/Disable Plot Auto-Refresh">
+                    <input type="checkbox" id="plot-refresh-toggle">
+                    <span class="slider-pill"></span>
+                  </label>
+                  <div class="refresh-input-group" id="plot-input-wrapper">
+                    <input type="number" id="plot-interval-input" min="2" placeholder="2">
+                    <span class="unit">sec</span>
+                  </div>
+                  <button id="plot-config-save" class="refresh-send-btn" title="Save Plot Refresh">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="12" y1="19" x2="12" y2="5"></line>
+                      <polyline points="5 12 12 5 19 12"></polyline>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="refresh-section-divider"></div>
+
+              <!-- Clear Cache and Refresh Section -->
+              <div class="refresh-section">
+                <button id="clear-cache-refresh-btn" class="clear-cache-btn" title="Clear Cache and Reload Page">
+                  Clear Cache & Refresh Page
+                </button>
+              </div>
             </div>
           </div>
           <button id="toggle-training" class="control-button primary" data-state="paused">Resume</button>
@@ -186,7 +221,7 @@
               <div class="painter-controls-row">
                 <div class="painter-controls-group">
                   <span class="mode-label">Painter</span>
-                  <label class="switch-tiny" title="Toggle Painter Mode">
+                  <label class="switch" title="Toggle Painter Mode">
                     <input type="checkbox" id="painter-toggle">
                     <span></span>
                   </label>
@@ -323,10 +358,10 @@
           </div>
         </div>
 
-        <!-- GRID -->
-        <div class="main-content">
-          <!-- Content Header: Chat -->
-          <div class="content-header">
+        <!-- GRID AREA -->
+        <div class="main-area">
+          <!-- Agent Header: Chat -->
+          <div class="agent-header">
             <div class="chat-input-container">
               <input type="text" id="chat-input" placeholder="Ask a question or describe a filter..." />
               <button id="chat-send" class="chat-send-button">
@@ -355,6 +390,11 @@
             </div>
           </div>
 
+          <!-- Main Content (scrollable) -->
+          <div class="main-content">
+
+          <div id="signals-board" class="signals-board"></div>
+
           <div class="grid-wrapper">
             <div id="cells-grid"></div>
           </div>
@@ -365,20 +405,23 @@
     <!-- BOTTOM NAVIGATION BAR -->
     <div class="bottom-bar">
       <div class="slider-container">
-        <!-- Left group removed -->
+        <div class="slider-label-group left">
+          <span id="batch-start-index" class="batch-index-label" title="Batch start index">0</span>
+        </div>
         <div class="slider-wrapper">
           <input type="range" min="0" max="100" value="0" class="slider" id="sample-slider">
           <span id="slider-tooltip">0</span>
         </div>
         <div class="slider-label-group right">
+          <span id="batch-end-index" class="batch-index-label" title="Batch end index">?</span>
+
           <div class="stat-row" title="Total available samples (including discarded)">
             <span id="stat-total-count" class="stat-count primary">0</span>
-            <span class="stat-label">Total</span>
           </div>
-          <div class="stat-row" title="Active samples used by model (excluding discarded)">
+          <!-- <div class="stat-row" title="Active samples used by model (excluding discarded)">
             <span id="stat-active-count" class="stat-count secondary">0</span>
             <span class="stat-label">Active</span>
-          </div>
+          </div> -->
         </div>
       </div>
     </div>
@@ -451,7 +494,7 @@
       </div>
     </div>
 
-    <script type="module" src="/src/data.ts"></script>
+    <script type="module" src="/src/main.ts"></script>
   </div>
 </body>
 

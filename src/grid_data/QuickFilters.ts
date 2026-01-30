@@ -1,11 +1,11 @@
 /**
  * QuickFilters.ts
- * 
+ *
  * Manages the quick filters bar UI and state.
  * Provides direct filtering without using the LLM agent.
  */
 
-export interface FilterCondition {
+export interface Manager {
     column: string;
     operator: '==' | '!=' | '>' | '<' | '>=' | '<=' | 'between' | 'contains' | 'has_tag' | 'not_has_tag';
     value: string | number;

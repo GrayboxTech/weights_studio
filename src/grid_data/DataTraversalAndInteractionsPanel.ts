@@ -6,8 +6,9 @@ export class DataTraversalAndInteractionsPanel {
     private imageResolutionPercent: HTMLInputElement | null = null;
     private imageResolutionValue: HTMLSpanElement | null = null;
     private sliderTooltip: HTMLSpanElement | null = null;
+    private batchStartIndex: HTMLSpanElement | null = null;
+    private batchEndIndex: HTMLSpanElement | null = null;
     private statTotalCount: HTMLSpanElement | null = null;
-    private statActiveCount: HTMLSpanElement | null = null;
 
     private gridToggleButton: HTMLButtonElement | null = null;
     private gridContent: HTMLElement | null = null;
@@ -17,7 +18,6 @@ export class DataTraversalAndInteractionsPanel {
 
     private maxSampleId: number = 60000;
     private totalSamples: number = 60000;
-    private currentGridCount: number = 0;
 
     private onControlsChangeCallback: (() => void) | null = null;
     private debounceTimeout: number | null = null;
@@ -34,9 +34,10 @@ export class DataTraversalAndInteractionsPanel {
         this.imageResolutionPercent = document.getElementById('image-resolution-percent') as HTMLInputElement;
         this.imageResolutionValue = document.getElementById('image-resolution-value') as HTMLSpanElement;
         this.sliderTooltip = document.getElementById('slider-tooltip') as HTMLSpanElement;
+        this.batchStartIndex = document.getElementById('batch-start-index') as HTMLSpanElement;
+        this.batchEndIndex = document.getElementById('batch-end-index') as HTMLSpanElement;
 
         this.statTotalCount = document.getElementById('stat-total-count') as HTMLSpanElement;
-        this.statActiveCount = document.getElementById('stat-active-count') as HTMLSpanElement;
 
         this.gridContent = document.getElementById('grid-content') as HTMLElement;
 
@@ -105,6 +106,14 @@ export class DataTraversalAndInteractionsPanel {
                     const endIndex = Math.min(startIndex + gridCount - 1, this.maxSampleId);
 
                     this.sliderTooltip.textContent = `${startIndex}-${endIndex}`;
+
+                    // Update batch index labels
+                    if (this.batchStartIndex) {
+                        this.batchStartIndex.textContent = String(startIndex);
+                    }
+                    if (this.batchEndIndex) {
+                        this.batchEndIndex.textContent = String(endIndex);
+                    }
 
                     // Position at slider thumb
                     const sliderRect = this.sampleSlider!.getBoundingClientRect();
@@ -196,8 +205,11 @@ export class DataTraversalAndInteractionsPanel {
         this.sampleSlider.step = "1";
 
         // Initial defaults
-        if (this.statTotalCount) this.statTotalCount.textContent = this.maxSampleId.toString();
-        if (this.statActiveCount) this.statActiveCount.textContent = this.maxSampleId.toString();
+        if (this.statTotalCount) this.statTotalCount.textContent = 'Total: ' + this.maxSampleId.toString() + '   Active: ' + this.maxSampleId.toString();
+
+        // Initialize batch index labels
+        if (this.batchStartIndex) this.batchStartIndex.textContent = "0";
+        if (this.batchEndIndex) this.batchEndIndex.textContent = "0";
     }
 
     private handleControlsChange(): void {
@@ -262,6 +274,16 @@ export class DataTraversalAndInteractionsPanel {
     public updateSliderStep(step: number): void {
         if (this.sampleSlider) {
             this.sampleSlider.step = String(step);
+            // Adjust max so slider can only move to positions where we can show 'step' samples
+            // Last valid position is maxSampleId - step, but slider is 0-indexed so we add 1
+            const adjustedMax = Math.max(0, this.maxSampleId - step + 1);
+            this.sampleSlider.max = String(adjustedMax);
+
+            // If current value exceeds new max, clamp it
+            const currentValue = parseInt(this.sampleSlider.value, 10);
+            if (currentValue > adjustedMax) {
+                this.sampleSlider.value = String(adjustedMax);
+            }
         }
     }
 
@@ -361,7 +383,7 @@ export class DataTraversalAndInteractionsPanel {
 
     public updateSampleCounts(availableSamples: number, totalSamples: number): void {
         this.maxSampleId = availableSamples;
-        this.totalSamples = totalSamples; // This is the 'active' count (in loop)
+        this.totalSamples = totalSamples; // This is the '   Active' count (in loop)
 
         if (this.sampleSlider) {
             this.sampleSlider.max = availableSamples.toString();
@@ -374,26 +396,24 @@ export class DataTraversalAndInteractionsPanel {
 
         // Update stats breakdown
         if (this.statTotalCount) {
-            this.statTotalCount.textContent = availableSamples.toString();
-        }
-        if (this.statActiveCount) {
-            this.statActiveCount.textContent = totalSamples.toString();
+            this.statTotalCount.textContent = 'Total: ' + availableSamples.toString() + '   Active: ' + totalSamples.toString();
         }
     }
 
     public decrementActiveCount(amount: number): void {
         if (amount <= 0) return;
         this.totalSamples = Math.max(0, this.totalSamples - amount);
-        if (this.statActiveCount) {
-            this.statActiveCount.textContent = this.totalSamples.toString();
+        if (this.statTotalCount) {
+            this.statTotalCount.textContent = 'Total: ' + this.maxSampleId.toString() + '   Active: ' + this.totalSamples.toString();
+
         }
     }
 
     public incrementActiveCount(amount: number): void {
         if (amount <= 0) return;
         this.totalSamples += amount;
-        if (this.statActiveCount) {
-            this.statActiveCount.textContent = this.totalSamples.toString();
+        if (this.statTotalCount) {
+            this.statTotalCount.textContent = 'Total: ' + this.maxSampleId.toString() + '   Active: ' + this.totalSamples.toString();
         }
     }
 

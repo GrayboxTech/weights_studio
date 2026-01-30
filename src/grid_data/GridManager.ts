@@ -38,7 +38,7 @@ export class GridManager {
 
         // Dynamically calculate available height
         const mainContent = this.cellsContainer.closest('.main-content');
-        const contentHeader = mainContent?.querySelector('.content-header');
+        const contentHeader = mainContent?.querySelector('.agent-header');
         const bottomBar = document.querySelector('.bottom-bar');
 
         let availableHeight = window.innerHeight - 150; // Fallback

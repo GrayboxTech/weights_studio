@@ -80,15 +80,15 @@ export class SelectionManager {
     public selectRange(startCell: GridCell, endCell: GridCell, allCells: GridCell[]): void {
         const startIndex = allCells.indexOf(startCell);
         const endIndex = allCells.indexOf(endCell);
-        
+
         if (startIndex === -1 || endIndex === -1) return;
-        
+
         const [min, max] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
-        
+
         for (let i = min; i <= max; i++) {
             this.addCellToSelection(allCells[i]);
         }
-        
+
         this.logSelectionState('selectRange');
     }
 
@@ -104,7 +104,7 @@ export class SelectionManager {
         const selectedSampleIds = Array.from(this.selectedCells)
             .map(cell => cell.getRecord()?.sampleId)
             .filter(id => id !== undefined);
-        
+
         const visuallySelected = Array.from(this.container.querySelectorAll('.cell.selected'))
             .map(el => {
                 const sampleIdEl = el.querySelector('.sample-id');
@@ -192,7 +192,7 @@ export class SelectionManager {
         if (!this.hasMoved && (deltaX > this.dragThreshold || deltaY > this.dragThreshold)) {
             this.hasMoved = true;
             this.selectionBox.style.display = 'block';
-            
+
             // If we started on a selected cell and now we're dragging, clear selection
             if (this.clickedCell && this.selectedCells.has(this.clickedCell)) {
                 this.clearSelection();
