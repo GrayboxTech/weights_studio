@@ -158,7 +158,7 @@ export class SegmentationRenderer {
         if (options.classPrefs) {
             for (let i = 0; i < 256; i++) {
                 const pref = options.classPrefs[i];
-                if (pref && pref.enabled && i !== 0) {
+                if (pref && pref.enabled) {
                     const color = this.hexToRgb(pref.color);
                     palette[i * 4 + 0] = color.r;
                     palette[i * 4 + 1] = color.g;
@@ -284,14 +284,24 @@ export class SegmentationRenderer {
                 float gtVal = texture2D(u_mask, uv).a * 255.0;
                 float predVal = texture2D(u_predMask, uv).a * 255.0;
 
-                if (abs(gtVal - predVal) < 0.1) {
-                    // Correct prediction - show green
-                    vec4 greenOverlay = vec4(0.2, 0.8, 0.3, 0.4);  // Green
-                    gl_FragColor = mix(baseColor, vec4(greenOverlay.rgb, 1.0), greenOverlay.a);
+                // Check if classes are enabled in the UI palette
+                float gtAlpha = texture2D(u_palette, vec2((gtVal + 0.5) / 256.0, 0.5)).a;
+                float predAlpha = texture2D(u_palette, vec2((predVal + 0.5) / 256.0, 0.5)).a;
+
+                // Only show diff if either Ground Truth OR the Prediction is an enabled class
+                if (gtAlpha > 0.0 || predAlpha > 0.0) {
+                    if (abs(gtVal - predVal) < 0.1) {
+                        // Correct prediction - show green
+                        vec4 greenOverlay = vec4(0.2, 0.8, 0.3, 0.4);  // Green
+                        gl_FragColor = mix(baseColor, vec4(greenOverlay.rgb, 1.0), greenOverlay.a);
+                    } else {
+                        // Wrong prediction - show orange
+                        vec4 errorOverlay = vec4(1.0, 0.5, 0.0, 0.65);  // Orange
+                        gl_FragColor = mix(baseColor, vec4(errorOverlay.rgb, 1.0), errorOverlay.a);
+                    }
                 } else {
-                    // Wrong prediction - show orange
-                    vec4 errorOverlay = vec4(1.0, 0.5, 0.0, 0.65);  // Orange
-                    gl_FragColor = mix(baseColor, vec4(errorOverlay.rgb, 1.0), errorOverlay.a);
+                    // Both are disabled classes - show raw image
+                    gl_FragColor = baseColor;
                 }
             } else {
                 vec4 res = baseColor;
