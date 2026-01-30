@@ -28,8 +28,8 @@ import type { CommandResponse } from "./experiment_service";
 import type { TrainerCommand } from "./experiment_service";
 import type { UnaryCall } from "@protobuf-ts/runtime-rpc";
 import { stackIntercept } from "@protobuf-ts/runtime-rpc";
-import type { TrainingStatusEx } from "./experiment_service";
-import type { Empty } from "./experiment_service";
+import type { TrainingStatusEx } from "../experiment_service";
+import type { Empty } from "../experiment_service";
 import type { ServerStreamingCall } from "@protobuf-ts/runtime-rpc";
 import type { RpcOptions } from "@protobuf-ts/runtime-rpc";
 /**

@@ -10,14 +10,15 @@
 
 ```
 ┌─────────────────┐     ┌──────────────┐     ┌────────────────┐
-│  Vite Frontend  │────▶│ Envoy Proxy  │────▶│ Python gRPC    │
+│  Vite Frontend  │────▶│ Envoy Proxy  │────▶│ Python gRPC   │
 │  (port 5173)    │     │ (port 8080)  │     │ (host:50051)   │
 └─────────────────┘     └──────────────┘     └────────────────┘
          │                                              ▲
          │                                              │
          ▼                                              │
 ┌─────────────────┐                                     │
-│  Ollama LLM     │                                     │
+│  Local LLM      │                                     │
+│   Optional      │                                     │
 │  (port 11435)   │─────────────────────────────────────┘
 └─────────────────┘
 ```
@@ -27,8 +28,8 @@
 ### 1. Start Python gRPC Backend (Host)
 
 ```powershell
-cd c:\Users\GuillaumePELLUET\Documents\Codes\weightslab\examples\weights_studio_mnist
-python mnist_training.py
+cd c:\Users\GuillaumePELLUET\Documents\Codes\weightslab\examples\data\ws-classification\main.py
+python main.py
 ```
 
 This starts the gRPC server on `0.0.0.0:50051`.
@@ -37,13 +38,14 @@ This starts the gRPC server on `0.0.0.0:50051`.
 
 ```powershell
 cd c:\Users\GuillaumePELLUET\Documents\Codes\weights_studio
-docker-compose up -d
+docker-compose up  # ollama won't start
+docker-compose --profile ollama up  # ollama will start also
 ```
 
 This starts:
 - **Envoy Proxy** on port 8080 (gRPC-Web bridge)
 - **Vite Dev Server** on port 5173 (frontend)
-- **Ollama** on port 11435 (LLM inference)
+- **Ollama** on port 11435 (Optional: LLM inference)
 
 ### 3. Access the Application
 

@@ -21,7 +21,7 @@
       const cachedTogglePred = localStorage.getItem('grid-toggle-pred');
       const cachedToggleDiff = localStorage.getItem('grid-toggle-diff');
 
-      // Store in a global object for later use by data.ts
+      // Store in a global object for later use by main.ts
       window.__cachedGridSettings = {
         cellSize: cachedCellSize,
         zoomLevel: cachedZoomLevel,
@@ -402,20 +402,24 @@
     <!-- BOTTOM NAVIGATION BAR -->
     <div class="bottom-bar">
       <div class="slider-container">
-        <!-- Left group removed -->
+        <div class="slider-label-group left">
+          <span id="batch-start-index" class="batch-index-label" title="Batch start index">0</span>
+        </div>
         <div class="slider-wrapper">
           <input type="range" min="0" max="100" value="0" class="slider" id="sample-slider">
           <span id="slider-tooltip">0</span>
         </div>
         <div class="slider-label-group right">
+          <span id="batch-end-index" class="batch-index-label" title="Batch end index">?</span>
+
           <div class="stat-row" title="Total available samples (including discarded)">
             <span id="stat-total-count" class="stat-count primary">0</span>
-            <span class="stat-label">Total</span>
+            <span class="stat-label">Total (Active)</span>
           </div>
-          <div class="stat-row" title="Active samples used by model (excluding discarded)">
+          <!-- <div class="stat-row" title="Active samples used by model (excluding discarded)">
             <span id="stat-active-count" class="stat-count secondary">0</span>
             <span class="stat-label">Active</span>
-          </div>
+          </div> -->
         </div>
       </div>
     </div>
@@ -488,7 +492,7 @@
       </div>
     </div>
 
-    <script type="module" src="/src/data.ts"></script>
+    <script type="module" src="/src/main.ts"></script>
   </div>
 </body>
 

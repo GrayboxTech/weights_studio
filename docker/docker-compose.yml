@@ -31,12 +31,9 @@ services:
     environment:
       - HOST=${VITE_HOST:-0.0.0.0}
       - PORT=${VITE_PORT:-5173}
-      - OLLAMA_HOST=${OLLAMA_HOST:-localhost}
-      - OLLAMA_PORT=${OLLAMA_PORT:-11435}
       - NODE_ENV=development
     depends_on:
       - envoy
-      - ollama
     networks:
       - weights_studio_network
     restart: unless-stopped
@@ -44,6 +41,8 @@ services:
 
   # Ollama for LLM inference
   ollama:
+    profiles:
+      - ollama
     image: ollama/ollama:latest
     container_name: weights_studio_ollama
     ports:
