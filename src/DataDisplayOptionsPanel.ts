@@ -455,7 +455,7 @@ export class DataDisplayOptionsPanel {
                 const cb = document.createElement("input");
                 cb.type = "checkbox";
                 cb.id = `seg-class-enabled-${id}`;
-                cb.checked = true;
+                cb.checked = id !== 0;
 
                 const nameSpan = document.createElement("span");
                 nameSpan.textContent = `${id}`;
@@ -464,7 +464,7 @@ export class DataDisplayOptionsPanel {
                 const colorInput = document.createElement("input");
                 colorInput.type = "color";
                 colorInput.id = `seg-class-color-${id}`;
-                colorInput.value = makeColorForIndex(idx);
+                colorInput.value = id === 0 ? "#cccccc" : makeColorForIndex(idx);
                 colorInput.style.width = "20px";
                 colorInput.style.height = "20px";
                 colorInput.style.border = "none";
